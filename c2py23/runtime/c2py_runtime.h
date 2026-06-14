@@ -82,23 +82,6 @@ typedef struct {
     void *internal;
 } Py_buffer;
 
-/* PyArrayInterface - NumPy's legacy __array_struct__ C-level struct.
- * Present since NumPy 1.0 (Python 2.x era). Stable layout.
- * Used as a fallback to extract shape/strides/itemsize/ndim on Python 2.7
- * where the old buffer API provides only buf pointer and len.
- */
-typedef struct {
-    int two;                  /* magic number: always 2 */
-    int nd;                   /* number of dimensions */
-    char typekind;            /* kind character ('f', 'd', 'i', etc.) */
-    int itemsize;             /* element size in bytes */
-    int flags;                /* bitmask (CONTIGUOUS=0x1, etc.) */
-    Py_ssize_t *shape;        /* array of nd dimension sizes */
-    Py_ssize_t *strides;      /* array of nd strides in bytes */
-    void *data;               /* pointer to raw data */
-    PyObject *descr;          /* dtype descriptor (NULL for simple types) */
-} PyArrayInterface;
-
 /* PyMethodDef: stable layout since 1.0 */
 typedef struct {
     const char *ml_name;
@@ -208,11 +191,6 @@ typedef struct {
 
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
-    PyObject* (*GetAttrString)(PyObject*, const char*);
-
-    /* Capsule / CObject for __array_struct__ extraction */
-    void* (*Capsule_GetPointer)(PyObject*, const char*);
-    void* (*CObject_AsVoidPtr)(PyObject*);
 
     /* Pointer-to-int conversion (for exposing perf struct addresses) */
     PyObject* (*Long_FromVoidPtr)(void*);
@@ -242,9 +220,6 @@ extern c2py_api_t C2PY;
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
-#define PyObject_GetAttrString(o, n)   C2PY.GetAttrString((PyObject*)(o), (n))
-#define PyCapsule_GetPointer(o, n)     C2PY.Capsule_GetPointer((PyObject*)(o), (n))
-#define PyCObject_AsVoidPtr(o)         C2PY.CObject_AsVoidPtr((PyObject*)(o))
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 
 #define PyExc_TypeError                ((PyObject*)C2PY.exc_TypeError)
@@ -313,46 +288,11 @@ c2py_acquire_buffer(PyObject *obj, Py_buffer *buf, int want_writable)
         }
     }
 
-    /* Try NumPy __array_struct__ for metadata on Python 2.7
-     * where the old buffer API provides only buf pointer and len.
-     * __array_struct__ gives shape, strides, itemsize, and ndim.
-     * Format is left NULL -- NumPy typekind chars don't map
-     * directly to PEP 3118 format strings, and the when: condition
-     * pattern (!format || ...) already passes safely for NULL. */
-    {
-        PyObject *arr = PyObject_GetAttrString(obj, "__array_struct__");
-        if (arr != NULL) {
-            void *ptr = NULL;
-            if (C2PY.Capsule_GetPointer)
-                ptr = C2PY.Capsule_GetPointer(arr, NULL);
-            else if (C2PY.CObject_AsVoidPtr)
-                ptr = C2PY.CObject_AsVoidPtr(arr);
-            if (ptr != NULL) {
-                PyArrayInterface *ai = (PyArrayInterface*)ptr;
-                if (ai->two == 2) {
-                    buf->ndim = ai->nd;
-                    buf->itemsize = ai->itemsize;
-                    if (ai->nd > 0) {
-                        buf->shape = ai->shape;
-                        buf->strides = ai->strides;
-                    }
-                }
-            }
-            Py_DECREF(arr);
-        } else {
-            PyErr_Clear();
-        }
-    }
-
-    if (buf->ndim == 0)
-        buf->ndim = 1;
-    if (buf->itemsize == 0)
-        buf->itemsize = 1;
+    buf->ndim = 1;
+    buf->itemsize = 1;
     buf->format = NULL;
-    if (buf->shape == NULL)
-        buf->shape = NULL;
-    if (buf->strides == NULL)
-        buf->strides = NULL;
+    buf->shape = NULL;
+    buf->strides = NULL;
     return 0;
 }
 

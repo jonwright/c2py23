@@ -24,7 +24,6 @@ The long-term goal is a substrate for:
 - SIMD dispatch within C functions, potentially at the wrapper level
 - Accurate timing instrumentation (cycle counters, wall-clock)
 - GIL release for pure-C sections
-- `__array_struct__` support for Python 2.7 and numpy arrays
 - Thread-safe extensions in free-threaded Python builds
 
 ## Grammar
@@ -546,8 +545,6 @@ for any glibc-linked binary.
   around C function calls without modifying user C code
 - **GIL release** -- for pure-C sections that do not touch Python objects,
   release the GIL to allow true parallelism in threaded applications
-- **`__array_struct__` support** -- for Python 2.7 and numpy, use the legacy
-  array interface to extract buffer metadata when PEP 3118 is unavailable
 - **Thread safety** -- for free-threaded Python 3.14+, wrap critical sections
   where appropriate
 - **Static analysis** -- verify at code generation time that C function
