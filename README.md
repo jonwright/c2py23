@@ -80,7 +80,7 @@ No structs, enums, nested pointers, or heap allocation. All memory is flat and o
 - **Shape dispatch** -- call different C functions based on buffer dimensionality ([N,3] vs [3,N])
 - **restrict enforcement** -- the wrapper checks that writable buffers do not alias, so C code can always use `restrict`
 - **PEP 3118 buffer protocol** -- accepts any object supporting the buffer interface (`bytes`, `bytearray`, `array.array`, `memoryview`, `ctypes` arrays, numpy arrays, etc.)
-- **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14 (build on the oldest target OS for forward libc compatibility)
+- **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14 (build on the oldest target OS for forward libc compatibility). The approach originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy) (ABI-compatible Nim-Python bridge); c2py23 adapts it for C, using only the minimal CPython C API surface needed for buffer protocol operations.
 - **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` used when PEP 3118 is unavailable
 - **Zero-copy** -- the wrapper never allocates, copies, or transposes memory
 

@@ -120,7 +120,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 ### How It Works
 1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
 2. `c2py23 build` generates a CPython C wrapper and compiles it with gcc into a `.so`
-3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`
+3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
 4. One `.so` works on Python 2.7 through 3.14 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
 

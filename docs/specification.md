@@ -422,7 +422,15 @@ method table (`PyMethodDef[]`) are compiled into the shared object.
 
 ## Nimpy Runtime
 
-The runtime avoids linking against `libpython` entirely. Instead:
+The runtime avoids linking against `libpython` entirely. The approach originates from
+[yglukhov/nimpy](https://github.com/yglukhov/nimpy), a Nim-Python bridge designed for
+ABI compatibility across Python versions. The key insight from nimpy: compiled modules
+should not depend on a particular Python version; the C API symbols are loaded at runtime
+from whichever process has launched the module.
+
+c2py23 adapts this technique for C, trimming it to the smallest possible CPython C API
+surface: buffer protocol, argument parsing, scalar construction, exception handling,
+and module creation. No other CPython APIs are exposed or used.
 
 1. At module load time, `c2py_runtime_init()` calls `dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL)`
    to get a handle to the running Python interpreter's symbol table

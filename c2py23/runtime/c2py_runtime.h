@@ -3,6 +3,10 @@
  * This header NEVER includes <Python.h>. All Python API types and functions
  * are resolved at runtime via dlopen(NULL) + dlsym(). This means one .so
  * works on Python 2.7 through 3.14 without any compile-time Python dependency.
+ *
+ * The technique originates from yglukhov/nimpy (https://github.com/yglukhov/nimpy),
+ * a Nim-Python bridge designed for ABI compatibility across Python versions.
+ * c2py23 adapts it for C, using only the minimal CPython API surface needed.
  */
 
 #ifndef C2PY_RUNTIME_H
