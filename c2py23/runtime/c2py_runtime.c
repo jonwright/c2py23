@@ -108,9 +108,19 @@ int c2py_runtime_init(void)
     C2PY.Err_Clear = (void (*)(void))dlsym(dl, "PyErr_Clear");
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
+    /* --- Buffer struct size (smalltable removed in 3.12+) --- */
+    C2PY.pybuffer_size = (C2PY.version_major >= 3 && C2PY.version_minor >= 12)
+        ? C2PY_PYBUFFER_SZ_POST312 : C2PY_PYBUFFER_SZ_PRE312;
+
+    /* --- Fastcall support (METH_FASTCALL stable ABI since 3.12) --- */
+    C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
+
     /* --- Argument parsing (required) --- */
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
     RESOLVE(C2PY.ParseTupleAndKeywords, "PyArg_ParseTupleAndKeywords");
+
+    /* --- Error detection for fastcall scalar conversion --- */
+    RESOLVE_REQ(C2PY.Err_Occurred, "PyErr_Occurred");
 
     /* --- Value construction (required) --- */
     RESOLVE_REQ(C2PY.Long_FromLong, "PyLong_FromLong");
@@ -135,9 +145,24 @@ int c2py_runtime_init(void)
     }
     C2PY.InitModule_2_7 = _init_module_2_7;
 
-    /* --- Reference counting --- */
-    RESOLVE_REQ(C2PY.IncRef, "Py_IncRef");
-    RESOLVE(C2PY.DecRef, "Py_DecRef");
+    /* --- Reference counting ---
+     * Py_IncRef / Py_DecRef are stable-ABI functions added in Python 3.12.
+     * On older interpreters these symbols may not be exported; fall back
+     * through _Py_IncRef (internal name on some builds) to manual
+     * increment of the ob_refcnt field (always the first member of
+     * PyObject, matching our struct definition in c2py_runtime.h).
+     */
+    {
+        if (_resolve((void**)&C2PY.IncRef, "Py_IncRef") != 0)
+            _resolve((void**)&C2PY.IncRef, "_Py_IncRef");
+        if (C2PY.IncRef == NULL)
+            C2PY.IncRef = _c2py_inc_ref_manual;
+
+        if (_resolve((void**)&C2PY.DecRef, "Py_DecRef") != 0)
+            _resolve((void**)&C2PY.DecRef, "_Py_DecRef");
+        if (C2PY.DecRef == NULL)
+            C2PY.DecRef = _c2py_dec_ref_manual;
+    }
 
     /* --- None singleton ---
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,

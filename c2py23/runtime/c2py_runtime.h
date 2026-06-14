@@ -30,6 +30,18 @@ typedef long long Py_ssize_t;
 typedef long Py_ssize_t;
 #endif
 
+/* sizeof(Py_buffer) differs across CPython versions:
+ * < 3.12: includes smalltable[2]  (96 bytes LP64, 52 bytes ILP32)
+ * >= 3.12: smalltable removed for PEP 697 stable ABI (80 / 44)
+ */
+#if defined(__LP64__) || defined(_WIN64)
+#define C2PY_PYBUFFER_SZ_PRE312   96
+#define C2PY_PYBUFFER_SZ_POST312  80
+#else
+#define C2PY_PYBUFFER_SZ_PRE312   52
+#define C2PY_PYBUFFER_SZ_POST312  44
+#endif
+
 /* ------------------------------------------------------------------ */
 /* CPython type definitions (stable layouts across versions)          */
 /* ------------------------------------------------------------------ */
@@ -49,8 +61,9 @@ typedef struct _c2py_object {
 typedef void *(*PyCFunction)(PyObject*, PyObject*);
 
 /* Py_buffer: stable since Python 2.6 (PEP 3118).
- * NOTE: includes smalltable[2] field present in CPython 2.7-3.x.
- * In CPython 3.13+ this was removed; we handle both via size detection.
+ * NOTE: includes smalltable[2] field present in CPython 2.7-3.11.
+ * In CPython 3.12+ this was removed (PEP 697 stable ABI);
+ * we use C2PY.pybuffer_size (set at init) for correct sizeof.
  */
 typedef struct {
     void *buf;
@@ -63,7 +76,7 @@ typedef struct {
     Py_ssize_t *shape;
     Py_ssize_t *strides;
     Py_ssize_t *suboffsets;
-    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.12 */
+    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.11 */
     void *internal;
 } Py_buffer;
 
@@ -77,7 +90,7 @@ typedef struct {
 
 /* PyModuleDef_Base: stable core layout since Python 3.0 */
 typedef struct PyModuleDef_Base {
-    PyObject_HEAD
+    PyObject ob_base;
     PyObject *(*m_init)(void);
     Py_ssize_t m_index;
     PyObject *m_copy;
@@ -115,9 +128,10 @@ typedef struct PyModuleDef {
 #define METH_O         0x0008
 #define METH_CLASS     0x0010
 #define METH_STATIC    0x0020
+#define METH_FASTCALL  0x0080
 
-/* Module init macro - initializes the PyModuleDef_Base embedded in PyModuleDef */
-#define PyModuleDef_HEAD_INIT 1, NULL, NULL, 0, NULL
+/* Module init macro - initializes the PyModuleDef_Base embedded in PyModuleDef. */
+#define PyModuleDef_HEAD_INIT { {1, NULL}, NULL, 0, NULL }
 
 /* ------------------------------------------------------------------ */
 /* Function pointer table - populated by c2py_runtime_init()          */
@@ -127,6 +141,9 @@ typedef struct {
     void *dl_handle;
     int version_major;
     int version_minor;
+
+    int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
+    Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
@@ -157,6 +174,7 @@ typedef struct {
     void *exc_RuntimeError;
     void *exc_MemoryError;
     void (*Err_SetString)(PyObject*, const char*);
+    PyObject* (*Err_Occurred)(void);
 
     /* None singleton (immortal, INCREF/DECREF unnecessary) */
     PyObject *none_obj;
@@ -189,6 +207,7 @@ extern c2py_api_t C2PY;
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()
+#define PyErr_Occurred()               C2PY.Err_Occurred()
 #define Py_RETURN_NONE                 do { C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; } while(0)
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
@@ -197,6 +216,24 @@ extern c2py_api_t C2PY;
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)
 #define PyExc_RuntimeError             ((PyObject*)C2PY.exc_RuntimeError)
 #define PyExc_MemoryError              ((PyObject*)C2PY.exc_MemoryError)
+
+/* ------------------------------------------------------------------ */
+/* Reference counting fallbacks (for CPython < 3.12 where Py_IncRef   */
+/* is not an exported symbol)                                         */
+/* ------------------------------------------------------------------ */
+
+/* Manual refcount increment - our PyObject has ob_refcnt first.
+ * Safe on CPython 2.7 through 3.11 where refcount is a simple
+ * Py_ssize_t; on 3.12+ the real Py_IncRef symbol is used instead. */
+static inline void _c2py_inc_ref_manual(PyObject *op)
+{
+    ++op->ob_refcnt;
+}
+
+static inline void _c2py_dec_ref_manual(PyObject *op)
+{
+    --op->ob_refcnt;
+}
 
 /* ------------------------------------------------------------------ */
 /* Buffer acquisition helper with old-API fallback for Python 2.7     */
@@ -213,7 +250,7 @@ c2py_acquire_buffer(PyObject *obj, Py_buffer *buf, int want_writable)
     int flags = PyBUF_STRIDES | PyBUF_FORMAT;
     if (want_writable) flags |= PyBUF_WRITABLE;
 
-    memset(buf, 0, sizeof(*buf));
+    memset(buf, 0, C2PY.pybuffer_size);
 
     if (C2PY.buffer_api_is_pep3118) {
         return PyObject_GetBuffer(obj, buf, flags);

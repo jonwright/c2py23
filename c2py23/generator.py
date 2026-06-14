@@ -77,7 +77,7 @@ def _c_decl_from_overload(ol):
 def _emit_function(out, func, module_name):
     name = func.name
     out.append('/* ' + '-' * 44 + ' */')
-    out.append('/* Wrapper for: {}'.format(name))
+    out.append('/* Wrapper for: {} */'.format(name))
     out.append('/* ' + '-' * 44 + ' */')
     out.append('')
 
@@ -267,34 +267,27 @@ def _emit_default_raise_body(out, default_raise):
 # ---------------------------------------------------------------------------
 
 def _emit_wrapper_func(out, func, buf_params, scalar_params):
+    """Emit both VARARGS (Python < 3.12) and FASTCALL (Python >= 3.12) wrappers."""
+    _emit_varargs_wrapper(out, func, buf_params, scalar_params)
+    _emit_fastcall_wrapper(out, func, buf_params, scalar_params)
+
+
+def _emit_varargs_wrapper(out, func, buf_params, scalar_params):
+    """Emit the METH_VARARGS wrapper (Python 2.7 through 3.11)."""
     name = func.name
+    all_params = func.py_params
 
     out.append('static PyObject*')
     out.append('_' + name + '_wrapper(PyObject *self, PyObject *args, PyObject *kwargs)')
     out.append('{')
 
-    # Local variables for Python objects
-    for p in buf_params:
-        out.append('    PyObject *py_' + p.name + ' = NULL;')
-    for p in scalar_params:
-        if p.pytype == 'int':
-            out.append('    int c_%s = 0;' % p.name)
-        else:
-            out.append('    double c_%s = 0.0;' % p.name)
+    # Local variables
+    _emit_wrapper_locals(out, buf_params, scalar_params)
 
-    # Py_buffer structs
-    for p in buf_params:
-        out.append('    Py_buffer buf_{0};'.format(p.name))
-        out.append('    int acq_{0} = 0;'.format(p.name))
-
-    out.append('    PyObject *ret = NULL;')
-
-    out.append('')
-
-    # Arg parse
-    fmt_str = _build_parse_format(func.py_params)
+    # Arg parse via PyArg_ParseTuple
+    fmt_str = _build_parse_format(all_params)
     parse_args = ['args', '"' + fmt_str + '"']
-    for p in func.py_params:
+    for p in all_params:
         if p.pytype == 'buffer':
             parse_args.append('&py_' + p.name)
         elif p.pytype == 'int':
@@ -305,9 +298,88 @@ def _emit_wrapper_func(out, func, buf_params, scalar_params):
     out.append('        return NULL;')
     out.append('')
 
+    # Shared body: buffer init, acquire, checks, impl, cleanup
+    _emit_wrapper_body(out, func, buf_params, scalar_params, name)
+
+    out.append('}')
+    out.append('')
+
+
+def _emit_fastcall_wrapper(out, func, buf_params, scalar_params):
+    """Emit the METH_FASTCALL wrapper (Python >= 3.12)."""
+    name = func.name
+    all_params = func.py_params
+    nargs = len(all_params)
+
+    out.append('static PyObject*')
+    out.append('_' + name + '_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)')
+    out.append('{')
+
+    # Local variables
+    _emit_wrapper_locals(out, buf_params, scalar_params)
+
+    # Arg count check
+    out.append('    if (nargs != {0}) {{'.format(nargs))
+    out.append('        PyErr_SetString(PyExc_TypeError,')
+    out.append('            \"{0} expects {1} argument{2}\");'.format(
+        name, nargs, 's' if nargs != 1 else ''))
+    out.append('        return NULL;')
+    out.append('    }')
+    out.append('')
+
+    # Extract args directly from the array
+    idx = 0
+    for p in all_params:
+        if p.pytype == 'buffer':
+            out.append('    py_{0} = args[{1}];'.format(p.name, idx))
+        elif p.pytype == 'int':
+            out.append('    /* extract int: {0} from args[{1}] */'.format(p.name, idx))
+            out.append('    {')
+            out.append('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
+            out.append('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
+            out.append('        c_{0} = (int)_c2py_tmp;'.format(p.name))
+            out.append('    }')
+        else:
+            out.append('    /* extract float: {0} from args[{1}] */'.format(p.name, idx))
+            out.append('    {')
+            out.append('        double _c2py_tmp = PyFloat_AsDouble(args[{0}]);'.format(idx))
+            out.append('        if (_c2py_tmp == -1.0 && PyErr_Occurred()) return NULL;')
+            out.append('        c_{0} = _c2py_tmp;'.format(p.name))
+            out.append('    }')
+        idx += 1
+
+    out.append('')
+
+    # Shared body: buffer init, acquire, checks, impl, cleanup
+    _emit_wrapper_body(out, func, buf_params, scalar_params, name)
+
+    out.append('}')
+    out.append('')
+
+
+def _emit_wrapper_locals(out, buf_params, scalar_params):
+    """Emit local variable declarations shared by both wrappers."""
+    for p in buf_params:
+        out.append('    PyObject *py_' + p.name + ' = NULL;')
+    for p in scalar_params:
+        if p.pytype == 'int':
+            out.append('    int c_%s = 0;' % p.name)
+        else:
+            out.append('    double c_%s = 0.0;' % p.name)
+
+    for p in buf_params:
+        out.append('    Py_buffer buf_{0};'.format(p.name))
+        out.append('    int acq_{0} = 0;'.format(p.name))
+
+    out.append('    PyObject *ret = NULL;')
+    out.append('')
+
+
+def _emit_wrapper_body(out, func, buf_params, scalar_params, name):
+    """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     # Initialize buffers
     for p in buf_params:
-        out.append('    memset(&buf_{0}, 0, sizeof(buf_{0}));'.format(p.name))
+        out.append('    memset(&buf_{0}, 0, C2PY.pybuffer_size);'.format(p.name))
     out.append('')
 
     # Acquire buffers
@@ -336,13 +408,12 @@ def _emit_wrapper_func(out, func, buf_params, scalar_params):
     out.append('')
 
     # Cleanup
-    out.append('cleanup:')
+    if len(buf_params) >= 2:
+        out.append('cleanup:')
     for p in reversed(buf_params):
         out.append('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
 
     out.append('    return ret;')
-    out.append('}')
-    out.append('')
 
 
 def _build_parse_format(py_params):
@@ -580,45 +651,62 @@ def _emit_module_init(out, mod):
     out.append('/* ' + '-' * 44 + ' */')
     out.append('')
 
-    out.append('static PyMethodDef _methods[] = {')
-    for func in mod.functions:
-        fname = func.name
+    # Helper to build doc string
+    def _doc(func):
         py_args = []
         for p in func.py_params:
             py_args.append('{}: {}'.format(p.name, p.pytype))
-        doc = '{}({}) -> {}'.format(fname, ', '.join(py_args), func.return_type)
+        return '{}({}) -> {}'.format(func.name, ', '.join(py_args), func.return_type)
+
+    # --- VARARGS method table (Python < 3.12) ---
+    out.append('static PyMethodDef _methods_varargs[] = {')
+    for func in mod.functions:
         out.append('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(
-            fname, fname, doc))
+            func.name, func.name, _doc(func)))
     out.append('    {NULL, NULL, 0, NULL}')
     out.append('};')
     out.append('')
 
-    # Module definition struct (used only by Python 3)
+    # --- FASTCALL method table (Python >= 3.12) ---
+    out.append('static PyMethodDef _methods_fastcall[] = {')
+    for func in mod.functions:
+        out.append('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(
+            func.name, func.name, _doc(func)))
+    out.append('    {NULL, NULL, 0, NULL}')
+    out.append('};')
+    out.append('')
+
+    # Module definition struct - methods pointer set at init time
     out.append('static PyModuleDef _module_def = {')
     out.append('    PyModuleDef_HEAD_INIT,')
     out.append('    "{}",'.format(name))
     out.append('    NULL,')
     out.append('    -1,')
-    out.append('    _methods,')
+    out.append('    NULL,  /* methods set at init */')
     out.append('    NULL, NULL, NULL, NULL')
     out.append('};')
     out.append('')
 
-    # Python 3 init - called by Python 3's import machinery
+    # Python 3 init
     out.append('PyObject* PyInit_{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
+    out.append('')
+    out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
+    out.append('    _module_def.m_methods = methods;')
+    out.append('')
     out.append('    if (C2PY.Module_Create2 != NULL) {')
     out.append('        return C2PY.Module_Create2(&_module_def, 1013);')
     out.append('    }')
     out.append('    /* Fallback for Python 2.7 where PyModuleDef is not supported */')
-    out.append('    return C2PY.InitModule_2_7("{}", _methods);'.format(name))
+    out.append('    return C2PY.InitModule_2_7("{}", methods);'.format(name))
     out.append('}')
     out.append('')
 
-    # Python 2.7 init - called by Python 2's import machinery
+    # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
-    out.append('    C2PY.InitModule_2_7("{}", _methods);'.format(name))
+    out.append('    C2PY.InitModule_2_7("{}",'.format(name))
+    out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
     out.append('}')
 
 

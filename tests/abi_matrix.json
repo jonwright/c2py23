@@ -1,0 +1,77 @@
+{
+  "entries": [
+    {
+      "flags": {
+        "METH_CLASS": 16,
+        "METH_FASTCALL": 128,
+        "METH_KEYWORDS": 2,
+        "METH_NOARGS": 4,
+        "METH_O": 8,
+        "METH_STATIC": 32,
+        "METH_VARARGS": 1,
+        "PyBUF_FORMAT": 4,
+        "PyBUF_ND": 8,
+        "PyBUF_SIMPLE": 0,
+        "PyBUF_STRIDES": 24,
+        "PyBUF_WRITABLE": 1
+      },
+      "has_smalltable": false,
+      "offsets_py_buffer": {
+        "Py_buffer.buf": 0,
+        "Py_buffer.format": 40,
+        "Py_buffer.internal": 72,
+        "Py_buffer.itemsize": 24,
+        "Py_buffer.len": 16,
+        "Py_buffer.ndim": 36,
+        "Py_buffer.obj": 8,
+        "Py_buffer.readonly": 32,
+        "Py_buffer.shape": 48,
+        "Py_buffer.strides": 56,
+        "Py_buffer.suboffsets": 64
+      },
+      "offsets_pyobject": {
+        "PyObject.ob_refcnt": 0,
+        "PyObject.ob_type": 8
+      },
+      "os": "Linux-x86_64",
+      "python": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
+      "sizes": {
+        "PyObject": 16,
+        "Py_buffer": 80,
+        "Py_ssize_t": 8,
+        "int": 4,
+        "long": 8,
+        "void_ptr": 8
+      },
+      "symbols": {
+        "PyArg_ParseTuple": true,
+        "PyArg_ParseTupleAndKeywords": true,
+        "PyBuffer_Release": true,
+        "PyErr_Clear": true,
+        "PyErr_Occurred": true,
+        "PyErr_SetString": true,
+        "PyExc_MemoryError": true,
+        "PyExc_RuntimeError": true,
+        "PyExc_TypeError": true,
+        "PyExc_ValueError": true,
+        "PyFloat_AsDouble": true,
+        "PyFloat_FromDouble": true,
+        "PyLong_AsLong": true,
+        "PyLong_FromLong": true,
+        "PyLong_FromLongLong": true,
+        "PyModule_Create2": true,
+        "PyObject_AsReadBuffer": true,
+        "PyObject_AsWriteBuffer": true,
+        "PyObject_GetBuffer": true,
+        "PyObject_Vectorcall": true,
+        "Py_DecRef": true,
+        "Py_GetVersion": true,
+        "Py_IncRef": true,
+        "Py_None": false,
+        "_Py_DecRef": true,
+        "_Py_IncRef": true,
+        "_Py_NoneStruct": true
+      }
+    }
+  ]
+}
