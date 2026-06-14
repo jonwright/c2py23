@@ -219,6 +219,43 @@ def test_constants():
     print("PASS: constants")
 
 
+def test_timing():
+    """Test performance timing feature."""
+    from c2py23.perf import read_perf, read_enabled, set_enabled
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'timing'))
+    import timedmod
+    import ctypes as ct
+
+    arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
+    for i in range(10):
+        r = timedmod.wsum(arr, 2.0)
+        assert abs(r - 30.0) < 0.001
+
+    py = read_perf(timedmod._perf_wsum)
+    ov = read_perf(timedmod._perf_wsum__weighted_sum)
+
+    assert py['call_count'] == 10, "py call_count expected 10, got %d" % py['call_count']
+    assert py['c_mean_ns'] > 0
+    assert py['wrap_mean_ns'] >= 0
+    assert ov['call_count'] == 10, "ov call_count expected 10, got %d" % ov['call_count']
+    assert ov['c_mean_ns'] > 0
+    assert ov['wrap_dur_ns'] == 0
+
+    # Test toggle off
+    enabled = read_enabled(timedmod._c2py_timing_enabled)
+    assert enabled == 1
+    set_enabled(timedmod._c2py_timing_enabled, 0)
+    assert read_enabled(timedmod._c2py_timing_enabled) == 0
+
+    timedmod.wsum(arr, 1.0)
+    py2 = read_perf(timedmod._perf_wsum)
+    assert py2['call_count'] == 10  # should NOT have incremented
+    set_enabled(timedmod._c2py_timing_enabled, 1)
+
+    print("PASS: timing")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -231,6 +268,7 @@ def main():
         ("optional", test_optional),
         ("docstring", test_docstring),
         ("constants", test_constants),
+        ("timing", test_timing),
     ]
     passed = 0
     failed = 0

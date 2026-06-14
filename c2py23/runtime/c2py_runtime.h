@@ -370,6 +370,28 @@ static inline void c2py_perf_record(c2py_perf_t *p,
     }
 }
 
+/* Update a perf record for a single C call (no wrapper overhead).
+ * Used for per-overload timing inside _impl functions. */
+static inline void c2py_perf_record_call(c2py_perf_t *p,
+    uint64_t t_pre, uint64_t t_post)
+{
+    uint64_t c_dur = t_post - t_pre;
+
+    p->call_count++;
+    p->t_pre_c  = t_pre;
+    p->t_post_c = t_post;
+
+    p->t_c_total += c_dur;
+
+    if (p->call_count == 1) {
+        p->t_c_min = c_dur;
+        p->t_c_max = c_dur;
+    } else {
+        if (c_dur < p->t_c_min) p->t_c_min = c_dur;
+        if (c_dur > p->t_c_max) p->t_c_max = c_dur;
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Init function                                                      */
 /* ------------------------------------------------------------------ */

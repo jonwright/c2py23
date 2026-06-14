@@ -103,7 +103,7 @@ def _emit_function(out, func, module_name, timing):
     _emit_impl_func(out, func, buf_params, scalar_params, timing)
 
     # _wrapper function
-    _emit_wrapper_func(out, func, buf_params, scalar_params)
+    _emit_wrapper_func(out, func, buf_params, scalar_params, timing)
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         if timing:
             out.append(indent + 'if (_c2py_do_time) {')
             out.append(indent + '    _c2py_ct1 = c2py_ticks();')
-            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
             out.append(indent + '}')
         out.append(indent + 'Py_RETURN_NONE;')
     elif ol.return_type == 'int':
@@ -249,7 +249,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         if timing:
             out.append(indent + 'if (_c2py_do_time) {')
             out.append(indent + '    _c2py_ct1 = c2py_ticks();')
-            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
             out.append(indent + '}')
         out.append(indent + 'return PyLong_FromLong((long)_ret);')
     elif ol.return_type == 'float':
@@ -257,7 +257,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         if timing:
             out.append(indent + 'if (_c2py_do_time) {')
             out.append(indent + '    _c2py_ct1 = c2py_ticks();')
-            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
             out.append(indent + '}')
         out.append(indent + 'return PyFloat_FromDouble((double)_ret);')
     elif ol.return_type == 'double':
@@ -265,7 +265,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         if timing:
             out.append(indent + 'if (_c2py_do_time) {')
             out.append(indent + '    _c2py_ct1 = c2py_ticks();')
-            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
             out.append(indent + '}')
         out.append(indent + 'return PyFloat_FromDouble(_ret);')
     else:
@@ -274,7 +274,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         if timing:
             out.append(indent + 'if (_c2py_do_time) {')
             out.append(indent + '    _c2py_ct1 = c2py_ticks();')
-            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
             out.append(indent + '}')
         out.append(indent + 'Py_RETURN_NONE;')
 
@@ -311,13 +311,13 @@ def _emit_default_raise_body(out, default_raise):
 # _wrapper function (arg parsing, buffer acquire, cleanup)
 # ---------------------------------------------------------------------------
 
-def _emit_wrapper_func(out, func, buf_params, scalar_params):
+def _emit_wrapper_func(out, func, buf_params, scalar_params, timing):
     """Emit both VARARGS (Python < 3.12) and FASTCALL (Python >= 3.12) wrappers."""
-    _emit_varargs_wrapper(out, func, buf_params, scalar_params)
-    _emit_fastcall_wrapper(out, func, buf_params, scalar_params)
+    _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing)
+    _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing)
 
 
-def _emit_varargs_wrapper(out, func, buf_params, scalar_params):
+def _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing):
     """Emit the METH_VARARGS wrapper (Python 2.7 through 3.11)."""
     name = func.name
     all_params = func.py_params
@@ -327,7 +327,7 @@ def _emit_varargs_wrapper(out, func, buf_params, scalar_params):
     out.append('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params)
+    _emit_wrapper_locals(out, buf_params, scalar_params, timing)
 
     # Arg parse via PyArg_ParseTuple
     fmt_str = _build_parse_format(all_params)
@@ -344,24 +344,23 @@ def _emit_varargs_wrapper(out, func, buf_params, scalar_params):
     out.append('')
 
     # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(out, func, buf_params, scalar_params, name)
+    _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing)
 
     out.append('}')
     out.append('')
 
 
-def _emit_fastcall_wrapper(out, func, buf_params, scalar_params):
+def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
     """Emit the METH_FASTCALL wrapper (Python >= 3.12)."""
     name = func.name
     all_params = func.py_params
-    nargs = len(all_params)
 
     out.append('static PyObject*')
     out.append('_' + name + '_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)')
     out.append('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params)
+    _emit_wrapper_locals(out, buf_params, scalar_params, timing)
 
     # Arg count check (handle optional params with defaults)
     total = len(all_params)
@@ -415,13 +414,13 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params):
     out.append('')
 
     # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(out, func, buf_params, scalar_params, name)
+    _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing)
 
     out.append('}')
     out.append('')
 
 
-def _emit_wrapper_locals(out, buf_params, scalar_params):
+def _emit_wrapper_locals(out, buf_params, scalar_params, timing=False):
     """Emit local variable declarations shared by both wrappers."""
     for p in buf_params:
         out.append('    PyObject *py_' + p.name + ' = NULL;')
@@ -443,11 +442,19 @@ def _emit_wrapper_locals(out, buf_params, scalar_params):
         out.append('    int acq_{0} = 0;'.format(p.name))
 
     out.append('    PyObject *ret = NULL;')
+
+    if timing:
+        out.append('    int _c2py_do_time = _c2py_timing_enabled;')
+        out.append('    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;')
+        out.append('    if (_c2py_do_time) _c2py_t0 = c2py_ticks();')
+
     out.append('')
 
 
-def _emit_wrapper_body(out, func, buf_params, scalar_params, name):
+def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
+    perf_name = '_perf_' + name
+
     # Initialize buffers
     for p in buf_params:
         out.append('    memset(&buf_{0}, 0, C2PY.pybuffer_size);'.format(p.name))
@@ -469,13 +476,18 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name):
     # Restrict checks
     _emit_restrict_checks(out, buf_params, func)
 
-    # Call impl
+    # Call impl (with timing ticks around it)
     impl_args = []
     for p in buf_params:
         impl_args.append('&buf_' + p.name)
     for p in scalar_params:
         impl_args.append('c_' + p.name)
+
+    if timing:
+        out.append('    if (_c2py_do_time) _c2py_t1 = c2py_ticks();')
     out.append('    ret = _{0}_impl({1});'.format(name, ', '.join(impl_args)))
+    if timing:
+        out.append('    if (_c2py_do_time) _c2py_t2 = c2py_ticks();')
     out.append('')
 
     # Cleanup
@@ -483,6 +495,12 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name):
         out.append('cleanup:')
     for p in reversed(buf_params):
         out.append('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
+
+    if timing:
+        out.append('')
+        out.append('    if (_c2py_do_time) {')
+        out.append('        c2py_perf_record(&{0}, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());'.format(perf_name))
+        out.append('    }')
 
     out.append('    return ret;')
 
@@ -722,13 +740,26 @@ def _expr_to_source(expr):
 # ---------------------------------------------------------------------------
 
 def _emit_constants(out, mod):
-    """Emit PyObject_SetAttrString calls for module-level integer constants."""
-    if not mod.constants:
+    """Emit PyObject_SetAttrString calls for module-level integer constants
+    and timing perf struct pointers."""
+    if not mod.constants and not mod.timing:
         return
     out.append('    if (module != NULL) {')
-    for cname, cvalue in sorted(mod.constants.items()):
-        out.append('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
-        out.append('            PyLong_FromLong({}));'.format(cvalue))
+    if mod.constants:
+        for cname, cvalue in sorted(mod.constants.items()):
+            out.append('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
+            out.append('            PyLong_FromLong({}));'.format(cvalue))
+    if mod.timing:
+        out.append('        PyObject_SetAttrString(module, "_c2py_timing_enabled",')
+        out.append('            PyLong_FromVoidPtr(&_c2py_timing_enabled));')
+        for func in mod.functions:
+            out.append('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
+            out.append('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
+            for ol in func.overloads:
+                c_name = _extract_c_name(ol.sig_str)
+                perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
+                out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
     out.append('    }')
 
 
@@ -784,7 +815,7 @@ def _emit_module_init(out, mod):
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('    _module_def.m_methods = methods;')
     out.append('')
-    if mod.constants:
+    if mod.constants or mod.timing:
         out.append('    PyObject *module;')
         out.append('    if (C2PY.Module_Create2 != NULL) {')
         out.append('        module = C2PY.Module_Create2(&_module_def, 1013);')
@@ -808,7 +839,7 @@ def _emit_module_init(out, mod):
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
-    if mod.constants:
+    if mod.constants or mod.timing:
         out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
         out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
         _emit_constants(out, mod)

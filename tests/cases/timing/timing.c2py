@@ -1,0 +1,9 @@
+module: timedmod
+source: [timing.c]
+timing: true
+
+functions:
+  - py_sig: "wsum(data: buffer, weight: float) -> float"
+    c_overloads:
+      - sig: "weighted_sum(const double *data, int n, double weight) -> double"
+        map: {data: "data.ptr", n: "data.n", weight: weight}
