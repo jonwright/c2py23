@@ -1,0 +1,12 @@
+module: constmod
+source: [constants.c]
+constants:
+  ALPHA: 1
+  BETA: 2
+  GAMMA: 3
+
+functions:
+  - py_sig: "scale_sum(data: buffer, factor: int) -> float"
+    c_overloads:
+      - sig: "scale_and_sum(const double *data, int n, int factor) -> double"
+        map: {data: "data.ptr", n: "data.n", factor: factor}

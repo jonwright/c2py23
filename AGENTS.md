@@ -73,7 +73,8 @@ else:
 
 - **NEVER include `<Python.h>`** -- all CPython API is resolved at runtime via `dlopen(NULL)` + `dlsym()`
 - Generated wrappers include only `"c2py_runtime.h"` and user-specified C headers
-- **NO malloc, calloc, realloc, or free** in wrapper or user C code
+- **NO malloc, calloc, realloc, or free** in generated wrapper code
+  (user C code may use them internally; any allocated memory must be freed before returning)
 - All memory is owned and managed by Python
 - Buffers are passed in from Python callers; C functions operate on them in-place
 - **restrict can always be assumed** -- the wrapper checks for buffer aliasing at call time and raises `ValueError` if writable buffers overlap

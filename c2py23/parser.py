@@ -44,8 +44,9 @@ class UnaryOp(namedtuple('UnaryOp', ['op', 'operand'])):
 # Data model
 # ---------------------------------------------------------------------------
 
-class PyParam(namedtuple('PyParam', ['name', 'pytype'])):
-    """pytype is one of 'buffer', 'int', 'float'"""
+class PyParam(namedtuple('PyParam', ['name', 'pytype', 'default'])):
+    """pytype is one of 'buffer', 'int', 'float'. default is None for
+    required params, or a numeric value for optional int/float params."""
     pass
 
 class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is_pointer'])):
@@ -55,10 +56,11 @@ class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is
 class COverload(namedtuple('COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr'])):
     pass
 
-class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise'])):
+class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc'])):
     pass
 
-class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions'])):
+class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants'])):
+    """constants is a dict of {name: int_value} for module-level integer constants."""
     pass
 
 # ---------------------------------------------------------------------------
@@ -82,7 +84,14 @@ def load_c2py(path):
     for f in raw.get('functions', []):
         funcs.append(_parse_func(f, path))
 
-    return ModuleDef(module_name, sources, headers, funcs)
+    constants = raw.get('constants', {})
+    if not isinstance(constants, dict):
+        raise ValueError("'constants' must be a dict in {}".format(path))
+    for k, v in constants.items():
+        if not isinstance(v, int):
+            raise ValueError("Constant '{}' in {} must be an integer, got {}".format(k, path, type(v)))
+
+    return ModuleDef(module_name, sources, headers, funcs, constants)
 
 
 def _get_required(d, key, path):
@@ -103,6 +112,10 @@ _PY_SIG_RE = re.compile(
 
 _PYTYPE_MAP = {'buffer': 'buffer', 'int': 'int', 'float': 'float'}
 
+_PY_PARAM_RE = re.compile(
+    r'^(\w+)\s*:\s*(buffer|int|float)\s*(?:=\s*(-?\d+\.?\d*))?\s*$'
+)
+
 def _parse_py_sig(sig_str, path):
     m = _PY_SIG_RE.match(sig_str)
     if not m:
@@ -112,20 +125,39 @@ def _parse_py_sig(sig_str, path):
     ret = m.group('ret') or 'void'
 
     params = []
+    seen_optional = False
     if params_str.strip():
         for part in params_str.split(','):
             part = part.strip()
             if not part:
                 continue
-            # "name: type"
-            pm = re.match(r'^(\w+)\s*:\s*(\w+)\s*$', part)
+            pm = _PY_PARAM_RE.match(part)
             if not pm:
                 raise ValueError("Invalid param '{}' in signature '{}'".format(part, sig_str))
             pname = pm.group(1)
             ptype = pm.group(2)
+            default_str = pm.group(3)
+
             if ptype not in _PYTYPE_MAP:
                 raise ValueError("Unknown param type '{}' in signature '{}'".format(ptype, sig_str))
-            params.append(PyParam(pname, _PYTYPE_MAP[ptype]))
+            pytype = _PYTYPE_MAP[ptype]
+
+            if default_str is not None:
+                if pytype == 'buffer':
+                    raise ValueError(
+                        "Buffer param '{}' cannot have a default value in '{}'".format(pname, sig_str))
+                if pytype == 'int':
+                    default = int(default_str)
+                else:
+                    default = float(default_str)
+                seen_optional = True
+            else:
+                default = None
+                if seen_optional:
+                    raise ValueError(
+                        "Required param '{}' cannot follow optional params in '{}'".format(pname, sig_str))
+
+            params.append(PyParam(pname, pytype, default))
     return name, params, ret
 
 # ---------------------------------------------------------------------------
@@ -138,11 +170,16 @@ def _parse_py_sig(sig_str, path):
 #   "ret name(...) -> ret"              -> both (-> overrides)
 # ---------------------------------------------------------------------------
 
-_C_TYPES = {'int', 'float', 'double', 'char', 'void'}
+_C_TYPES_INT = (
+    'int8_t', 'uint8_t', 'int16_t', 'uint16_t',
+    'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
+    'int', 'float', 'double', 'char', 'void'
+)
+_C_TYPES = set(_C_TYPES_INT)
 
 # Tokens in param lists: CONST, TYPE, STAR, NAME, COMMA, LPAREN, RPAREN
 _C_PARAM_RE = re.compile(
-    r'\s*(?:const\s+)?(int|float|double|char)\s*\*?\s*(\w+)\s*'
+    r'\s*(?:const\s+)?(' + '|'.join(_C_TYPES_INT) + r')\s*\*?\s*(\w+)\s*'
 )
 
 def _parse_c_sig(sig_str, path):
@@ -437,5 +474,6 @@ def _parse_func(raw, path):
         overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr))
 
     default_raise = raw.get('default_raise')
+    doc = raw.get('doc')
 
-    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise)
+    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc)

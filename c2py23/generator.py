@@ -318,30 +318,49 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params):
     # Local variables
     _emit_wrapper_locals(out, buf_params, scalar_params)
 
-    # Arg count check
-    out.append('    if (nargs != {0}) {{'.format(nargs))
-    out.append('        PyErr_SetString(PyExc_TypeError,')
-    out.append('            \"{0} expects {1} argument{2}\");'.format(
-        name, nargs, 's' if nargs != 1 else ''))
-    out.append('        return NULL;')
-    out.append('    }')
+    # Arg count check (handle optional params with defaults)
+    total = len(all_params)
+    min_req = sum(1 for p in all_params if p.default is None)
+    if min_req == total:
+        out.append('    if (nargs != {0}) {{'.format(total))
+        out.append('        PyErr_SetString(PyExc_TypeError,')
+        out.append('            \"{0} expects {1} argument{2}\");'.format(
+            name, total, 's' if total != 1 else ''))
+        out.append('        return NULL;')
+        out.append('    }')
+    else:
+        out.append('    if (nargs < {0} || nargs > {1}) {{'.format(min_req, total))
+        out.append('        PyErr_SetString(PyExc_TypeError,')
+        out.append('            \"{0} expects {1} to {2} arguments\");'.format(
+            name, min_req, total))
+        out.append('        return NULL;')
+        out.append('    }')
     out.append('')
 
-    # Extract args directly from the array
+    # Extract args directly from the array (only up to nargs)
     idx = 0
     for p in all_params:
+        is_optional = (p.default is not None)
         if p.pytype == 'buffer':
             out.append('    py_{0} = args[{1}];'.format(p.name, idx))
         elif p.pytype == 'int':
-            out.append('    /* extract int: {0} from args[{1}] */'.format(p.name, idx))
-            out.append('    {')
+            out.append('    /* extract int: {0} from args[{1}]{2} */'.format(
+                p.name, idx, ' (optional)' if is_optional else ''))
+            if is_optional:
+                out.append('    if (nargs > {0}) {{'.format(idx))
+            else:
+                out.append('    {')
             out.append('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
             out.append('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
             out.append('        c_{0} = (int)_c2py_tmp;'.format(p.name))
             out.append('    }')
         else:
-            out.append('    /* extract float: {0} from args[{1}] */'.format(p.name, idx))
-            out.append('    {')
+            out.append('    /* extract float: {0} from args[{1}]{2} */'.format(
+                p.name, idx, ' (optional)' if is_optional else ''))
+            if is_optional:
+                out.append('    if (nargs > {0}) {{'.format(idx))
+            else:
+                out.append('    {')
             out.append('        double _c2py_tmp = PyFloat_AsDouble(args[{0}]);'.format(idx))
             out.append('        if (_c2py_tmp == -1.0 && PyErr_Occurred()) return NULL;')
             out.append('        c_{0} = _c2py_tmp;'.format(p.name))
@@ -362,10 +381,17 @@ def _emit_wrapper_locals(out, buf_params, scalar_params):
     for p in buf_params:
         out.append('    PyObject *py_' + p.name + ' = NULL;')
     for p in scalar_params:
+        default_val = p.default
         if p.pytype == 'int':
-            out.append('    int c_%s = 0;' % p.name)
+            if default_val is None:
+                out.append('    int c_%s = 0;' % p.name)
+            else:
+                out.append('    int c_%s = %d;' % (p.name, int(default_val)))
         else:
-            out.append('    double c_%s = 0.0;' % p.name)
+            if default_val is None:
+                out.append('    double c_%s = 0.0;' % p.name)
+            else:
+                out.append('    double c_%s = %s;' % (p.name, _float_literal(default_val)))
 
     for p in buf_params:
         out.append('    Py_buffer buf_{0};'.format(p.name))
@@ -417,9 +443,16 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name):
 
 
 def _build_parse_format(py_params):
-    """Build the PyArg_ParseTuple format string."""
+    """Build the PyArg_ParseTuple format string.
+
+    Inserts '|' before the first optional parameter (one with a default).
+    """
     fmt = ''
+    hit_optional = False
     for p in py_params:
+        if not hit_optional and p.default is not None:
+            hit_optional = True
+            fmt += '|'
         if p.pytype == 'buffer':
             fmt += 'O'
         elif p.pytype == 'int':
@@ -643,6 +676,17 @@ def _expr_to_source(expr):
 # Module init
 # ---------------------------------------------------------------------------
 
+def _emit_constants(out, mod):
+    """Emit PyObject_SetAttrString calls for module-level integer constants."""
+    if not mod.constants:
+        return
+    out.append('    if (module != NULL) {')
+    for cname, cvalue in sorted(mod.constants.items()):
+        out.append('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
+        out.append('            PyLong_FromLong({}));'.format(cvalue))
+    out.append('    }')
+
+
 def _emit_module_init(out, mod):
     name = mod.name
     out.append('')
@@ -656,7 +700,8 @@ def _emit_module_init(out, mod):
         py_args = []
         for p in func.py_params:
             py_args.append('{}: {}'.format(p.name, p.pytype))
-        return '{}({}) -> {}'.format(func.name, ', '.join(py_args), func.return_type)
+        default_doc = '{}({}) -> {}'.format(func.name, ', '.join(py_args), func.return_type)
+        return func.doc if func.doc is not None else default_doc
 
     # --- VARARGS method table (Python < 3.12) ---
     out.append('static PyMethodDef _methods_varargs[] = {')
@@ -694,19 +739,37 @@ def _emit_module_init(out, mod):
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('    _module_def.m_methods = methods;')
     out.append('')
-    out.append('    if (C2PY.Module_Create2 != NULL) {')
-    out.append('        return C2PY.Module_Create2(&_module_def, 1013);')
-    out.append('    }')
-    out.append('    /* Fallback for Python 2.7 where PyModuleDef is not supported */')
-    out.append('    return C2PY.InitModule_2_7("{}", methods);'.format(name))
+    if mod.constants:
+        out.append('    PyObject *module;')
+        out.append('    if (C2PY.Module_Create2 != NULL) {')
+        out.append('        module = C2PY.Module_Create2(&_module_def, 1013);')
+        out.append('    } else {')
+        out.append('        /* Fallback for Python 2.7 where PyModuleDef is not supported */')
+        out.append('        module = C2PY.InitModule_2_7("{}", methods);'.format(name))
+        out.append('    }')
+        out.append('')
+        _emit_constants(out, mod)
+        out.append('')
+        out.append('    return module;')
+    else:
+        out.append('    if (C2PY.Module_Create2 != NULL) {')
+        out.append('        return C2PY.Module_Create2(&_module_def, 1013);')
+        out.append('    }')
+        out.append('    /* Fallback for Python 2.7 where PyModuleDef is not supported */')
+        out.append('    return C2PY.InitModule_2_7("{}", methods);'.format(name))
     out.append('}')
     out.append('')
 
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
-    out.append('    C2PY.InitModule_2_7("{}",'.format(name))
-    out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
+    if mod.constants:
+        out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
+        out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
+        _emit_constants(out, mod)
+    else:
+        out.append('    C2PY.InitModule_2_7("{}",'.format(name))
+        out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
     out.append('}')
 
 
@@ -717,4 +780,13 @@ def _escape_c_str(s):
     s = s.replace('\n', '\\n')
     s = s.replace('\r', '\\r')
     s = s.replace('\t', '\\t')
+    return s
+
+
+def _float_literal(value):
+    """Convert a Python float to a C double literal string.
+    Handles whole-number floats (3.0 -> 3.0) and fractions."""
+    s = "%.15g" % value
+    if '.' not in s and 'e' not in s and 'E' not in s:
+        s += ".0"
     return s

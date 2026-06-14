@@ -35,9 +35,13 @@ The long-term goal is a substrate for:
 module: <python-module-name>          # required
 source: [file1.c, file2.c, ...]       # required: C source files
 headers: [header1.h, header2.h, ...]  # optional: C headers to #include
+constants:                            # optional: module-level integer constants
+  NAME1: 42
+  NAME2: 7
 
 functions:                            # required: list of wrapped functions
   - py_sig: "name(arg: type, ...) -> return_type"
+    doc: "Custom docstring"           # optional: override auto-generated doc
     checks:                           # optional: pre-conditions
       - "expression"
       - ...
@@ -54,9 +58,15 @@ functions:                            # required: list of wrapped functions
 ```
 py_sig ::= name "(" [py_param ("," py_param)*] ")" "->" py_ret
 py_param ::= name ":" py_type
+            | name ":" py_type "=" default
 py_type ::= "buffer" | "int" | "float"
 py_ret ::= "void" | "int" | "float"
+default ::= integer_literal | float_literal
 ```
+
+Optional parameters (with `=` default) are only supported for `int` and `float`
+types, never `buffer`. All optional parameters must appear after all required
+parameters.
 
 Parameters:
 - `buffer` -- any Python object supporting the buffer protocol. Passed as a pointer
@@ -76,6 +86,8 @@ Returns:
 c_sig ::= c_name "(" [c_param ("," c_param)*] ")" ["->" c_ret]
 c_param ::= ["const"] c_ctype ["*"] name
 c_ctype ::= "int" | "float" | "double" | "char"
+          | "int8_t" | "uint8_t" | "int16_t" | "uint16_t"
+          | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
 c_ret ::= "int" | "float" | "double" | "void"
 ```
 
@@ -519,7 +531,8 @@ for any glibc-linked binary.
 
 ## Restrictions
 
-- No `malloc`, `calloc`, `realloc`, or `free` in wrapper or user C code
+- No `malloc`, `calloc`, `realloc`, or `free` in generated wrapper code
+  (user C code may use them internally; allocated memory must be freed before return)
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
 - The GIL is held during all C function calls

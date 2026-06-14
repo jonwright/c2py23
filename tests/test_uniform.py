@@ -127,6 +127,98 @@ def test_transform():
     print("PASS: transform")
 
 
+def test_types():
+    """Test format character dispatch with fixed-width integer types."""
+    import ctypes as ct
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'types'))
+    import typesmod
+
+    # uint16_t (format 'H')
+    arr_h = (ct.c_uint16 * 4)(0, 0, 0, 0)
+    typesmod.fill(arr_h, 42)
+    assert list(arr_h) == [42, 42, 42, 42], "uint16 fill failed: %s" % list(arr_h)
+
+    # uint32_t (format 'I')
+    arr_i = (ct.c_uint32 * 3)(0, 0, 0)
+    typesmod.fill(arr_i, 99)
+    assert list(arr_i) == [99, 99, 99], "uint32 fill failed: %s" % list(arr_i)
+
+    # int64_t (format 'q')
+    arr_q = (ct.c_int64 * 4)(0, 0, 0, 0)
+    typesmod.fill(arr_q, -7)
+    assert list(arr_q) == [-7, -7, -7, -7], "int64 fill failed: %s" % list(arr_q)
+
+    # int8_t (format 'b')
+    arr_b = (ct.c_int8 * 3)(0, 0, 0)
+    typesmod.fill(arr_b, 5)
+    assert list(arr_b) == [5, 5, 5], "int8 fill failed: %s" % list(arr_b)
+
+    # int16_t (format 'h')
+    arr_h16 = (ct.c_int16 * 4)(0, 0, 0, 0)
+    typesmod.fill(arr_h16, 13)
+    assert list(arr_h16) == [13, 13, 13, 13], "int16 fill failed: %s" % list(arr_h16)
+
+    print("PASS: types")
+
+
+def test_optional():
+    """Test optional parameters with defaults."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'optional'))
+    import optmod
+
+    data = _double_array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    # All 3 args provided
+    r = optmod.process(data, 1, 1)  # stride=1, verbose=1
+    assert r == 1015, "process(data, 1, 1) = %d, expected 1015" % r
+
+    # stride provided, verbose default
+    r = optmod.process(data, 2)  # stride=2, verbose=0
+    assert r == 9, "process(data, 2) = %d, expected 9" % r
+
+    # Only data provided: stride=1 default, verbose=0 default
+    r = optmod.process(data)  # stride=1, verbose=0
+    assert r == 15, "process(data) = %d, expected 15" % r
+
+    print("PASS: optional")
+
+
+def test_docstring():
+    """Test custom docstring on a function."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'docstring'))
+    import docmod
+
+    result = docmod.inc(41)
+    assert result == 42, "inc(41) = %d, expected 42" % result
+
+    # Check docstring
+    actual_doc = docmod.inc.__doc__
+    expected_doc = "Increment x by 1 and return the result"
+    assert actual_doc == expected_doc, \
+        "docstring: got '%s', expected '%s'" % (actual_doc, expected_doc)
+
+    print("PASS: docstring")
+
+
+def test_constants():
+    """Test module-level integer constants."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'constants'))
+    import constmod
+
+    assert constmod.ALPHA == 1, "ALPHA = %s, expected 1" % constmod.ALPHA
+    assert constmod.BETA == 2, "BETA = %s, expected 2" % constmod.BETA
+    assert constmod.GAMMA == 3, "GAMMA = %s, expected 3" % constmod.GAMMA
+
+    # Also test the function
+    data = _double_array([1.0, 2.0, 3.0])
+    r = constmod.scale_sum(data, constmod.ALPHA + constmod.BETA)  # factor=3
+    expected = 1.0 * 3 + 2.0 * 3 + 3.0 * 3
+    assert abs(r - expected) < 0.001, \
+        "scale_sum(factor=3) = %s, expected %s" % (r, expected)
+
+    print("PASS: constants")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -135,6 +227,10 @@ def main():
         ("fill", test_fill),
         ("dot", test_dot),
         ("transform", test_transform),
+        ("types", test_types),
+        ("optional", test_optional),
+        ("docstring", test_docstring),
+        ("constants", test_constants),
     ]
     passed = 0
     failed = 0

@@ -1,0 +1,10 @@
+module: optmod
+source: [optional.c]
+
+functions:
+  - py_sig: "process(data: buffer, stride: int = 1, verbose: int = 0) -> int"
+    checks:
+      - "data.format == 'd'"
+    c_overloads:
+      - sig: "process_data(const double *data, int n, int stride, int verbose) -> int"
+        map: {data: "data.ptr", n: "data.n", stride: stride, verbose: verbose}

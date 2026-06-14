@@ -187,6 +187,9 @@ typedef struct {
     void (*IncRef)(PyObject*);
     void (*DecRef)(PyObject*);
 
+    /* Object attribute access */
+    int (*SetAttrString)(PyObject*, const char*, PyObject*);
+
 } c2py_api_t;
 
 /* The global API table */
@@ -211,6 +214,7 @@ extern c2py_api_t C2PY;
 #define Py_RETURN_NONE                 do { C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; } while(0)
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
+#define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
 
 #define PyExc_TypeError                ((PyObject*)C2PY.exc_TypeError)
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)
