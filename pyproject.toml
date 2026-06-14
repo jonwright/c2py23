@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=44", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "c2py23"
+version = "0.1.0"
+description = "Wrap C99 code to Python via the buffer protocol"
+requires-python = ">=2.7"
+dependencies = [
+    "PyYAML>=5.1;python_version>='3'",
+    "PyYAML>=3.10,<6;python_version=='2.7'",
+]
+
+[project.scripts]
+c2py23 = "c2py23.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["c2py23*"]
