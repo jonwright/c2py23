@@ -23,8 +23,10 @@ def generate(module_def):
     out = []
     _emit_header(out, module_def)
     _emit_forward_decls(out, module_def)
+    if module_def.timing:
+        _emit_timing_decls(out, module_def)
     for func in module_def.functions:
-        _emit_function(out, func, module_def.name)
+        _emit_function(out, func, module_def.name, module_def.timing)
     _emit_module_init(out, module_def)
     return '\n'.join(out)
 
@@ -74,7 +76,20 @@ def _c_decl_from_overload(ol):
 # Function wrapper generation
 # ---------------------------------------------------------------------------
 
-def _emit_function(out, func, module_name):
+def _emit_timing_decls(out, mod):
+    """Emit global timing declarations: enabled flag + per-func/per-overload perf structs."""
+    out.append('/* ---- Performance timing ---- */')
+    out.append('static int _c2py_timing_enabled = 1;')
+    out.append('')
+    for func in mod.functions:
+        out.append('static c2py_perf_t _perf_{0};'.format(func.name))
+        for ol in func.overloads:
+            c_name = _extract_c_name(ol.sig_str)
+            out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+    out.append('')
+
+
+def _emit_function(out, func, module_name, timing):
     name = func.name
     out.append('/* ' + '-' * 44 + ' */')
     out.append('/* Wrapper for: {} */'.format(name))
@@ -85,17 +100,17 @@ def _emit_function(out, func, module_name):
     scalar_params = [p for p in func.py_params if p.pytype != 'buffer']
 
     # _impl function
-    _emit_impl_func(out, func, buf_params, scalar_params)
+    _emit_impl_func(out, func, buf_params, scalar_params, timing)
 
     # _wrapper function
-    _emit_wrapper_func(out, func, buf_params, scalar_params)
+    _emit_wrapper_func(out, func, buf_params, scalar_params, timing)
 
 
 # ---------------------------------------------------------------------------
 # _impl function
 # ---------------------------------------------------------------------------
 
-def _emit_impl_func(out, func, buf_params, scalar_params):
+def _emit_impl_func(out, func, buf_params, scalar_params, timing):
     name = func.name
     params_c = []
     for p in buf_params:
@@ -110,13 +125,18 @@ def _emit_impl_func(out, func, buf_params, scalar_params):
     out.append('_' + name + '_impl({})'.format(', '.join(params_c)))
     out.append('{')
 
+    if timing:
+        out.append('    int _c2py_do_time = _c2py_timing_enabled;')
+        out.append('    uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;')
+        out.append('')
+
     # Checks
     for check in func.checks:
         out.append('    /* check: {} */'.format(_expr_to_source(check)))
         _emit_check(out, check, buf_params, scalar_params)
 
     # Overload dispatch
-    _emit_overload_dispatch(out, func, buf_params, scalar_params)
+    _emit_overload_dispatch(out, func, buf_params, scalar_params, timing)
 
     out.append('')
     out.append('    /* should not reach here */')
@@ -125,16 +145,17 @@ def _emit_impl_func(out, func, buf_params, scalar_params):
     out.append('')
 
 
-def _emit_overload_dispatch(out, func, buf_params, scalar_params):
+def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing):
     """Emit the if/else chain for overload dispatch."""
     overloads = func.overloads
     default_raise = func.default_raise
+    name = func.name
 
     # Single unconditional overload: emit directly wrapped in {}
     if len(overloads) == 1 and overloads[0].when_expr is None:
         out.append('    /* overload 0 (always) */')
         out.append('    {')
-        _emit_c_call(out, overloads[0], buf_params, scalar_params)
+        _emit_c_call(out, overloads[0], buf_params, scalar_params, timing, name)
         out.append('    }')
         return
 
@@ -153,7 +174,7 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params):
             else:
                 out.append('    } else {  /* overload {} (always) */'.format(i))
         out.append('        /* {} */'.format(ol.sig_str))
-        _emit_c_call(out, ol, buf_params, scalar_params)
+        _emit_c_call(out, ol, buf_params, scalar_params, timing, name)
 
     if default_raise:
         out.append('    } else {')

@@ -167,6 +167,9 @@ int c2py_runtime_init(void)
     /* --- Object attribute access --- */
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
 
+    /* --- Pointer-to-int --- */
+    RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
+
     /* --- None singleton ---
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,
      * which is the same as Py_None (the macro: (&_Py_NoneStruct)).

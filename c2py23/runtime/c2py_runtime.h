@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -190,6 +192,9 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
 
+    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    PyObject* (*Long_FromVoidPtr)(void*);
+
 } c2py_api_t;
 
 /* The global API table */
@@ -215,6 +220,7 @@ extern c2py_api_t C2PY;
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
+#define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 
 #define PyExc_TypeError                ((PyObject*)C2PY.exc_TypeError)
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)
@@ -298,6 +304,70 @@ c2py_release_buffer(Py_buffer *buf)
         PyBuffer_Release(buf);
     }
     /* Old buffer API (PyObject_AsRead/WriteBuffer) needs no release */
+}
+
+/* ------------------------------------------------------------------ */
+/* Performance timing (optional, enabled via timing: true in .c2py)   */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    uint64_t call_count;
+
+    uint64_t t_enter;          /* last call: wrapper entry */
+    uint64_t t_pre_c;          /* last call: just before C code */
+    uint64_t t_post_c;         /* last call: just after C returns */
+    uint64_t t_exit;           /* last call: before return to Python */
+
+    uint64_t t_c_min;          /* min C-call wall time (ns) */
+    uint64_t t_c_max;          /* max C-call wall time (ns) */
+    uint64_t t_c_total;        /* accumulated C wall time */
+
+    uint64_t t_wrap_min;       /* min wrapper overhead (ns) */
+    uint64_t t_wrap_max;       /* max wrapper overhead (ns) */
+    uint64_t t_wrap_total;     /* accumulated wrapper overhead */
+} c2py_perf_t;
+
+/* Returns monotonic wall-clock time in nanoseconds.
+ * Uses clock_gettime(CLOCK_MONOTONIC) for portability.
+ */
+static inline uint64_t c2py_ticks(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+/* Update a perf record with one call's tick measurements.
+ * t_enter:  wrapper entry
+ * t_pre_c:  just before C call
+ * t_post_c: just after C returns
+ * t_exit:   just before returning to Python
+ */
+static inline void c2py_perf_record(c2py_perf_t *p,
+    uint64_t t_enter, uint64_t t_pre_c, uint64_t t_post_c, uint64_t t_exit)
+{
+    uint64_t c_dur = t_post_c - t_pre_c;
+    uint64_t w_dur = (t_pre_c - t_enter) + (t_exit - t_post_c);
+
+    p->call_count++;
+    p->t_enter  = t_enter;
+    p->t_pre_c  = t_pre_c;
+    p->t_post_c = t_post_c;
+    p->t_exit   = t_exit;
+
+    p->t_c_total += c_dur;
+    p->t_wrap_total += w_dur;
+
+    if (p->call_count == 1) {
+        p->t_c_min = c_dur;
+        p->t_c_max = c_dur;
+        p->t_wrap_min = w_dur;
+        p->t_wrap_max = w_dur;
+    } else {
+        if (c_dur < p->t_c_min) p->t_c_min = c_dur;
+        if (c_dur > p->t_c_max) p->t_c_max = c_dur;
+        if (w_dur < p->t_wrap_min) p->t_wrap_min = w_dur;
+        if (w_dur > p->t_wrap_max) p->t_wrap_max = w_dur;
+    }
 }
 
 /* ------------------------------------------------------------------ */

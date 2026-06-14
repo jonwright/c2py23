@@ -62,13 +62,29 @@ def cmd_build(args):
 
     # Include paths
     include_dirs = [runtime_dir, base_dir]
+    # Include paths - add source subdirectories
+    src_dirs = set()
+    for src in module_def.sources:
+        d = os.path.dirname(os.path.join(base_dir, src))
+        if d not in include_dirs:
+            src_dirs.add(d)
+    for d in sorted(src_dirs):
+        include_dirs.append(d)
     include_flags = []
     for d in include_dirs:
         include_flags.extend(['-I', d])
 
+    # Compiler selection
+    cc = os.environ.get('CC', 'gcc')
+    cflags = os.environ.get('CFLAGS', '').split()
+    ldflags = os.environ.get('LDFLAGS', '').split()
+
+    # Libraries
+    libs = os.environ.get('LIBS', '-ldl -lm').split()
+
     # Compile
     print("Compiling {}...".format(so_path))
-    cmd = ['gcc', '-shared', '-fPIC'] + include_flags + source_files + ['-ldl', '-o', so_path]
+    cmd = [cc, '-shared', '-fPIC'] + include_flags + cflags + source_files + ldflags + libs + ['-o', so_path]
     print("  " + ' '.join(cmd))
     ret = subprocess.call(cmd)
     if ret != 0:

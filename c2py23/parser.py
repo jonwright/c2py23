@@ -59,8 +59,9 @@ class COverload(namedtuple('COverload', ['sig_str', 'params', 'return_type', 'ma
 class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc'])):
     pass
 
-class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants'])):
-    """constants is a dict of {name: int_value} for module-level integer constants."""
+class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants', 'timing'])):
+    """constants is a dict of {name: int_value} for module-level integer constants.
+       timing is a bool enabling per-function performance profiling."""
     pass
 
 # ---------------------------------------------------------------------------
@@ -91,7 +92,9 @@ def load_c2py(path):
         if not isinstance(v, int):
             raise ValueError("Constant '{}' in {} must be an integer, got {}".format(k, path, type(v)))
 
-    return ModuleDef(module_name, sources, headers, funcs, constants)
+    timing = bool(raw.get('timing', False))
+
+    return ModuleDef(module_name, sources, headers, funcs, constants, timing)
 
 
 def _get_required(d, key, path):
