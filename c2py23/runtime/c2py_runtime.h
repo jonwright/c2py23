@@ -201,9 +201,9 @@ extern c2py_api_t C2PY;
 
 #define PyObject_GetBuffer(o, b, f)    C2PY.GetBuffer((PyObject*)(o), (b), (f))
 #define PyBuffer_Release(b)            C2PY.ReleaseBuffer(b)
-#define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), __VA_ARGS__)
+#define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
 #define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), __VA_ARGS__)
+    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyLong_FromLong(v)             C2PY.Long_FromLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
