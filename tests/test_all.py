@@ -26,6 +26,8 @@ LOG_FILE = os.path.join(SCRIPT_DIR, 'test_results.log')
 # Python versions to test
 PYTHON_VERSIONS = [
     ("2.7", "ubuntu20.04.sif"),
+    ("3.6", "debian10.sif"),
+    ("3.7", "ubuntu24.04.sif"),
     ("3.8", "ubuntu20.04.sif"),
     ("3.9", "ubuntu24.04.sif"),
     ("3.10", "ubuntu24.04.sif"),

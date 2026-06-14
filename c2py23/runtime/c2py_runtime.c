@@ -166,6 +166,11 @@ int c2py_runtime_init(void)
 
     /* --- Object attribute access --- */
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
+    RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
+
+    /* --- Capsule / CObject (for __array_struct__ extraction) --- */
+    RESOLVE(C2PY.Capsule_GetPointer, "PyCapsule_GetPointer");
+    RESOLVE(C2PY.CObject_AsVoidPtr, "PyCObject_AsVoidPtr");
 
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");

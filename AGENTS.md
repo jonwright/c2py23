@@ -104,8 +104,9 @@ python3 tests/test_all.py
 
 ## Supported Python Versions
 
+- **debian10.sif**: Python 3.6
 - **ubuntu20.04.sif**: Python 2.7, 3.8
-- **ubuntu24.04.sif**: Python 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
+- **ubuntu24.04.sif**: Python 3.7, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 
