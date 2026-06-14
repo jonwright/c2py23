@@ -103,7 +103,7 @@ def _emit_function(out, func, module_name, timing):
     _emit_impl_func(out, func, buf_params, scalar_params, timing)
 
     # _wrapper function
-    _emit_wrapper_func(out, func, buf_params, scalar_params, timing)
+    _emit_wrapper_func(out, func, buf_params, scalar_params)
 
 
 # ---------------------------------------------------------------------------
@@ -197,18 +197,17 @@ def _emit_check(out, check, buf_params, scalar_params):
     out.append('    }')
 
 
-def _emit_c_call(out, ol, buf_params, scalar_params):
+def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
     """Emit a C function call for one overload."""
     c_name = _extract_c_name(ol.sig_str)
+    perf_name = '_perf_{0}__{1}'.format(func_name, c_name)
 
     args = []
     for p in ol.params:
         expr = ol.map_exprs.get(p.name)
         if expr is None:
-            # Scalar param not in map - pass by name
             if p.is_pointer:
                 raise ValueError("Pointer param '{}' missing map entry".format(p.name))
-            # Find the scalar param
             for sp in scalar_params:
                 if sp.name == p.name:
                     if p.base_type == 'int':
@@ -222,14 +221,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params):
                 args.append('/* unhandled: {} */'.format(p.name))
         else:
             c_str = _expr_to_c(expr, buf_params, scalar_params, ol)
-            # Wrap in cast if this is a pointer param (from .ptr)
             if p.is_pointer and _is_ptr_expr(expr):
                 c_str = '(' + p.ctype + ')' + c_str
-            # Cast to int if needed for int params
             elif not p.is_pointer and p.base_type == 'int' and _expr_is_n_count(expr):
-                # n/len computed as Py_ssize_t, cast to int
                 c_str = '(int)(' + c_str + ')'
-            # Cast to float if the Python scalar is double but C wants float
             elif not p.is_pointer and p.base_type == 'float':
                 c_str = '(float)(' + c_str + ')'
             args.append(c_str)
@@ -237,21 +232,50 @@ def _emit_c_call(out, ol, buf_params, scalar_params):
     indent = '        '
     call_str = c_name + '(' + ', '.join(args) + ')'
 
+    # --- timing: pre-C call ---
+    if timing:
+        out.append(indent + 'if (_c2py_do_time) _c2py_ct0 = c2py_ticks();')
+
     if ol.return_type == 'void' or ol.return_type is None:
         out.append(indent + call_str + ';')
+        if timing:
+            out.append(indent + 'if (_c2py_do_time) {')
+            out.append(indent + '    _c2py_ct1 = c2py_ticks();')
+            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '}')
         out.append(indent + 'Py_RETURN_NONE;')
     elif ol.return_type == 'int':
         out.append(indent + 'int _ret = ' + call_str + ';')
+        if timing:
+            out.append(indent + 'if (_c2py_do_time) {')
+            out.append(indent + '    _c2py_ct1 = c2py_ticks();')
+            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '}')
         out.append(indent + 'return PyLong_FromLong((long)_ret);')
     elif ol.return_type == 'float':
         out.append(indent + 'float _ret = ' + call_str + ';')
+        if timing:
+            out.append(indent + 'if (_c2py_do_time) {')
+            out.append(indent + '    _c2py_ct1 = c2py_ticks();')
+            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '}')
         out.append(indent + 'return PyFloat_FromDouble((double)_ret);')
     elif ol.return_type == 'double':
         out.append(indent + 'double _ret = ' + call_str + ';')
+        if timing:
+            out.append(indent + 'if (_c2py_do_time) {')
+            out.append(indent + '    _c2py_ct1 = c2py_ticks();')
+            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '}')
         out.append(indent + 'return PyFloat_FromDouble(_ret);')
     else:
         out.append(indent + '/* unknown return type: {} */'.format(ol.return_type))
         out.append(indent + call_str + ';')
+        if timing:
+            out.append(indent + 'if (_c2py_do_time) {')
+            out.append(indent + '    _c2py_ct1 = c2py_ticks();')
+            out.append(indent + '    c2py_perf_record(&{0}, 0, _c2py_ct0, _c2py_ct1, 0);'.format(perf_name))
+            out.append(indent + '}')
         out.append(indent + 'Py_RETURN_NONE;')
 
 
