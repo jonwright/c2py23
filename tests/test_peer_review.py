@@ -193,24 +193,23 @@ def test_contiguity_reversed():
 def test_contiguity_fortran_2d():
     """F-contiguous 2D arrays should be accepted."""
     if not IS_PY3:
-        print("SKIP: 2D memoryview.cast requires Python 3.x")
+        print("SKIP: 2D arrays require Python 3.x")
         return True
     
-    test_dir3 = os.path.join(os.path.dirname(__file__), 'cases', 'transform')
+    test_dir3 = os.path.join(os.path.dirname(__file__), 'cases', 'fill')
     sys.path.insert(0, test_dir3)
     
+    # Create a Fortran-contiguous array and verify fillmod accepts it
+    # (memoryview.cast requires C-contiguous, so pass numpy array directly)
     a = np.array([[1.,2.,3.],[4.,5.,6.],[7.,8.,9.],[10.,11.,12.]], dtype=np.float64)
-    af = np.asfortranarray(a)  # F-order, [4,3]
+    af = np.asfortranarray(a)  # F-order, shape [4,3], F-contiguous
     assert af.flags['F_CONTIGUOUS']
+    assert not af.flags['C_CONTIGUOUS']
     
-    out = np.zeros((4, 3), dtype=np.float64, order='F')
-    
-    # Use memoryview to pass 2D shapes
-    mv = memoryview(af).cast('B').cast('d', af.shape)
-    mv_out = memoryview(out).cast('B').cast('d', out.shape)
-    
-    import xfrm
-    xfrm.transform(mv, mv_out)
+    import fillmod
+    # Flat F-contiguous buffer: contiguous in memory along columns
+    fillmod.fill(af, 99.0)
+    assert (af == 99.0).all()
     print("PASS: F-contiguous 2D accepted")
     return True
 

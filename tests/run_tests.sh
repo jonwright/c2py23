@@ -62,5 +62,11 @@ echo "Running tests..."
 cd "$SCRIPT_DIR"
 python test_uniform.py
 
+# Run peer review tests (alias + contiguity, numpy required)
+echo ""
+echo "Running peer review tests..."
+pip install numpy 2>&1 | tail -1 || echo "(numpy install skipped - tests will SKIP)"
+python test_peer_review.py
+
 echo ""
 echo "=== All tests complete ==="

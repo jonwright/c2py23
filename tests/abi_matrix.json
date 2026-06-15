@@ -2,6 +2,8 @@
   "Linux-x86_64": {
     "2.7": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x7c7a8f34b220": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_KEYWORDS": "0x0002",
         "FLAG_METH_NOARGS": "0x0004",
@@ -13,6 +15,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x7c7a8f346040": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -66,6 +70,8 @@
     },
     "3.10": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x735075c3d020": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -78,6 +84,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x735075c4f0e0": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -130,6 +138,8 @@
     },
     "3.11": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x7ed90e5c4700": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -142,6 +152,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x7ed90e5c7ec0": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -194,6 +206,8 @@
     },
     "3.12": {
       "abi": {
+        "EXC_OB_TYPE_RAW_(nil)": "",
+        "EXC_USES_SHARED_REFCNT_1": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -206,6 +220,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x71c54597b6c0": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -258,6 +274,8 @@
     },
     "3.13": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x77d0e41907c0": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -270,6 +288,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x77d0e419bb40": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -322,6 +342,8 @@
     },
     "3.14": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x74ec0b17da60": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -334,6 +356,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x74ec0b188fc0": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -388,6 +412,8 @@
       "abi": {
         "#define__GNU_SOURCE": "",
         "/usr/local/include/python3.6m/pyconfig.h:1459:_warning:": "\"_GNU_SOURCE\" redefined",
+        "EXC_OB_TYPE_RAW_(nil)": "",
+        "EXC_USES_SHARED_REFCNT_1": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -401,6 +427,8 @@
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
         "In_file": "included from /usr/local/include/python3.6m/Python.h:8,",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x7f97bc597120": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -456,6 +484,8 @@
     },
     "3.7": {
       "abi": {
+        "EXC_OB_TYPE_RAW_(nil)": "",
+        "EXC_USES_SHARED_REFCNT_1": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -468,6 +498,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x740bfc2ff280": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -521,6 +553,8 @@
     },
     "3.8": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x72921ad9c9a0": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -533,6 +567,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x72921ad9ec20": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",
@@ -586,6 +622,8 @@
     },
     "3.9": {
       "abi": {
+        "EXC_OB_TYPE_RAW_0x70ec5eb32fa0": "",
+        "EXC_USES_SHARED_REFCNT_0": "",
         "FLAG_METH_CLASS": "0x0010",
         "FLAG_METH_FASTCALL": "0x0080",
         "FLAG_METH_KEYWORDS": "0x0002",
@@ -598,6 +636,8 @@
         "FLAG_PyBUF_SIMPLE": "0x0000",
         "FLAG_PyBUF_STRIDES": "0x0018",
         "FLAG_PyBUF_WRITABLE": "0x0001",
+        "NONE_HAS_VALID_OB_TYPE_1": "",
+        "NONE_OB_TYPE_0x70ec5eb44ec0": "",
         "OFFSET_PyObject.ob_refcnt": "0",
         "OFFSET_PyObject.ob_type": "8",
         "OFFSET_Py_buffer.buf": "0",

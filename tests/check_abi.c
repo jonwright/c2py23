@@ -116,5 +116,46 @@ int main(void) {
     check_sym("PyObject_AsWriteBuffer");
     check_sym("Py_GetVersion");
 
+    /* --- Exception type layout: shared-refcount indirection ---
+     * On Python 3.12+, exception type objects use immortal shared
+     * refcounts.  The symbol (e.g. &PyExc_ValueError) stores a pointer
+     * in its first 8 bytes that points to the actual PyObject (the
+     * shared refcount struct).  c2py23 must follow that pointer so
+     * that PyErr_SetString receives a real PyObject* with a valid
+     * ob_type, not NULL.
+     *
+     * Detection: if the raw-symbol's first 8 bytes look like a pointer
+     * (pointing elsewhere in the data segment) and its ob_type at offset 8
+     * is NULL, then shared refcount indirection is active.  c2py23 must
+     * follow the pointer so PyErr_SetString receives a proper PyObject*.
+     */
+    {
+        void *raw = dlsym(RTLD_DEFAULT, "PyExc_ValueError");
+        if (raw) {
+            void *first8 = *(void **)raw;
+            void *ob_type_raw = *(void **)((char *)raw + 8);
+            /* shared refcount: first8 is a non-NULL pointer AND
+             * ob_type_raw is NULL (it lives in the dereferenced struct) */
+            int uses_shared_refcount = (first8 != NULL && ob_type_raw == NULL);
+            printf("EXC_USES_SHARED_REFCNT %d\n", uses_shared_refcount);
+            printf("EXC_OB_TYPE_RAW        %p\n", ob_type_raw);
+        }
+    }
+
+    /* --- None singleton layout ---
+     * On Python 3.12+, None is immortal (ob_refcnt = _Py_IMMORTAL_REFCNT).
+     * Verify it uses the standard PyObject layout (no shared-refcount
+     * indirection).  If this ever changes, our Py_RETURN_NONE macro
+     * (which does C2PY.IncRef(C2PY.none_obj) on 2.7/3.x) would break.
+     */
+    {
+        void *none_raw = dlsym(RTLD_DEFAULT, "_Py_NoneStruct");
+        if (none_raw) {
+            void *ob_type_none = *(void **)((char *)none_raw + 8);
+            printf("NONE_OB_TYPE           %p\n", ob_type_none);
+            printf("NONE_HAS_VALID_OB_TYPE %d\n", ob_type_none != NULL ? 1 : 0);
+        }
+    }
+
     return 0;
 }

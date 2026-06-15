@@ -148,6 +148,21 @@ int c2py_runtime_init(void)
     RESOLVE_REQ(C2PY.Err_SetString, "PyErr_SetString");
     RESOLVE_REQ(C2PY.Err_Format, "PyErr_Format");
 
+    /* One dereference is always needed to reach the real PyObject*:
+     * - Pre-3.12: PyExc_* are PyObject* globals (heap type pointers).
+     *   dlsym gives &PyExc_ValueError (a PyObject**). Deref -> PyObject*.
+     * - 3.12+: PyExc_* are static PyObjects with shared-refcount
+     *   indirection.  dlsym gives &_PyExc_ValueError.  First 8 bytes
+     *   point to the shared-refcount struct (the real PyObject*).
+     *   Deref -> PyObject*.
+     *
+     * In both layouts a single dereference yields the PyObject* that
+     * PyErr_SetString expects. */
+    C2PY.exc_TypeError = *(void **)C2PY.exc_TypeError;
+    C2PY.exc_ValueError = *(void **)C2PY.exc_ValueError;
+    C2PY.exc_RuntimeError = *(void **)C2PY.exc_RuntimeError;
+    C2PY.exc_MemoryError = *(void **)C2PY.exc_MemoryError;
+
     /* --- Module creation --- */
     {
         void *mc = dlsym(dl, "PyModule_Create2");
