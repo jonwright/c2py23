@@ -189,8 +189,8 @@ All 10 Python versions pass 11 tests each. 2.7 transform skip remains (requires 
 - Module-level integer constants
 - Format char dispatch (all single-byte PEP 3118 formats)
 - METH_FASTCALL vectorcall for Python 3.12+
-- Py_buffer size detection (smalltable removed in 3.12)
-- Py_IncRef fallback for pre-3.12
+- Py_buffer size detection (96 for 2.7, 80 for 3.x; fixed from version-based threshold)
+- Py_IncRef fallback for pre-3.12 (ABI matrix confirms 2.7-3.10 distro builds have it)
 - `or` operator in when/checks conditions
 - Per-function perf timing with ctypes decode
 - __array_struct__ evaluated and removed (numpy on 2.7 works via PEP 3118)

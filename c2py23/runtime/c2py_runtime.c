@@ -108,8 +108,13 @@ int c2py_runtime_init(void)
     C2PY.Err_Clear = (void (*)(void))dlsym(dl, "PyErr_Clear");
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
-    /* --- Buffer struct size (smalltable removed in 3.12+) --- */
-    C2PY.pybuffer_size = (C2PY.version_major >= 3 && C2PY.version_minor >= 12)
+    /* --- Buffer struct size ---
+     * CPython 2.x has Py_buffer.smalltable[2] (96 bytes LP64).
+     * CPython 3.x dropped smalltable; Debian/Ubuntu builds from 3.6+
+     * all have sizeof(Py_buffer)==80 (internal at offset 72).
+     * Use 80 for all 3.x, 96 for 2.x, to match observed ABI.
+     */
+    C2PY.pybuffer_size = (C2PY.version_major >= 3)
         ? C2PY_PYBUFFER_SZ_POST312 : C2PY_PYBUFFER_SZ_PRE312;
 
     /* --- Fastcall support (METH_FASTCALL stable ABI since 3.12) --- */
