@@ -31,7 +31,7 @@ def generate(module_def):
     for func in module_def.functions:
         _emit_function(out, func, module_def.name, module_def.timing, has_gil_release)
     _emit_module_init(out, module_def)
-    return '\n'.join(out)
+    return '\n'.join(out) + '\n'
 
 
 # ---------------------------------------------------------------------------
@@ -378,9 +378,30 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                     c_str = '(float)(' + c_str + ')'
                 args.append(c_str)
 
+    # Pre-call: int overflow checks for n/length-derived params
+    for i, p in enumerate(ol.params):
+        if not p.is_pointer and p.base_type == 'int':
+            expr = ol.map_exprs.get(p.name)
+            if expr and _expr_is_n_count(expr):
+                expr_c = _expr_to_c(expr, buf_params, scalar_params, ol)
+                out.append(indent + 'if (({0}) > (Py_ssize_t)INT_MAX) {{'.format(expr_c))
+                out.append(indent + '    PyErr_SetString(PyExc_ValueError,')
+                out.append(indent + '        "buffer too large for int n (> INT_MAX elements)");')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+
     call_str = c_name + '(' + ', '.join(args) + ')'
 
+    # Determine effective return type (may have outputs appended)
+    has_outputs = bool(outputs)
+    has_ret = (ol.return_type and ol.return_type != 'void'
+               and ol.return_type is not None)
+
     # --- GIL release: pre-C call ---
+    # IMPORTANT: between the GIL save and restore below, there must be
+    # no path that can return, goto, or longjmp without first restoring
+    # the GIL. The C call and timing ticks are the only operations in
+    # this critical section.
     if gil_release_call:
         out.append(indent + 'if (_c2py_do_gil) _c2py_thread_state = PyEval_SaveThread();')
 
@@ -388,13 +409,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
     if timing:
         out.append(indent + 'if (_c2py_do_time) _c2py_ct0 = c2py_ticks();')
 
-    # Determine effective return type (may have outputs appended)
-    has_outputs = bool(outputs)
-    has_ret = (ol.return_type and ol.return_type != 'void'
-               and ol.return_type is not None)
-
     if not has_outputs:
-        # Standard return (no outputs) - original behavior
+        # Standard return (no outputs)
         if ol.return_type == 'void' or ol.return_type is None:
             out.append(indent + call_str + ';')
             if timing:
@@ -407,44 +423,44 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
             out.append(indent + 'Py_RETURN_NONE;')
         elif ol.return_type == 'int':
             out.append(indent + 'int _ret = ' + call_str + ';')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             if timing:
                 out.append(indent + 'if (_c2py_do_time) {')
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
-            if gil_release_call:
-                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyLong_FromLong((long)_ret);')
         elif ol.return_type == 'float':
             out.append(indent + 'float _ret = ' + call_str + ';')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             if timing:
                 out.append(indent + 'if (_c2py_do_time) {')
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
-            if gil_release_call:
-                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyFloat_FromDouble((double)_ret);')
         elif ol.return_type == 'double':
             out.append(indent + 'double _ret = ' + call_str + ';')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             if timing:
                 out.append(indent + 'if (_c2py_do_time) {')
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
-            if gil_release_call:
-                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyFloat_FromDouble(_ret);')
         else:
             out.append(indent + '/* unknown return type: {} */'.format(ol.return_type))
             out.append(indent + call_str + ';')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             if timing:
                 out.append(indent + 'if (_c2py_do_time) {')
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
-            if gil_release_call:
-                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'Py_RETURN_NONE;')
         return
 
@@ -466,14 +482,16 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
     else:
         out.append(indent + call_str + ';')
 
+    # Restore GIL immediately after C call, before any Python object construction.
+    # This minimises the critical section and keeps the invariant clear.
+    if gil_release_call:
+        out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
+
     if timing:
         out.append(indent + 'if (_c2py_do_time) {')
         out.append(indent + '    _c2py_ct1 = c2py_ticks();')
         out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
         out.append(indent + '}')
-
-    if gil_release_call:
-        out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
 
     # Collect output items
     for p in ol.params:
@@ -502,17 +520,33 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
         for i, (name, ctype, val) in enumerate(out_items):
             if ctype in ('int', 'int8_t', 'int16_t', 'int32_t',
                          'uint8_t', 'uint16_t', 'uint32_t'):
-                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
-                            'PyLong_FromLong((long){1}));'.format(i, val))
+                out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromLong((long){1});'.format(i, val))
+                out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
+                out.append(indent + '    Py_DECREF(_c2py_tup);')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
             elif ctype in ('int64_t', 'uint64_t'):
-                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
-                            'PyLong_FromLongLong((long long){1}));'.format(i, val))
+                out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(i, val))
+                out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
+                out.append(indent + '    Py_DECREF(_c2py_tup);')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
             elif ctype in ('float', 'double'):
-                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
-                            'PyFloat_FromDouble((double){1}));'.format(i, val))
+                out.append(indent + 'PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(i, val))
+                out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
+                out.append(indent + '    Py_DECREF(_c2py_tup);')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
             else:
-                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
-                            'PyFloat_FromDouble((double){1}));'.format(i, val))
+                out.append(indent + 'PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(i, val))
+                out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
+                out.append(indent + '    Py_DECREF(_c2py_tup);')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
         out.append(indent + 'return _c2py_tup;')
 
 
@@ -560,7 +594,7 @@ def _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing):
     all_params = func.py_params
 
     out.append('static PyObject*')
-    out.append('_' + name + '_wrapper(PyObject *self, PyObject *args, PyObject *kwargs)')
+    out.append('_' + name + '_wrapper(PyObject *self, PyObject *args)')
     out.append('{')
 
     # Local variables

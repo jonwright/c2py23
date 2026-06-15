@@ -101,6 +101,11 @@ minval, maxval = statmod.stats(data)
 
 If there is also a C return value, it comes first in the tuple.
 
+**Tuple order**: The order of values in the returned tuple always follows the C
+function parameter order (left to right in the C signature), not the YAML
+dictionary insertion order. If the function also has a C return value, it
+appears first, followed by output parameters in C signature order.
+
 ### Python Signature
 
 ```
@@ -525,6 +530,13 @@ functions:
 | longlong | `q`         | `int64_t`   | 8    |
 | float    | `f`         | `float`     | 4    |
 | double   | `d`         | `double`    | 8    |
+
+**Note on `'l'` and `'L'` format characters**: PEP 3118 defines `'l'` (signed long)
+and `'L'` (unsigned long) as platform-sized types. On LP64 platforms (Linux x86_64,
+aarch64) they are 8 bytes wide and map to `int64_t`/`uint64_t`. On ILP32 and LLP64
+platforms (32-bit, Windows) they are 4 bytes wide. For portable dispatch, prefer
+`'q'`/`'Q'` for 64-bit integers and `'i'`/`'I'` for 32-bit integers. If you use
+`'l'` or `'L'`, document that your `.c2py` file is LP64-only.
 
 **Python call**:
 ```python

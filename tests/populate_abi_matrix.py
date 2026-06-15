@@ -44,10 +44,13 @@ def run_apptainer(sif_file, command):
         "/bin/bash", "-c", command
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        return 1, "", "timeout"
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = proc.communicate()
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode('utf-8', errors='replace')
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode('utf-8', errors='replace')
+        return proc.returncode, stdout, stderr
     except Exception as e:
         return 1, "", str(e)
 

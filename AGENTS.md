@@ -197,62 +197,66 @@ Valgrind leak check:
 valgrind --leak-check=full python3 tests/test_leaks.py
 ```
 
-## SIMD Dispatch / CPU Feature Detection (P1 - PLANNING)
+## Next Steps (Post Bug-Fix)
 
-**Status: Not started. Design discussion needed before implementation.**
+### P1: SIMD Dispatch / CPU Feature Detection
 
-### Open Questions
+**Status: Design decided. Implementation pending.**
 
-1. Which architectures to support?
-   - x86_64: avx2, avx512f (CPUID leaf 7)
-   - ARM64: neon (always present on arm64), asimd (MRS ID_AA64PFR0_EL1)
-   - POWER: vsx? (not requested so far)
+Decision: Use Option A (CPUID on x86, MRS on arm64) with `/proc/cpuinfo` as
+fallback for portability. Referee 1 noted that `/proc/cpuinfo` is Linux-specific
+and fragile in containers/VMs -- CPUID/MRS is the primary mechanism.
 
-2. How should CPU detection work?
-   - Option A: inline asm in c2py_runtime.c (__get_cpuid on x86, MRS on arm64)
-   - Option B: read /proc/cpuinfo (portable, no asm, but slow and Linux-only)
-   - Option C: dlopen libcpuid or similar (adds dependency)
-   - Preferred: Option A for x86_64 and arm64, with /proc/cpuinfo fallback.
+Architectures:
+- x86_64: avx2, avx512f via CPUID leaf 7
+- ARM64: neon (always present), asimd via MRS ID_AA64PFR0_EL1
+- Fallback: `/proc/cpuinfo` parsing
 
-3. Grammar for `when:` conditions
-   - `when: "cpu_has_avx2"` -- function-level dispatch
-   - Should this be per-overload or per-function? (per-overload is natural since different C functions correspond to different SIMD paths)
-   - What if no matching CPU feature is found? Fall back to a non-SIMD overload.
+Implementation plan:
+1. `c2py_runtime.h/c`: Add `int c2py_cpu_has(const char *feature)` function
+   - Static bool per feature, computed once at runtime init
+   - `__get_cpuid()` inline asm on x86_64, MRS on aarch64
+2. `parser.py`: Accept `cpu_has_avx2`, `cpu_has_avx512f`, `cpu_has_neon` in
+   `when:` conditions
+3. `generator.py`: Emit pre-computed bools and guard the dispatch chain
 
-4. Where does the dispatch happen?
-   - At `_impl` level: select the right C function pointer at module init, call through pointer
-   - Static bool flag per feature, checked in the _impl dispatch chain
-   - The feature check is done once at module init, not per call
+Buffer alignment for SIMD: when dispatching to SIMD overloads, the `when:`
+condition should check `(uintptr_t)arr.ptr % alignment == 0`, falling back to
+the scalar overload on misaligned pointers. Referee 2 flagged this as a real
+hazard for AVX2 (32-byte) and AVX-512 (64-byte).
 
-### Proposed Grammar (tentative)
+### P2: Windows Port
 
-```yaml
-functions:
-  - py_sig: "process(arr: buffer) -> void"
-    c_overloads:
-      - sig: "process_avx2(double *arr, int n)"
-        map: {arr: "arr.ptr", n: "arr.n"}
-        when: "arr.format == 'd' and cpu_has_avx2"
-      - sig: "process_scalar(double *arr, int n)"
-        map: {arr: "arr.ptr", n: "arr.n"}
-        when: "arr.format == 'd'"
-    default_raise: "ValueError: unsupported format"
-```
+**Status: Not started. Planning.**
 
-### Implementation Sketch
+The current codebase is Linux-only:
+- `dlopen(NULL)` with `RTLD_GLOBAL` -- on Windows this is `GetModuleHandle(NULL)`
+  plus `GetProcAddress()`
+- `/proc/cpuinfo` fallback -- use `IsProcessorFeaturePresent()` or CPUID on Windows
+- `gcc -shared` with `-ldl` -- MSVC/clang-cl build path needed
+- `Py_ssize_t` is `__int64` on 64-bit Windows (LP64 vs LLP64)
+- PEP 3118 format chars `'l'`/`'L'` are platform-sized and will differ on LLP64
+- `memset`, `snprintf`, `strlen`, `strcmp` -- all standard C99, fine on MSVC
 
-1. `parser.py`: Add `cpu_has_*` as valid identifiers in `when:` expressions
-2. `generator.py`: At module init, emit calls to detect CPU features and store in static bools
-3. `c2py_runtime.h/c`: Add `c2py_cpu_has(const char *feature)` function:
-   - Returns 1/0 for known features
-   - Uses __get_cpuid on x86, MRS on arm64, /proc/cpuinfo parsing as fallback
-4. In `_impl` function: before the dispatch chain, evaluate cpu_has_* as pre-computed bools
+Key work items:
+1. Runtime: replace `dlopen`/`dlsym` with Windows equivalents
+2. Build system: support MSVC or clang-cl compilation
+3. ABI matrix: add a Windows column with LLP64 sizes
+4. Test: CI on Windows with native Python
 
-### When to Start
+### P3: Reviewer Response
 
-Discuss with stakeholders which CPU features are needed for ImageD11.
-The implementation depends on knowing the target architectures and
-the specific SIMD functions that ImageD11 will provide.
+**Status: Pending.**
+
+After SIMD dispatch (P1) is implemented and the bugs identified in the three
+referee reports (2026-06-15, see `docs/referee_reports.md`) are all resolved,
+write a formal point-by-point response document addressing each report.
+
+### P4: Free-Threaded Python 3.14+ Support
+
+**Status: Deferred.** Currently blocked on broader CPython free-threading
+maturity. When ready: atomic refcounting, per-interpreter C2PY state, and
+removal of GIL-dependent assumptions in `c2py_runtime_init()`.
 
 ## Contributing Guidelines
 
@@ -263,6 +267,7 @@ the specific SIMD functions that ImageD11 will provide.
 5. Test across all supported Python versions before committing
 6. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
 7. Generated C code should compile with `gcc -Wall -Werror`
-8. Run both `test_uniform.py` and `test_peer_review.py` before committing
-9. Run `python3 tests/test_all.py` for multi-version validation
+8. Run the full test suite before committing: `bash tests/run_tests.sh python3`
+9. Run `python3 tests/test_all.py` for multi-version container validation
 10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
+11. Run valgrind on leak and error-path tests when changing wrapper generation

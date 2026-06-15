@@ -89,19 +89,20 @@ def run_apptainer(sif_file, command, capture_output=True):
 
     try:
         if capture_output:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 apptainer_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
-            return result.returncode, result.stdout, result.stderr
+            stdout, stderr = proc.communicate()
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode('utf-8', errors='replace')
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode('utf-8', errors='replace')
+            return proc.returncode, stdout, stderr
         else:
-            result = subprocess.run(apptainer_cmd, timeout=300)
-            return result.returncode, "", ""
-    except subprocess.TimeoutExpired:
-        print_error("Command timed out after 300 seconds")
-        return 1, "", "timeout"
+            ret = subprocess.call(apptainer_cmd)
+            return ret, "", ""
     except Exception as e:
         print_error("Error running apptainer: " + str(e))
         return 1, "", str(e)

@@ -125,3 +125,13 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)
 - Debug build support: `--asan` flag, `CC`/`CFLAGS`/`LDFLAGS` env vars, `gcc -shared -g -O0`
+
+### Reviewer Response
+
+**Status: Pending** -- A formal response to the three referee reports (2026-06-15,
+concatenated in `docs/referee_reports.md`) should be written after all HIGH and
+MEDIUM severity items from the reports are resolved. The response will address
+each report point-by-point, describing fixes applied and rationale for items
+deferred.
+
+The combined bug list and current resolution status is in `docs/referee_reports.md`.

@@ -1,7 +1,7 @@
 # Build artifacts
 *.so
 *.o
-*_wrapper.c
+tests/cases/*/*_wrapper.c
 
 # Python
 __pycache__/

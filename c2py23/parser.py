@@ -218,7 +218,6 @@ def _parse_c_sig(sig_str, path):
 
     # The part before '(' contains [return_type] name
     before = sig_str[:paren_start].strip()
-    after_paren = sig_str[sig_str.rfind(')') + 1:].strip()
 
     # Find matching paren for nested parens (unlikely but be safe)
     depth = 0
@@ -233,6 +232,9 @@ def _parse_c_sig(sig_str, path):
                 break
 
     params_str = sig_str[paren_start + 1:paren_end]
+
+    if depth != 0:
+        raise ValueError("Unmatched '(' in C signature '{}' in {}".format(sig_str, path))
 
     # Parse return type from suffix
     return_type = None  # None means void (none returned)
@@ -554,9 +556,9 @@ def _coerce_expr_value(val, context, path):
         return val
     if isinstance(val, (int, float)):
         warnings.warn(
-            "%s value '%s: %s' in %s is %s; auto-coercing to str. "
-            "Quote YAML values: \"%s\"" % (
-                context, val, type(val).__name__, path, val, val))
+            "{ctx} value in {path} is a bare {typ} ({val!r}); "
+            "auto-coercing to string. Quote it: \"{val}\"".format(
+                ctx=context, path=path, typ=type(val).__name__, val=val))
         return str(val)
     raise ValueError(
         "Expected string or number for %s value in %s, got %s" % (
@@ -611,8 +613,13 @@ _FORMAT_TO_CTYPE = {
     'H': 'uint16_t',
     'i': 'int32_t',
     'I': 'uint32_t',
-    'l': 'int',
-    'L': 'unsigned int',
+    # 'l' and 'L' are platform-sized in PEP 3118 (not fixed-width).
+    # On LP64 they match int64_t/uint64_t; on ILP32 they match int32_t/uint32_t.
+    # We map them to 'int64_t'/'uint64_t' (LP64) and note the portability caveat.
+    # Downstream code on non-LP64 platforms should use 'q'/'Q' for portable
+    # 64-bit dispatch and 'i'/'I' for portable 32-bit dispatch.
+    'l': 'int64_t',
+    'L': 'uint64_t',
     'q': 'int64_t',
     'Q': 'uint64_t',
     'f': 'float',

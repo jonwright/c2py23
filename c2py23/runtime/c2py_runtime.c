@@ -16,6 +16,7 @@
 
 /* Global API table */
 c2py_api_t C2PY = {0};
+static volatile int _c2py_runtime_initialized = 0;
 
 static int _resolve(void **ptr, const char *name)
 {
@@ -65,13 +66,15 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 
 int c2py_runtime_init(void)
 {
-    if (C2PY.dl_handle != NULL) {
+    if (_c2py_runtime_initialized) {
         return 0; /* Already initialized */
     }
 
     C2PY.dl_handle = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);
     if (C2PY.dl_handle == NULL) {
         fprintf(stderr, "c2py_runtime: dlopen(NULL) failed: %s\n", dlerror());
+        fprintf(stderr, "c2py_runtime: interpreter may be statically linked "
+                "(requires --enable-shared or export-dynamic).\n");
         return -1;
     }
 
@@ -106,6 +109,7 @@ int c2py_runtime_init(void)
     C2PY.AsWriteBuffer = (int (*)(PyObject*, void**, Py_ssize_t*))
         dlsym(dl, "PyObject_AsWriteBuffer");
     C2PY.Err_Clear = (void (*)(void))dlsym(dl, "PyErr_Clear");
+    RESOLVE_REQ(C2PY.Err_Clear, "PyErr_Clear");
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
     /* --- Buffer struct size ---
@@ -219,5 +223,6 @@ int c2py_runtime_init(void)
         }
     }
 
+    _c2py_runtime_initialized = 1;
     return 0;
 }

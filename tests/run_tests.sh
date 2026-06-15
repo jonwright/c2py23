@@ -68,5 +68,20 @@ echo "Running peer review tests..."
 pip install numpy 2>&1 | tail -1 || echo "(numpy install skipped - tests will SKIP)"
 python test_peer_review.py
 
+# Run regression tests for referee report bug fixes
+echo ""
+echo "Running regression tests..."
+python test_regression_fixes.py
+
+# Run error path refcount tests
+echo ""
+echo "Running error path refcount tests..."
+python test_error_paths.py
+
+# Run leak stress test
+echo ""
+echo "Running leak stress test..."
+python test_leaks.py
+
 echo ""
 echo "=== All tests complete ==="

@@ -1,0 +1,6 @@
+[submodule "examples/kissfft"]
+	path = examples/kissfft
+	url = https://github.com/mborgerding/kissfft.git
+[submodule "examples/lz4"]
+	path = examples/lz4
+	url = https://github.com/lz4/lz4.git

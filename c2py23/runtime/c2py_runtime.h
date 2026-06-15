@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <limits.h>
 #include <time.h>
 
 #ifdef __cplusplus
@@ -258,6 +259,15 @@ static inline void _c2py_inc_ref_manual(PyObject *op)
 static inline void _c2py_dec_ref_manual(PyObject *op)
 {
     --op->ob_refcnt;
+    if (op->ob_refcnt == 0) {
+        /* Cannot call _Py_Dealloc without knowing its symbol name.
+         * This path should be unreachable if the CPython C API is used
+         * correctly (Py_DECREF is only called on objects whose lifetime
+         * is managed by calls through the interpreter's own API).
+         * Log a diagnostic and leak to avoid a use-after-free crash. */
+        fprintf(stderr, "c2py_runtime: _c2py_dec_ref_manual reached zero "
+                "refcount for %p -- possible leak\n", (void*)op);
+    }
 }
 
 /* ------------------------------------------------------------------ */
