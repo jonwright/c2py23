@@ -37,10 +37,14 @@ headers: [header1.h, header2.h, ...]  # optional: C headers to #include
 constants:                            # optional: module-level integer constants
   NAME1: 42
   NAME2: 7
+timing: true                          # optional: enable perf timing
 
 functions:                            # required: list of wrapped functions
   - py_sig: "name(arg: type, ...) -> return_type"
     doc: "Custom docstring"           # optional: override auto-generated doc
+    expand:                           # optional: template expansion
+      VAR1: [val_a, val_b, ...]       #   variable name -> list of values
+      VAR2: [val_a, val_b, ...]       #   all lists must have same length
     checks:                           # optional: pre-conditions
       - "expression"
       - ...
@@ -48,9 +52,54 @@ functions:                            # required: list of wrapped functions
       - sig: "c_function(c_params...) -> c_return"
         map: {c_param: expression, ...}
         when: "condition"             # optional: dispatch condition
+        outputs:                      # optional: return-by-pointer scalars
+          c_param_name: ctype         #   ctype: int, float, double, int32_t, etc.
       - ...
     default_raise: "TypeError: msg"   # optional: error when no overload matches
 ```
+
+### Template Expansion (expand:)
+
+The `expand:` key produces multiple function definitions from a single template
+via `${VAR}` string substitution. All value lists under `expand:` must have the
+same length N. For each index i, a copy of the function definition is generated
+with `${VAR}` replaced by `values[i]` in all string fields.
+
+```yaml
+functions:
+  - expand:
+      TYPE: [uint8_t, uint16_t, int32_t]
+      SUFFIX: [u8, u16, i32]
+    py_sig: "sum_${SUFFIX}(data: buffer) -> int"
+    c_overloads:
+      - sig: "int sum_${SUFFIX}(const ${TYPE} *data, int n)"
+        map: {data: "data.ptr", n: "data.n"}
+```
+
+Expands to three functions: `sum_u8`, `sum_u16`, `sum_i32`.
+
+### Output Scalars (outputs:)
+
+The `outputs:` key on a C overload declares parameters that are written by the
+C function rather than passed by the Python caller. c2py23 auto-allocates a
+1-element stack variable, passes a pointer to the C function, and returns the
+resulting value as part of the Python return tuple.
+
+```yaml
+c_overloads:
+  - sig: "stats(const double *data, int n, double *minval, double *maxval)"
+    map: {data: "data.ptr", n: "data.n"}
+    outputs:
+      minval: double
+      maxval: double
+```
+
+Python call returns a tuple:
+```python
+minval, maxval = statmod.stats(data)
+```
+
+If there is also a C return value, it comes first in the tuple.
 
 ### Python Signature
 
@@ -459,8 +508,9 @@ and module creation. No other CPython APIs are exposed or used.
 4. CPython types (`PyObject`, `Py_buffer`, `PyMethodDef`, `PyModuleDef`) are
    redefined with ABI-stable layouts in `c2py_runtime.h`
 
-5. The `Py_buffer` struct includes the `smalltable[2]` field present in CPython
-   2.7 through 3.12 for correct memory layout
+5. The `Py_buffer` struct supports both 96-byte (Python 2.7, with smalltable)
+   and 80-byte (Python 3.x, without smalltable) layouts; the runtime selects
+   the correct size based on the Python version
 
 6. `c2py_acquire_buffer()` is a version-aware wrapper: on Python 3.x it uses
    `PyObject_GetBuffer` with `PyBUF_STRIDES | PyBUF_FORMAT` flags; on Python 2.7
@@ -482,25 +532,40 @@ typedef struct {
     int (*AsWriteBuffer)(PyObject*, void**, Py_ssize_t*);        /* 2.7 only */
     void (*Err_Clear)(void);
     int buffer_api_is_pep3118;  /* 0 on 2.7, 1 on 3.x */
+    size_t pybuffer_size;
+    int use_fastcall;
 
     /* Argument parsing */
     int (*ParseTuple)(PyObject*, const char*, ...);
+    int (*ParseTupleAndKeywords)(PyObject*, PyObject*, const char*, char**, ...);
 
     /* Value construction */
     PyObject* (*Long_FromLong)(long);
+    PyObject* (*Long_FromLongLong)(long long);
     PyObject* (*Float_FromDouble)(double);
+
+    /* Tuple construction */
+    PyObject* (*Tuple_New)(Py_ssize_t);
+    int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
 
     /* Scalar conversion */
     long (*Long_AsLong)(PyObject*);
     double (*Float_AsDouble)(PyObject*);
 
     /* Exception handling */
-    void *exc_TypeError, *exc_ValueError;
+    void *exc_TypeError, *exc_ValueError, *exc_RuntimeError, *exc_MemoryError;
     void (*Err_SetString)(PyObject*, const char*);
+    PyObject* (*Err_Occurred)(void);
 
     /* Module creation */
     PyObject* (*Module_Create2)(PyModuleDef*, int);
     PyObject* (*InitModule_2_7)(const char*, PyMethodDef*);
+
+    /* Object attribute access */
+    int (*SetAttrString)(PyObject*, const char*, PyObject*);
+
+    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    PyObject* (*Long_FromVoidPtr)(void*);
 
     /* Reference counting */
     void (*IncRef)(PyObject*);
@@ -539,14 +604,10 @@ for any glibc-linked binary.
 
 ## Future Work
 
+- **GIL release / threadsafe mode** -- for pure-C sections that do not touch
+  Python objects, release the GIL via `PyEval_SaveThread`/`PyEval_RestoreThread`
+  to allow true parallelism in threaded applications
 - **SIMD dispatch** -- select C functions based on CPU feature detection at
-  module load time, or at the wrapper level based on buffer alignment and size
-- **Timing instrumentation** -- insert cycle counter reads or wall-clock probes
-  around C function calls without modifying user C code
-- **GIL release** -- for pure-C sections that do not touch Python objects,
-  release the GIL to allow true parallelism in threaded applications
+  module load time (`cpu_has_avx2`, `cpu_has_avx512f`, `cpu_has_neon` etc.)
 - **Thread safety** -- for free-threaded Python 3.14+, wrap critical sections
-  where appropriate
-- **Static analysis** -- verify at code generation time that C function
-  signatures match, pointer types are consistent, and restrict constraints
-  are satisfied
+  for atomic refcounting and buffer acquisition

@@ -87,6 +87,11 @@ Build a module from a .c2py interface:
 c2py23 build path/to/module.c2py
 ```
 
+Build with ASan for leak detection:
+```bash
+c2py23 build --asan path/to/module.c2py
+```
+
 Install c2py23 in development mode:
 ```bash
 pip install -e .
@@ -100,6 +105,16 @@ bash tests/run_tests.sh python3.12
 Test across all supported Python versions via snakepit containers:
 ```bash
 python3 tests/test_all.py
+```
+
+Valgrind leak check:
+```bash
+valgrind --leak-check=full python3 tests/test_leaks.py
+```
+
+Populate ABI matrix:
+```bash
+python3 tests/populate_abi_matrix.py
 ```
 
 ## Supported Python Versions
@@ -116,6 +131,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/parser.py` -- Parses `.c2py` YAML interface files into a ModuleDef AST
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
 - `c2py23/cli.py` -- Command-line interface (`c2py23 build`)
+- `c2py23/perf.py` -- ctypes-based performance data decoder
 - `c2py23/runtime/c2py_runtime.h` -- Nimpy-style CPython type definitions and API macros
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`
 
@@ -131,11 +147,14 @@ YAML-based `.c2py` files define:
 - `module:` -- Python module name
 - `source:` -- C source file(s)
 - `headers:` -- C header file(s) to include (optional)
+- `timing:` -- enable per-function perf timing (optional)
 - `functions:` -- list of wrapped functions with:
   - `py_sig:` -- Python signature
-  - `checks:` -- pre-conditions
-  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`
-  - `default_raise:` -- error when no overload matches
+  - `expand:` -- template expansion with `${VAR}` substitution (optional)
+  - `checks:` -- pre-conditions (optional)
+  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:` (optional)
+  - `default_raise:` -- error when no overload matches (optional)
+  - `doc:` -- custom docstring (optional)
 
 See `docs/specification.md` for the full grammar.
 

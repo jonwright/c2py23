@@ -14,7 +14,7 @@ Covering safety, usability, and features needed for Phase 2/3 of the migration.
 The .c2py C signature and the actual C function signature can diverge silently.
 The `bloboverlaps` C function takes 9 parameters but the .c2py C sig had 8
 (missing `verbose`). The generated wrapper compiled fine and produced undefined
-behavior at runtime — `ns` landed in `verbose`'s slot, `nf` became `ns`, and
+behavior at runtime -- `ns` landed in `verbose`'s slot, `nf` became `ns`, and
 `nf` was garbage from the stack.
 
 **Request:** Compare the parameter count in the .c2py C signature against the
@@ -164,7 +164,7 @@ the recommended approach for template-based code generation with c2py23.
 c2py23 currently requires `--no-build-isolation` for pip install because it's
 not on PyPI. This flag prevents pip from creating an isolated build
 environment, which causes problems when the same environment also needs to
-build f2py-based projects (like ImageD11 itself) — the f2py build picks up
+build f2py-based projects (like ImageD11 itself) -- the f2py build picks up
 absolute paths from the venv numpy install and fails.
 
 **Request:** Document the tradeoffs of `--no-build-isolation`. Consider

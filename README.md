@@ -65,37 +65,50 @@ print(n, list(r))   # 4 [6.0, 8.0, 10.0, 12.0]
 
 | Python type | C types |
 |-------------|---------|
-| `buffer` | `const T*` (read-only), `T*` (read-write) where T is `int`, `float`, `double`, `char` |
+| `buffer` | `const T*` / `T*` for any integer or float C type below |
 | `int` | `int` |
 | `float` | `float`, `double` |
 | Return `void` | C `void` function |
 | Return `int` | C `int` return |
 | Return `float` | C `float` or `double` return |
 
+**C pointer element types**: `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`,
+`uint32_t`, `int64_t`, `uint64_t`, `int`, `float`, `double`, `char`
+
 No structs, enums, nested pointers, or heap allocation. All memory is flat and owned by Python.
 
 ## Features
 
-- **Format dispatch** -- call different C functions based on buffer element type (`float` vs `double`)
+- **Format dispatch** -- call different C functions based on buffer element type (`float` vs `double` vs `int32_t`)
 - **Shape dispatch** -- call different C functions based on buffer dimensionality ([N,3] vs [3,N])
-- **restrict enforcement** -- the wrapper checks that writable buffers do not alias, so C code can always use `restrict`
+- **Template expansion** -- `expand:` key generates multiple function variants via `${VAR}` substitution
+- **Output scalars** -- `outputs:` key auto-allocates return-by-pointer params as Python tuple values (f2py compat)
+- **restrict enforcement** -- the wrapper checks that writable buffers do not alias; C code can assume `restrict`
 - **PEP 3118 buffer protocol** -- accepts any object supporting the buffer interface (`bytes`, `bytearray`, `array.array`, `memoryview`, `ctypes` arrays, numpy arrays, etc.)
-- **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14 (build on the oldest target OS for forward libc compatibility). The approach originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy) (ABI-compatible Nim-Python bridge); c2py23 adapts it for C, using only the minimal CPython C API surface needed for buffer protocol operations.
+- **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14. Uses `dlopen(NULL)` + `dlsym()` to resolve CPython API at load time. Originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy).
 - **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` used when PEP 3118 is unavailable
 - **Zero-copy** -- the wrapper never allocates, copies, or transposes memory
+- **Per-function timing** -- `timing: true` enables cycle-count instrumentation of C call overhead
+- **Arch-specific clocks** -- `rdtsc` (x86), `CNTVCT_EL0` (ARM64), `mftb` (POWER) for low-overhead timing
+- **Codegen validation** -- parameter count mismatch between .c2py sig and C source emits a warning
+- **Type validation** -- format checks (e.g. `buffer.format == 'i'`) are validated against C pointer types
+- **Check diagnostics** -- check failures include actual runtime values (e.g. `got format='l'`)
+- **ASan support** -- `c2py23 build --asan` links with `-fsanitize=address` for leak detection
 
 ## Supported Python Versions
 
-| Version | Container | Status |
-|---------|-----------|--------|
-| 2.7.18 | ubuntu20.04 | 3/4 tests pass (transform uses 3.3+ API) |
-| 3.8.10 | ubuntu20.04 | 4/4 pass |
-| 3.9.25 | ubuntu24.04 | 4/4 pass |
-| 3.10.20 | ubuntu24.04 | 4/4 pass |
-| 3.11.15 | ubuntu24.04 | 4/4 pass |
-| 3.12.3 | ubuntu24.04 | 4/4 pass |
-| 3.13.14 | ubuntu24.04 | 4/4 pass |
-| 3.14.6 | ubuntu24.04 | 4/4 pass |
+| Version | Container | Tests |
+|---------|-----------|-------|
+| 2.7.18 | ubuntu20.04 | 11/11 pass |
+| 3.6.15 | debian10 | 11/11 pass |
+| 3.7.17 | ubuntu24.04 | 11/11 pass |
+| 3.8.10 | ubuntu20.04 | 11/11 pass |
+| 3.9.25 | ubuntu24.04 | 11/11 pass |
+| 3.10.20 | ubuntu24.04 | 11/11 pass |
+| 3.11.15 | ubuntu24.04 | 11/11 pass |
+| 3.12.3 | ubuntu24.04 | 11/11 pass |
+| 3.13.14 | ubuntu24.04 | 11/11 pass |
+| 3.14.6 | ubuntu24.04 | 11/11 pass |
 
 ## Testing
 
@@ -105,6 +118,12 @@ bash tests/run_tests.sh python3.12
 
 # Test across all versions via snakepit containers
 python3 tests/test_all.py
+
+# Valgrind memory leak check
+valgrind --leak-check=full python3 tests/test_leaks.py
+
+# ASan build
+c2py23 build --asan module.c2py
 ```
 
 Requires the snakepit SIF containers at `../snakepit/`.
@@ -113,14 +132,18 @@ Requires the snakepit SIF containers at `../snakepit/`.
 
 ```
 c2py23/
-  c2py23/          # Python package (parser, generator, CLI)
-    runtime/       # C runtime (nimpy loader + API table)
+  c2py23/             # Python package (parser, generator, CLI, perf)
+    runtime/          # C runtime (nimpy loader + API table)
   tests/
-    cases/         # Test cases (C source + .c2py interface)
-    run_tests.sh   # Build + test for one Python version
-    test_uniform.py # 2.7-3.14 compatible test runner
-    test_all.py    # Orchestrator across snakepit containers
-  docs/            # Specification and grammar
+    cases/            # Test cases (C source + .c2py interface)
+    run_tests.sh      # Build + test for one Python version
+    test_uniform.py   # 2.7-3.14 compatible test runner
+    test_all.py       # Orchestrator across snakepit containers
+    test_leaks.py     # Memory stress test (valgrind compatible)
+    check_abi.c       # ABI introspection tool
+    populate_abi_matrix.py  # Collect ABI data from all containers
+    abi_matrix.json   # Py_buffer/PyObject layout across 10 versions
+  docs/               # Specification and grammar
 ```
 
 ## Documentation
@@ -133,6 +156,5 @@ c2py23/
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
 - All memory management is in Python
-- The GIL is held during all C function calls
-- No dynamic dispatch at runtime -- all dispatch is resolved at code generation time
-- Thread safety not yet addressed (future work)
+- The GIL is held during all C function calls (threadsafe mode planned)
+- Thread safety for free-threaded 3.14+ not yet addressed
