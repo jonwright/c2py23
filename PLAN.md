@@ -157,16 +157,16 @@ containers for all 10 Python versions.
 
 ---
 
-## P11: Arch-specific clock source (existing P5)
+## P11: Arch-specific clock source (existing P5) [COMPLETE]
 
-Add `rdtsc` (x86), `CNTVCT_EL0` (ARM64), `mftb` (POWER9) for lower-overhead
-cycle counting in perf mode.
+`rdtsc` (x86), `CNTVCT_EL0` (ARM64), `__builtin_ppc_get_timebase()` (POWER)
+for lower-overhead cycle counting in perf mode.
 
 ---
 
-## P12: Test coverage gaps (existing P6)
+## P12: Test coverage gaps (existing P6) [COMPLETE]
 
-Run `test_uniform.py` across all 10 Python versions. Address 2.7 skips.
+All 10 Python versions pass 11 tests each. 2.7 transform skip remains (requires memoryview.cast shape from 3.3+).
 
 ---
 
@@ -177,6 +177,12 @@ Run `test_uniform.py` across all 10 Python versions. Address 2.7 skips.
 - P3: Better check failure messages with runtime values (got format='%c') [Request #5]
 - P4: Buffer format vs C type compile-time validation [Request #2]
 - P6: Output scalar convention (outputs: key, auto-alloc, tuple return) [Request #6]
+- P8: Valgrind/ASan memory validation -- stress test, cleanup path audit, --asan flag
+- P9: Template pattern support -- expand: key with ${VAR} substitution [Request #8]
+- P10: ABI matrix populated across all 10 Python versions
+- P11: Arch-specific clock source (rdtsc, CNTVCT_EL0, mftb)
+- P12: Test coverage -- 10 versions x 11 tests passing
+- int64_t/uint64_t 32-bit fix: PyLong_FromLongLong macro added
 - Fixed-width C types (int8_t..uint64_t) [Request #3]
 - Optional params with defaults (int/float only)
 - Custom docstrings (doc: key)
@@ -191,9 +197,3 @@ Run `test_uniform.py` across all 10 Python versions. Address 2.7 skips.
 - Buffer struct layout mismatch fixed
 - -Wall -Werror clean on all generated code
 - 10 Python versions in test matrix (2.7, 3.6-3.14)
-
-## Partially Complete
-
-- P8: Valgrind/ASan memory validation -- stress test (test_leaks.py) exists;
-  valgrind integration and cleanup-path audit not yet done
-- P12: Test coverage gaps -- all 10 versions pass; 2.7 transform skip remains

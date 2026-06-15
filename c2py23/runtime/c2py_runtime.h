@@ -214,6 +214,7 @@ extern c2py_api_t C2PY;
 #define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
     C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyLong_FromLong(v)             C2PY.Long_FromLong(v)
+#define PyLong_FromLongLong(v)         C2PY.Long_FromLongLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))
@@ -333,14 +334,41 @@ typedef struct {
     uint64_t t_wrap_total;     /* accumulated wrapper overhead */
 } c2py_perf_t;
 
-/* Returns monotonic wall-clock time in nanoseconds.
- * Uses clock_gettime(CLOCK_MONOTONIC) for portability.
+/* Returns monotonic time in cycles or nanoseconds depending on arch.
+ * The unit is consistent within a single run; differential timing
+ * (t_post - t_pre) uses the same source and gives valid deltas.
+ * On x86_64/ARM64: uses CPU cycle counter for lower overhead.
+ * On others: clock_gettime(CLOCK_MONOTONIC) fallback.
  */
+#if defined(__x86_64__) || defined(__i386__)
+static inline uint64_t c2py_ticks(void) {
+    unsigned int lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#elif defined(__aarch64__)
+static inline uint64_t c2py_ticks(void) {
+    uint64_t cnt;
+    __asm__ __volatile__("mrs %0, CNTVCT_EL0" : "=r"(cnt));
+    return cnt;
+}
+#elif defined(__powerpc64__) || defined(__powerpc__)
+static inline uint64_t c2py_ticks(void) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ppc_get_timebase();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#endif
+}
+#else
 static inline uint64_t c2py_ticks(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
+#endif
 
 /* Update a perf record with one call's tick measurements.
  * t_enter:  wrapper entry

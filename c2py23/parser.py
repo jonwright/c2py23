@@ -10,9 +10,16 @@ from __future__ import print_function
 
 import os
 import re
+import sys
 import warnings
 import yaml
 from collections import namedtuple
+
+# Python 2/3 compat: str covers bytes+unicode on 2.x, text on 3.x
+if sys.version_info[0] >= 3:
+    _STRING_TYPES = (str,)
+else:
+    _STRING_TYPES = (str, unicode)  # noqa: F821
 
 # ---------------------------------------------------------------------------
 # AST nodes for expressions in 'when' and 'map'
@@ -85,15 +92,15 @@ def load_c2py(path):
 
     module_name = _get_required(raw, 'module', path)
     sources = raw.get('source', [])
-    if isinstance(sources, str):
+    if isinstance(sources, _STRING_TYPES):
         sources = [sources]
     headers = raw.get('headers', [])
-    if isinstance(headers, str):
+    if isinstance(headers, _STRING_TYPES):
         headers = [headers]
 
     funcs = []
     for f in raw.get('functions', []):
-        funcs.append(_parse_func(f, path))
+        funcs.extend(_expand_func_template(f, path))
 
     constants = raw.get('constants', {})
     if not isinstance(constants, dict):
@@ -471,6 +478,69 @@ def parse_expr(s):
     return _ExprParser(s).parse()
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Template expansion (P9)
+# ---------------------------------------------------------------------------
+
+def _strsubst(obj, vars_map):
+    """Recursively substitute ${VAR} patterns in strings within obj.
+
+    Walks dicts, lists, and strings. Returns a deep copy with substitutions.
+    vars_map is {varname: replacement_value} for a single expansion step.
+    """
+    if isinstance(obj, dict):
+        return {k: _strsubst(v, vars_map) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_strsubst(item, vars_map) for item in obj]
+    if isinstance(obj, _STRING_TYPES):
+        s = obj
+        for var, val in vars_map.items():
+            s = s.replace('${' + var + '}', val)
+        return s
+    return obj
+
+
+def _expand_func_template(raw_func, path):
+    """Expand a function definition with template variable substitution.
+
+    If raw_func has an 'expand:' key, the dict must map variable names
+    to lists of values of equal length. The function definition is
+    expanded N times with ${VAR} substitutions applied to all strings.
+    Returns a list of parsed FuncDef objects.
+
+    If no 'expand:' key, returns [parsed_func] as before.
+    """
+    expand = raw_func.get('expand')
+    if expand is None:
+        return [_parse_func(raw_func, path)]
+
+    if not isinstance(expand, dict):
+        raise ValueError(
+            "'expand' must be a dict mapping var names to lists in {}".format(path))
+
+    lengths = set()
+    for var, vals in expand.items():
+        if not isinstance(vals, list):
+            raise ValueError(
+                "expand value for '{}' must be a list in {}".format(var, path))
+        lengths.add(len(vals))
+
+    if len(lengths) != 1:
+        raise ValueError(
+            "All expand value lists must have the same length in {}".format(path))
+
+    n = lengths.pop()
+    if n == 0:
+        return []
+
+    results = []
+    for i in range(n):
+        vars_map = {var: vals[i] for var, vals in expand.items()}
+        expanded = _strsubst(raw_func, vars_map)
+        results.append(_parse_func(expanded, path))
+    return results
+
+
 # Function-level parsing
 # ---------------------------------------------------------------------------
 
@@ -480,7 +550,7 @@ def _coerce_expr_value(val, context, path):
     YAML parses bare integers/floats as their native types, but the expression
     parser expects strings. Map values like `verbose: 0` would crash otherwise.
     """
-    if isinstance(val, str):
+    if isinstance(val, _STRING_TYPES):
         return val
     if isinstance(val, (int, float)):
         warnings.warn(

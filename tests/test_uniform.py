@@ -269,6 +269,23 @@ def test_scalar_output():
     print("PASS: scalar_output")
 
 
+def test_template():
+    """Test template expansion - parameterized function definitions."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'template'))
+    import summod
+
+    data_u8 = (ctypes.c_uint8 * 5)(1, 2, 3, 4, 5)
+    assert summod.sum_u8(data_u8) == 15
+
+    data_u16 = (ctypes.c_uint16 * 3)(1, 2, 3)
+    assert summod.sum_u16(data_u16) == 6
+
+    data_i32 = (ctypes.c_int32 * 4)(10, 20, 30, 40)
+    assert summod.sum_i32(data_i32) == 100
+
+    print("PASS: template")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -283,6 +300,7 @@ def main():
         ("constants", test_constants),
         ("timing", test_timing),
         ("scalar_output", test_scalar_output),
+        ("template", test_template),
     ]
     passed = 0
     failed = 0

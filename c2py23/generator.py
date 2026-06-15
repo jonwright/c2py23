@@ -454,7 +454,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                      'uint8_t', 'uint16_t', 'uint32_t'):
             out.append(indent + 'return PyLong_FromLong((long){0});'.format(val))
         elif ctype in ('int64_t', 'uint64_t'):
-            out.append(indent + 'return PyLong_FromLong((long){0});'.format(val))
+            out.append(indent + 'return PyLong_FromLongLong((long long){0});'.format(val))
         elif ctype in ('float', 'double'):
             out.append(indent + 'return PyFloat_FromDouble((double){0});'.format(val))
         else:
@@ -469,7 +469,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                             'PyLong_FromLong((long){1}));'.format(i, val))
             elif ctype in ('int64_t', 'uint64_t'):
                 out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
-                            'PyLong_FromLong((long){1}));'.format(i, val))
+                            'PyLong_FromLongLong((long long){1}));'.format(i, val))
             elif ctype in ('float', 'double'):
                 out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, '
                             'PyFloat_FromDouble((double){1}));'.format(i, val))

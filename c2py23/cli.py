@@ -79,6 +79,12 @@ def cmd_build(args):
     cflags = os.environ.get('CFLAGS', '').split()
     ldflags = os.environ.get('LDFLAGS', '').split()
 
+    # ASan support (P8)
+    if getattr(args, 'asan', False):
+        cflags.append('-fsanitize=address')
+        ldflags.append('-fsanitize=address')
+        print("  [ASan enabled]")
+
     # Libraries
     libs = os.environ.get('LIBS', '-ldl -lm').split()
 
@@ -102,6 +108,8 @@ def main():
     build_p = sub.add_parser('build', help='Build a .so from a .c2py file')
     build_p.add_argument('file', help='Path to .c2py interface file')
     build_p.add_argument('-o', '--output', help='Output .so path')
+    build_p.add_argument('--asan', action='store_true',
+                          help='Compile with -fsanitize=address for leak detection')
     build_p.set_defaults(func=cmd_build)
 
     args = parser.parse_args()
