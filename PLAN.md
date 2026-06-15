@@ -19,15 +19,45 @@ mrs on ARM64).
 
 ---
 
-### P2: GIL release / threadsafe mode
+### P2: GIL release via `gil_release: true`
 
-**Severity: High** -- for OpenMP-heavy functions (ImageD11 uses OpenMP)
+**Severity: High** -- enables true Python-thread parallelism
 
-Add a `threadsafe: true` key on functions or overloads. The wrapper calls
-`PyEval_SaveThread` / `PyEval_RestoreThread` around the C call so OpenMP
-threads don't contend on the GIL.
+Add a `gil_release: true` key on functions or per-overload. The wrapper calls
+`PyEval_SaveThread` before the C call and `PyEval_RestoreThread` after.
+
+**Safety model -- buffer references, not content locks:**
+
+The wrapper acquires `Py_buffer` structs during argument parsing, before
+releasing the GIL. These references keep the underlying Python objects alive
+so memory cannot be freed. However, a second Python thread that also holds a
+buffer reference to the same object can still write to it. This is the caller's
+responsibility, not c2py23's. The philosophy is that a real programmer knows
+what they are doing: you tag a function `gil_release: true` if you know the
+C code can tolerate concurrent buffer mutation from other Python threads.
+
+**OpenMP is about oversubscription, not correctness:**
+
+OpenMP threads within a single call are safe regardless of GIL state -- the
+GIL only serializes Python threads. The concern is oversubscription: if N
+Python threads each launch an M-way OpenMP call, N*M threads compete for
+cores. The user may choose NOT to release the GIL specifically to prevent
+this. The decision depends on the workload.
+
+**Global toggle:**
+
+A module-level runtime flag `_c2py_gil_release_enabled` (similar to the timing
+`_c2py_timing_enabled` flag) lets callers globally disable GIL release across
+all functions. This allows the same `.so` to work in both serial and parallel
+contexts without recompilation. Per-function `get_gil_release` / `set_gil_release`
+methods on each Python function object expose the individual toggle.
+
+**Free-threading (P3):** On 3.14+ free-threaded builds the GIL is absent.
+The `gil_release` flag becomes a no-op, but the buffer-acquisition path needs
+atomic refcounting. See P3 below.
 
 **Files**: parser.py, generator.py, c2py_runtime.h/c.
+**Design doc**: docs/specification.md `## GIL Release and Thread Safety`.
 
 ---
 
@@ -42,22 +72,7 @@ for atomic refcounting and buffer acquisition.
 
 ---
 
-### P4: Comprehensive dispatch-over-all-types example
-
-**Severity: Medium** -- documentation gap
-
-Add a test case and specification example showing `when:` dispatch over all
-10 PEP 3118 format characters (b, B, h, H, i, I, q, Q, f, d) mapping to
-the 10 C fixed-width types (int8_t..uint64_t, float, double). The existing
-`types` test covers only 5 formats and `fill`/`dot` cover f/d separately.
-A single comprehensive example fills the documentation gap for new users.
-
-**Files**: tests/cases/typedispatch/, tests/test_uniform.py,
-docs/specification.md.
-
----
-
-### P5: Binary wheel distribution
+### P4: Binary wheel distribution
 
 **Severity: Low** -- replaces --no-build-isolation workflow
 
@@ -74,15 +89,17 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 ## Completed
 
 - P0: Parameter count validation -- raises ValueError on sig mismatch
-- P2: YAML type coercion -- auto-coerce bare int/float in map/when/checks
-- P3: Better check failure messages -- include actual runtime values
-- P4: Buffer format vs C type compile-time validation -- raises ValueError
-- P6: Output scalar convention -- `outputs:` key, auto-alloc, tuple return
-- P8: Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
-- P9: Template expansion -- `expand:` key with `${VAR}` substitution
-- P10: ABI matrix populated across all 10 Python versions
-- P11: Arch-specific clocks -- rdtsc (x86), CNTVCT_EL0 (ARM64), mftb (POWER)
-- P12: Test coverage -- 10 versions x 11 tests passing
+- YAML type coercion -- auto-coerce bare int/float in map/when/checks
+- Better check failure messages -- include actual runtime values
+- Buffer format vs C type compile-time validation -- raises ValueError
+- Output scalar convention -- `outputs:` key, auto-alloc, tuple return
+- Template expansion -- `expand:` key with `${VAR}` substitution
+- Comprehensive dispatch-over-all-types example -- typedispatch test case, Example 4 in spec
+- Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
+- Test coverage -- 10 versions x 12 tests passing
+- GIL release design rationale -- documented in specification.md
+- ABI matrix populated across all 10 Python versions
+- Arch-specific clocks -- rdtsc (x86), CNTVCT_EL0 (ARM64), mftb (POWER)
 - int64_t/uint64_t 32-bit fix -- PyLong_FromLongLong macro
 - Py_buffer size fix -- 80 bytes for 3.x, 96 for 2.x (ABI matrix)
 - Fixed-width C types (int8_t..uint64_t)

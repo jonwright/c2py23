@@ -703,14 +703,122 @@ for any glibc-linked binary.
   (user C code may use them internally; allocated memory must be freed before return)
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
-- The GIL is held during all C function calls
+- The GIL is held during all C function calls by default.
+  Individual functions or overloads may opt into GIL release via
+  `gil_release: true` (see below).
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`
+
+## GIL Release and Thread Safety
+
+### The GIL and Buffer Protocol
+
+CPython's Global Interpreter Lock (GIL) serializes Python bytecode execution.
+When a C extension is called, the GIL is held. This means:
+- No other Python thread can run Python code concurrently.
+- Python object reference counts are safe from races.
+- The interpreter's internal state is protected.
+
+The buffer protocol creates a reference from the C extension to a Python
+object's underlying memory. `PyObject_GetBuffer` increments the object's
+reference count indirectly through the buffer's exporter. As long as the
+buffer is held, the Python object cannot be garbage collected and its
+memory cannot be freed.
+
+**What the buffer reference does NOT protect against:** concurrent writes.
+If two Python threads each acquire a buffer reference to the same ndarray,
+both hold valid pointers to the same memory. If one thread writes while
+the other reads, there is a data race. The buffer protocol provides no
+locking mechanism for content access. This is the caller's responsibility.
+
+### Releasing the GIL
+
+When a C function does not call any Python C API (no `PyArg_ParseTuple`,
+no `PyLong_FromLong`, no exception setting), the GIL is unnecessary for
+correctness. The wrapper can release it:
+
+```yaml
+functions:
+  - py_sig: "array_stats(data: buffer) -> void"
+    gil_release: true                      # per-function default
+    c_overloads:
+      - sig: "stats_f(const float *data, int n, ...)"
+        map: {data: "data.ptr", n: "data.n"}
+        gil_release: false                 # per-overload override
+```
+
+The `gil_release` key can appear at the function level (sets the default
+for all overloads) or on individual overloads (overrides the function
+default). If omitted, the GIL is held -- the safe default.
+
+The generated wrapper calls `PyEval_SaveThread()` before entering the C
+function and `PyEval_RestoreThread()` after returning. Between these
+calls, other Python threads may run. The wrapper's argument parsing and
+buffer acquisition happen before the GIL is released; buffer release and
+result construction happen after it is reacquired.
+
+### OpenMP and Oversubscription
+
+A common misconception is that GIL release is required for OpenMP. It is
+not. OpenMP threads are kernel threads created by the C runtime, not
+Python threads. They run entirely within the C call and are unaffected
+by the GIL. A function using `#pragma omp parallel for` works correctly
+whether or not the GIL is released.
+
+The real concern is oversubscription: if N Python threads each call an
+OpenMP function that spawns M threads, N*M threads compete for cores.
+In this scenario, NOT releasing the GIL may be desirable -- it serializes
+the Python threads, preventing oversubscription. Whether to release
+depends on the workload.
+
+### The REAL Programmer Model
+
+The design philosophy follows the spirit of "Real Programmers can write
+FORTRAN programs in any language." c2py23 does not try to make thread
+safety foolproof. It provides mechanisms, not policies:
+
+- The default (GIL held) is safe for all cases.
+- The `gil_release` opt-in is for callers who understand their data
+  flow and can guarantee that no other thread will concurrently mutate
+  the buffers they have passed.
+- The buffer reference ensures memory is not freed. Content races are
+  the user's problem.
+
+### Global Toggle
+
+A module-level runtime flag `_c2py_gil_release_enabled` (exposed as a
+readable/writable `int` on the module, similar to the timing flag
+`_c2py_timing_enabled`) allows callers to globally enable or disable
+GIL release without recompilation:
+
+```python
+import mymod
+mymod._c2py_gil_release_enabled  # 1 = enabled, 0 = disabled
+mymod._c2py_gil_release_enabled = 0  # disable all GIL release
+```
+
+Per-function get/set methods provide finer control:
+
+```python
+mymod.array_stats.get_gil_release()     # True or False
+mymod.array_stats.set_gil_release(False)
+```
+
+These follow the same pattern as `c2py23.perf.read_enabled` /
+`c2py23.perf.set_enabled` for timing instrumentation.
+
+### Free-Threading (Python 3.14+)
+
+In free-threaded CPython builds (3.14+, compiled with `--disable-gil`),
+the GIL is absent. `PyEval_SaveThread` / `PyEval_RestoreThread` become
+no-ops. The `gil_release` flag is harmless -- it compiles to nothing on
+these builds.
+
+However, buffer acquisition and reference counting must become atomic
+in free-threaded builds. This is a separate concern (PLAN.md P3) and
+does not affect the GIL release design.
 
 ## Future Work
 
-- **GIL release / threadsafe mode** -- for pure-C sections that do not touch
-  Python objects, release the GIL via `PyEval_SaveThread`/`PyEval_RestoreThread`
-  to allow true parallelism in threaded applications
 - **SIMD dispatch** -- select C functions based on CPU feature detection at
   module load time (`cpu_has_avx2`, `cpu_has_avx512f`, `cpu_has_neon` etc.)
 - **Thread safety** -- for free-threaded Python 3.14+, wrap critical sections
