@@ -127,6 +127,10 @@ int c2py_runtime_init(void)
     RESOLVE(C2PY.Long_FromLongLong, "PyLong_FromLongLong");
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
 
+    /* --- Tuple construction (required) --- */
+    RESOLVE_REQ(C2PY.Tuple_New, "PyTuple_New");
+    RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
+
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
     RESOLVE_REQ(C2PY.Float_AsDouble, "PyFloat_AsDouble");

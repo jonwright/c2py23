@@ -112,7 +112,7 @@ def test_python_version(python_version, sif_file):
     print_header("Testing Python " + python_version)
 
     system_py = "python" + python_version
-    test_cmd = "cd /workspace && bash run_tests.sh " + system_py
+    test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 

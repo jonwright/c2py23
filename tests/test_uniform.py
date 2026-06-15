@@ -256,6 +256,19 @@ def test_timing():
     print("PASS: timing")
 
 
+def test_scalar_output():
+    """Test output scalar convention - C returns values via pointer args."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'scalar_output'))
+    import statmod
+
+    data = _double_array([3.0, 1.0, 5.0, 2.0, 4.0])
+    minval, maxval = statmod.stats(data)
+    assert minval == 1.0, "minval expected 1.0, got %s" % minval
+    assert maxval == 5.0, "maxval expected 5.0, got %s" % maxval
+
+    print("PASS: scalar_output")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -269,6 +282,7 @@ def main():
         ("docstring", test_docstring),
         ("constants", test_constants),
         ("timing", test_timing),
+        ("scalar_output", test_scalar_output),
     ]
     passed = 0
     failed = 0

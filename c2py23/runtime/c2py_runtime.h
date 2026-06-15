@@ -166,6 +166,10 @@ typedef struct {
     PyObject* (*Long_FromLongLong)(long long);
     PyObject* (*Float_FromDouble)(double);
 
+    /* Tuple construction */
+    PyObject* (*Tuple_New)(Py_ssize_t);
+    int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
+
     /* Scalar conversion from objects */
     long (*Long_AsLong)(PyObject*);
     double (*Float_AsDouble)(PyObject*);
@@ -221,6 +225,8 @@ extern c2py_api_t C2PY;
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
+#define PyTuple_New(s)                 C2PY.Tuple_New(s)
+#define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
 
 #define PyExc_TypeError                ((PyObject*)C2PY.exc_TypeError)
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)

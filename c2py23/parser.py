@@ -8,7 +8,9 @@ Handles:
 """
 from __future__ import print_function
 
+import os
 import re
+import warnings
 import yaml
 from collections import namedtuple
 
@@ -53,8 +55,16 @@ class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is
     """ctype is the full C type string, base_type is the element type"""
     pass
 
-class COverload(namedtuple('COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr'])):
-    pass
+class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr'])):
+    """A C function overload alternative with optional outputs dict for scalar outputs.
+    
+    outputs maps C parameter names to ctypes types (e.g. {'minval': 'double', 'maxval': 'float'}).
+    Output params are auto-allocated as 1-element arrays and returned as tuple values.
+    """
+    def __new__(cls, sig_str, params, return_type, map_exprs, when_expr, outputs=None):
+        self = super(COverload, cls).__new__(cls, sig_str, params, return_type, map_exprs, when_expr)
+        self.outputs = outputs or {}
+        return self
 
 class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc'])):
     pass
@@ -94,7 +104,12 @@ def load_c2py(path):
 
     timing = bool(raw.get('timing', False))
 
-    return ModuleDef(module_name, sources, headers, funcs, constants, timing)
+    mod = ModuleDef(module_name, sources, headers, funcs, constants, timing)
+
+    base_dir = os.path.dirname(os.path.abspath(path))
+    _validate_module(mod, base_dir)
+
+    return mod
 
 
 def _get_required(d, key, path):
@@ -459,11 +474,30 @@ def parse_expr(s):
 # Function-level parsing
 # ---------------------------------------------------------------------------
 
+def _coerce_expr_value(val, context, path):
+    """Coerce a non-string YAML value to string for expression parsing.
+    
+    YAML parses bare integers/floats as their native types, but the expression
+    parser expects strings. Map values like `verbose: 0` would crash otherwise.
+    """
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (int, float)):
+        warnings.warn(
+            "%s value '%s: %s' in %s is %s; auto-coercing to str. "
+            "Quote YAML values: \"%s\"" % (
+                context, val, type(val).__name__, path, val, val))
+        return str(val)
+    raise ValueError(
+        "Expected string or number for %s value in %s, got %s" % (
+            context, path, type(val).__name__))
+
+
 def _parse_func(raw, path):
     py_sig_str = _get_required(raw, 'py_sig', path)
     name, py_params, ret_type = _parse_py_sig(py_sig_str, path)
 
-    checks = [parse_expr(c) for c in raw.get('checks', [])]
+    checks = [_parse_check_value(c, path) for c in raw.get('checks', [])]
 
     overloads = []
     for ol in raw.get('c_overloads', []):
@@ -472,11 +506,216 @@ def _parse_func(raw, path):
         map_raw = _get_required(ol, 'map', path)
         map_exprs = {}
         for cname, expr_str in map_raw.items():
+            expr_str = _coerce_expr_value(expr_str, 'map', path)
             map_exprs[cname] = parse_expr(expr_str)
-        when_expr = parse_expr(ol.get('when'))
-        overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr))
+        when_raw = ol.get('when')
+        if when_raw is not None:
+            when_raw = _coerce_expr_value(when_raw, 'when', path)
+        when_expr = parse_expr(when_raw)
+        outputs = ol.get('outputs', {})
+        if outputs and not isinstance(outputs, dict):
+            raise ValueError("'outputs' must be a dict in {}".format(path))
+        overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr, outputs))
 
     default_raise = raw.get('default_raise')
     doc = raw.get('doc')
 
     return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc)
+
+
+def _parse_check_value(val, path):
+    """Parse a check expression, coercing non-string values from YAML."""
+    val = _coerce_expr_value(val, 'checks', path)
+    return parse_expr(val)
+
+
+# ---------------------------------------------------------------------------
+# Validation: parameter counts, format-to-ctype mapping
+# ---------------------------------------------------------------------------
+
+_FORMAT_TO_CTYPE = {
+    'b': 'int8_t',
+    'B': 'uint8_t',
+    'h': 'int16_t',
+    'H': 'uint16_t',
+    'i': 'int32_t',
+    'I': 'uint32_t',
+    'l': 'int',
+    'L': 'unsigned int',
+    'q': 'int64_t',
+    'Q': 'uint64_t',
+    'f': 'float',
+    'd': 'double',
+}
+
+_FUNC_DECL_RE = re.compile(
+    r'(?:^|;|\})\s*'
+    r'(?:static\s+)?(?:inline\s+)?(?:extern\s+)?'
+    r'([\w\s*]+?)\s*'           # return type
+    r'(\w+)\s*'                 # function name
+    r'\(\s*((?:[^()]|\([^)]*\))*?)\s*\)'  # params (allow one level of nesting)
+    r'\s*[{;]',
+    re.MULTILINE | re.DOTALL
+)
+
+
+def _strip_c_comments(text):
+    """Strip C-style comments (both /* */ and //) from source text."""
+    result = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if i + 1 < n and text[i] == '/' and text[i + 1] == '/':
+            i += 2
+            while i < n and text[i] != '\n':
+                i += 1
+        elif i + 1 < n and text[i] == '/' and text[i + 1] == '*':
+            i += 2
+            while i + 1 < n and not (text[i] == '*' and text[i + 1] == '/'):
+                i += 1
+            i += 2
+        else:
+            result.append(text[i])
+            i += 1
+    return ''.join(result)
+
+
+def _count_c_params(params_str):
+    """Count the number of parameters in a C function parameter string."""
+    if not params_str.strip():
+        return 0
+    count = 1
+    for ch in params_str:
+        if ch == ',':
+            count += 1
+    return count
+
+
+def _parse_c_func_from_files(file_list, base_dir):
+    """Parse C source/header files to extract function signatures.
+
+    Returns a dict of {func_name: param_count} for all functions found.
+    """
+    funcs = {}
+    for fname in file_list:
+        fpath = os.path.join(base_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        with open(fpath, 'r') as f:
+            content = f.read()
+        content = _strip_c_comments(content)
+        for m in _FUNC_DECL_RE.finditer(content):
+            ret_type = m.group(1).strip()
+            func_name = m.group(2)
+            params_str = m.group(3)
+            if not ret_type:
+                continue
+            ret_parts = ret_type.split()
+            is_typedef = all(p in _C_TYPES_INT or p in ('const', 'static',
+                                'inline', 'extern') or p == '*' for p in ret_parts)
+            if not is_typedef:
+                continue
+            count = _count_c_params(params_str)
+            funcs[func_name] = count
+    return funcs
+
+
+def _find_format_check(checks):
+    """Extract format check info: {(buf_name, format_char)} from check expressions."""
+    results = set()
+    for check in checks:
+        if isinstance(check, Compare) and check.op == '==':
+            left = check.left
+            right = check.right
+            if isinstance(left, Attr) and left.attr == 'format':
+                if isinstance(right, StrLit) and len(right.value) == 1:
+                    buf_name = _resolve_buf_name(left.obj)
+                    if buf_name:
+                        results.add((buf_name, right.value))
+            elif isinstance(right, Attr) and right.attr == 'format':
+                if isinstance(left, StrLit) and len(left.value) == 1:
+                    buf_name = _resolve_buf_name(right.obj)
+                    if buf_name:
+                        results.add((buf_name, left.value))
+    return results
+
+
+def _resolve_buf_name(expr):
+    """Resolve a Var or Attr chain to a buffer name string."""
+    if isinstance(expr, Var):
+        return expr.name
+    if isinstance(expr, Attr):
+        return _resolve_buf_name(expr.obj)
+    return None
+
+
+def _validate_module(mod, base_dir):
+    """Run validation checks on a parsed ModuleDef.
+
+    Checks:
+      1. P0: Parameter count mismatch between .c2py C sig and actual C source
+      2. P4: Buffer format checks vs C pointer types in overloads
+    """
+    all_files = list(mod.sources) + list(mod.headers)
+    if not all_files:
+        return
+
+    c_funcs = _parse_c_func_from_files(all_files, base_dir)
+
+    for func in mod.functions:
+        for ol in func.overloads:
+            c_name = _extract_c_name(ol.sig_str)
+            c2py_count = len(ol.params)
+            actual_count = c_funcs.get(c_name)
+
+            if actual_count is not None and c2py_count != actual_count:
+                warnings.warn(
+                    "P0: param count mismatch for '%s' in %s: "
+                    ".c2py sig has %d params, C source has %d params" % (
+                        c_name, mod.name, c2py_count, actual_count))
+
+        # P4: format checks -> C type validation
+        fmt_checks = _find_format_check(func.checks)
+        if not fmt_checks:
+            continue
+
+        for buf_name, fmt_char in fmt_checks:
+            expected_ctype = _FORMAT_TO_CTYPE.get(fmt_char)
+            if expected_ctype is None:
+                continue
+
+            for ol in func.overloads:
+                for cp in ol.params:
+                    if not cp.is_pointer:
+                        continue
+                    expr = ol.map_exprs.get(cp.name)
+                    if expr is None:
+                        continue
+                    if not _expr_refers_to(expr, buf_name):
+                        continue
+                    if cp.base_type != expected_ctype:
+                        warnings.warn(
+                            "P4: format check '%s.format == '%s'' implies %s*, "
+                            "but overload '%s' uses %s* for param '%s' in %s" % (
+                                buf_name, fmt_char, expected_ctype,
+                                c_name, cp.base_type, cp.name, mod.name))
+
+
+def _extract_c_name(sig_str):
+    """Extract the C function name from a sig string."""
+    return sig_str.split('(')[0].strip().split()[-1]
+
+
+def _expr_refers_to(expr, buf_name):
+    """Check if an expression refers to a specific buffer param name."""
+    if isinstance(expr, Var):
+        return expr.name == buf_name
+    elif isinstance(expr, Attr):
+        return _expr_refers_to(expr.obj, buf_name)
+    elif isinstance(expr, Subscript):
+        return _expr_refers_to(expr.obj, buf_name)
+    elif isinstance(expr, Compare):
+        return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
+    elif isinstance(expr, BinOp):
+        return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
+    return False

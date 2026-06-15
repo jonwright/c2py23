@@ -19,9 +19,11 @@ echo "Script dir: $SCRIPT_DIR"
 echo "Project dir: $PROJECT_DIR"
 
 # Create and activate virtual environment
-VENV_DIR="$SCRIPT_DIR/test_venv"
+PYVER=$("$PYTHON" -c "import sys; print('%d.%d' % (sys.version_info[0], sys.version_info[1]))" 2>/dev/null || echo "unknown")
+VENV_DIR="$SCRIPT_DIR/test_venv_${PYVER}"
 if [ ! -d "$VENV_DIR" ]; then
     echo "Creating virtual environment at $VENV_DIR..."
+    rm -rf "$VENV_DIR"
     MAJOR=$("$PYTHON" -c "import sys; print(sys.version_info[0])" 2>/dev/null || echo "3")
     if [ "$MAJOR" = "2" ]; then
         # Python 2.7 uses virtualenv
