@@ -199,6 +199,10 @@ typedef struct {
     /* Pointer-to-int conversion (for exposing perf struct addresses) */
     PyObject* (*Long_FromVoidPtr)(void*);
 
+    /* GIL management */
+    void* (*SaveThread)(void);
+    void (*RestoreThread)(void*);
+
 } c2py_api_t;
 
 /* The global API table */
@@ -228,6 +232,8 @@ extern c2py_api_t C2PY;
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
+#define PyEval_SaveThread()            C2PY.SaveThread()
+#define PyEval_RestoreThread(s)        C2PY.RestoreThread((void*)(s))
 
 #define PyExc_TypeError                ((PyObject*)C2PY.exc_TypeError)
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)

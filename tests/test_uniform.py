@@ -1,7 +1,7 @@
 """Uniform test script for c2py23 - runs identically on Python 2.7 through 3.14.
 
 Tests all test cases: arraysum, fill, dot, transform, types, optional,
-docstring, constants, timing, scalar_output, template, typedispatch.
+docstring, constants, timing, scalar_output, template, typedispatch, gil_release.
 Uses ctypes arrays (buffer protocol works on 2.7 and 3.x) + memoryview for shape.
 On Python 2.7, some tests are skipped due to old buffer protocol limitations.
 """
@@ -357,6 +357,107 @@ def test_typedispatch():
     print("PASS: typedispatch")
 
 
+def test_gil_release():
+    """Test GIL release: concurrent calls overlap instead of serializing."""
+    import time
+    import threading
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'gil_release'))
+    import gilmod
+
+    arr = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+    arr2 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+    sleep_us = 100000  # 100ms
+
+    # Test 1: With GIL release, two threads overlap
+    t0 = time.time()
+    t1 = threading.Thread(target=gilmod.sleep_fill, args=(arr, 1.0, sleep_us))
+    t2 = threading.Thread(target=gilmod.sleep_fill, args=(arr2, 2.0, sleep_us))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    elapsed = time.time() - t0
+
+    # With GIL release, both 100ms sleeps should overlap -> < 150ms
+    assert elapsed < 0.150, \
+        "GIL release: expected < 150ms, got %.3fs (threads serialized?)" % elapsed
+    assert list(arr) == [1.0, 1.0, 1.0, 1.0], "thread 1 fill failed"
+    assert list(arr2) == [2.0, 2.0, 2.0, 2.0], "thread 2 fill failed"
+
+    # Test 2: Without GIL release, threads serialize
+    arr3 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+    arr4 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+
+    t0 = time.time()
+    t3 = threading.Thread(target=gilmod.sleep_fill_no_gil, args=(arr3, 3.0, 50000))
+    t4 = threading.Thread(target=gilmod.sleep_fill_no_gil, args=(arr4, 4.0, 50000))
+    t3.start()
+    t4.start()
+    t3.join()
+    t4.join()
+    elapsed_no = time.time() - t0
+
+    # Without GIL release, two 50ms sleeps serialize -> > 80ms
+    assert elapsed_no > 0.080, \
+        "No GIL release: expected > 80ms, got %.3fs (threads overlapped?)" % elapsed_no
+    assert list(arr3) == [3.0, 3.0, 3.0, 3.0], "thread 3 fill failed"
+    assert list(arr4) == [4.0, 4.0, 4.0, 4.0], "thread 4 fill failed"
+
+    # Test 3: Global toggle disables GIL release
+    # Read the global flag pointer and set to 0
+    import ctypes as ct
+    gil_flag_ptr = gilmod._c2py_gil_release_enabled
+    ct.c_int.from_address(gil_flag_ptr).value = 0
+
+    arr5 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+    arr6 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+
+    t0 = time.time()
+    t5 = threading.Thread(target=gilmod.sleep_fill, args=(arr5, 5.0, 50000))
+    t6 = threading.Thread(target=gilmod.sleep_fill, args=(arr6, 6.0, 50000))
+    t5.start()
+    t6.start()
+    t5.join()
+    t6.join()
+    elapsed_disabled = time.time() - t0
+
+    # When disabled, two 50ms sleeps should serialize -> > 80ms
+    assert elapsed_disabled > 0.080, \
+        "GIL disabled: expected > 80ms, got %.3fs (still overlapping?)" % elapsed_disabled
+    assert list(arr5) == [5.0, 5.0, 5.0, 5.0], "thread 5 fill failed"
+    assert list(arr6) == [6.0, 6.0, 6.0, 6.0], "thread 6 fill failed"
+
+    # Restore global flag
+    ct.c_int.from_address(gil_flag_ptr).value = 1
+
+    # Test 4: Per-function toggle via module attribute
+    func_flag_ptr = gilmod._c2py_gil_release_sleep_fill
+    ct.c_int.from_address(func_flag_ptr).value = 0
+
+    arr7 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+    arr8 = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
+
+    t0 = time.time()
+    t7 = threading.Thread(target=gilmod.sleep_fill, args=(arr7, 7.0, 30000))
+    t8 = threading.Thread(target=gilmod.sleep_fill, args=(arr8, 8.0, 30000))
+    t7.start()
+    t8.start()
+    t7.join()
+    t8.join()
+    elapsed_func_disabled = time.time() - t0
+
+    assert elapsed_func_disabled > 0.050, \
+        "Per-func disabled: expected > 50ms, got %.3fs" % elapsed_func_disabled
+    assert list(arr7) == [7.0, 7.0, 7.0, 7.0]
+    assert list(arr8) == [8.0, 8.0, 8.0, 8.0]
+
+    # Restore
+    ct.c_int.from_address(func_flag_ptr).value = 1
+
+    print("PASS: gil_release")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -373,6 +474,7 @@ def main():
         ("scalar_output", test_scalar_output),
         ("template", test_template),
         ("typedispatch", test_typedispatch),
+        ("gil_release", test_gil_release),
     ]
     passed = 0
     failed = 0

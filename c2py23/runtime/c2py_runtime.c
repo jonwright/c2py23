@@ -179,6 +179,10 @@ int c2py_runtime_init(void)
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
 
+    /* --- GIL management --- */
+    RESOLVE_REQ(C2PY.SaveThread, "PyEval_SaveThread");
+    RESOLVE_REQ(C2PY.RestoreThread, "PyEval_RestoreThread");
+
     /* --- None singleton ---
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,
      * which is the same as Py_None (the macro: (&_Py_NoneStruct)).

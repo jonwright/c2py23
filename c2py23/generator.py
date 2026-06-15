@@ -21,12 +21,15 @@ def generate(module_def):
         String containing complete C source code
     """
     out = []
+    has_gil_release = any(f.gil_release for f in module_def.functions)
     _emit_header(out, module_def)
     _emit_forward_decls(out, module_def)
     if module_def.timing:
         _emit_timing_decls(out, module_def)
+    if has_gil_release:
+        _emit_gil_release_decls(out, module_def)
     for func in module_def.functions:
-        _emit_function(out, func, module_def.name, module_def.timing)
+        _emit_function(out, func, module_def.name, module_def.timing, has_gil_release)
     _emit_module_init(out, module_def)
     return '\n'.join(out)
 
@@ -90,7 +93,17 @@ def _emit_timing_decls(out, mod):
     out.append('')
 
 
-def _emit_function(out, func, module_name, timing):
+def _emit_gil_release_decls(out, mod):
+    """Emit global GIL release declarations: enabled flag + per-func flags."""
+    out.append('/* ---- GIL release ---- */')
+    out.append('static int _c2py_gil_release_enabled = 1;')
+    for func in mod.functions:
+        if func.gil_release:
+            out.append('static int _gil_release_{0} = 1;'.format(func.name))
+    out.append('')
+
+
+def _emit_function(out, func, module_name, timing, has_gil_release):
     name = func.name
     out.append('/* ' + '-' * 44 + ' */')
     out.append('/* Wrapper for: {} */'.format(name))
@@ -101,7 +114,7 @@ def _emit_function(out, func, module_name, timing):
     scalar_params = [p for p in func.py_params if p.pytype != 'buffer']
 
     # _impl function
-    _emit_impl_func(out, func, buf_params, scalar_params, timing)
+    _emit_impl_func(out, func, buf_params, scalar_params, timing, has_gil_release)
 
     # _wrapper function
     _emit_wrapper_func(out, func, buf_params, scalar_params, timing)
@@ -111,7 +124,7 @@ def _emit_function(out, func, module_name, timing):
 # _impl function
 # ---------------------------------------------------------------------------
 
-def _emit_impl_func(out, func, buf_params, scalar_params, timing):
+def _emit_impl_func(out, func, buf_params, scalar_params, timing, has_gil_release):
     name = func.name
     params_c = []
     for p in buf_params:
@@ -131,13 +144,18 @@ def _emit_impl_func(out, func, buf_params, scalar_params, timing):
         out.append('    uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;')
         out.append('')
 
+    if has_gil_release and func.gil_release:
+        out.append('    int _c2py_do_gil = _c2py_gil_release_enabled && _gil_release_{0};'.format(name))
+        out.append('    void *_c2py_thread_state = NULL;')
+        out.append('')
+
     # Checks
     for check in func.checks:
         out.append('    /* check: {} */'.format(_expr_to_source(check)))
         _emit_check(out, check, buf_params, scalar_params)
 
     # Overload dispatch
-    _emit_overload_dispatch(out, func, buf_params, scalar_params, timing)
+    _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gil_release)
 
     out.append('')
     out.append('    /* should not reach here */')
@@ -146,7 +164,7 @@ def _emit_impl_func(out, func, buf_params, scalar_params, timing):
     out.append('')
 
 
-def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing):
+def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gil_release):
     """Emit the if/else chain for overload dispatch."""
     overloads = func.overloads
     default_raise = func.default_raise
@@ -156,7 +174,8 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing):
     if len(overloads) == 1 and overloads[0].when_expr is None:
         out.append('    /* overload 0 (always) */')
         out.append('    {')
-        _emit_c_call(out, overloads[0], buf_params, scalar_params, timing, name)
+        _emit_c_call(out, overloads[0], buf_params, scalar_params, timing, name,
+                     has_gil_release and func.gil_release)
         out.append('    }')
         return
 
@@ -175,7 +194,8 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing):
             else:
                 out.append('    } else {  /* overload {} (always) */'.format(i))
         out.append('        /* {} */'.format(ol.sig_str))
-        _emit_c_call(out, ol, buf_params, scalar_params, timing, name)
+        _emit_c_call(out, ol, buf_params, scalar_params, timing, name,
+                     has_gil_release and func.gil_release)
 
     if default_raise:
         out.append('    } else {')
@@ -298,7 +318,7 @@ def _is_simple_expr(expr):
     return False
 
 
-def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
+def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_release_call=False):
     """Emit a C function call for one overload.
     
     Handles optional output scalars (ol.outputs): auto-allocates 1-element
@@ -360,6 +380,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
 
     call_str = c_name + '(' + ', '.join(args) + ')'
 
+    # --- GIL release: pre-C call ---
+    if gil_release_call:
+        out.append(indent + 'if (_c2py_do_gil) _c2py_thread_state = PyEval_SaveThread();')
+
     # --- timing: pre-C call ---
     if timing:
         out.append(indent + 'if (_c2py_do_time) _c2py_ct0 = c2py_ticks();')
@@ -378,6 +402,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'Py_RETURN_NONE;')
         elif ol.return_type == 'int':
             out.append(indent + 'int _ret = ' + call_str + ';')
@@ -386,6 +412,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyLong_FromLong((long)_ret);')
         elif ol.return_type == 'float':
             out.append(indent + 'float _ret = ' + call_str + ';')
@@ -394,6 +422,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyFloat_FromDouble((double)_ret);')
         elif ol.return_type == 'double':
             out.append(indent + 'double _ret = ' + call_str + ';')
@@ -402,6 +432,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'return PyFloat_FromDouble(_ret);')
         else:
             out.append(indent + '/* unknown return type: {} */'.format(ol.return_type))
@@ -411,6 +443,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
                 out.append(indent + '    _c2py_ct1 = c2py_ticks();')
                 out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
                 out.append(indent + '}')
+            if gil_release_call:
+                out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
             out.append(indent + 'Py_RETURN_NONE;')
         return
 
@@ -437,6 +471,9 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name):
         out.append(indent + '    _c2py_ct1 = c2py_ticks();')
         out.append(indent + '    c2py_perf_record_call(&{0}, _c2py_ct0, _c2py_ct1);'.format(perf_name))
         out.append(indent + '}')
+
+    if gil_release_call:
+        out.append(indent + 'if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
 
     # Collect output items
     for p in ol.params:
@@ -940,9 +977,10 @@ def _expr_to_source(expr):
 # ---------------------------------------------------------------------------
 
 def _emit_constants(out, mod):
-    """Emit PyObject_SetAttrString calls for module-level integer constants
-    and timing perf struct pointers."""
-    if not mod.constants and not mod.timing:
+    """Emit PyObject_SetAttrString calls for module-level integer constants,
+    timing perf struct pointers, and GIL release flags."""
+    has_gil = any(f.gil_release for f in mod.functions)
+    if not mod.constants and not mod.timing and not has_gil:
         return
     out.append('    if (module != NULL) {')
     if mod.constants:
@@ -960,11 +998,20 @@ def _emit_constants(out, mod):
                 perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
                 out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
                 out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+    if has_gil:
+        out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
+        out.append('            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));')
+        for func in mod.functions:
+            if func.gil_release:
+                out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
+                out.append('            PyLong_FromVoidPtr(&_gil_release_{0}));'.format(func.name))
     out.append('    }')
 
 
 def _emit_module_init(out, mod):
     name = mod.name
+    has_gil = any(f.gil_release for f in mod.functions)
+    has_attrs = mod.constants or mod.timing or has_gil
     out.append('')
     out.append('/* ' + '-' * 44 + ' */')
     out.append('/* Module definition                          */')
@@ -1015,7 +1062,7 @@ def _emit_module_init(out, mod):
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('    _module_def.m_methods = methods;')
     out.append('')
-    if mod.constants or mod.timing:
+    if has_attrs:
         out.append('    PyObject *module;')
         out.append('    if (C2PY.Module_Create2 != NULL) {')
         out.append('        module = C2PY.Module_Create2(&_module_def, 1013);')
@@ -1039,7 +1086,7 @@ def _emit_module_init(out, mod):
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
-    if mod.constants or mod.timing:
+    if has_attrs:
         out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
         out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
         _emit_constants(out, mod)

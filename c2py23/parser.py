@@ -73,7 +73,7 @@ class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'm
         self.outputs = outputs or {}
         return self
 
-class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc'])):
+class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc', 'gil_release'])):
     pass
 
 class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants', 'timing'])):
@@ -589,8 +589,9 @@ def _parse_func(raw, path):
 
     default_raise = raw.get('default_raise')
     doc = raw.get('doc')
+    gil_release = bool(raw.get('gil_release', False))
 
-    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc)
+    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc, gil_release)
 
 
 def _parse_check_value(val, path):
