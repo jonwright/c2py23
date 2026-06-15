@@ -30,3 +30,5 @@ test_workspace/
 # OS
 .DS_Store
 Thumbs.db
+/tests/test_venv_3.12/
+/tests/test_results.log
