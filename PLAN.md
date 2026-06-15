@@ -10,6 +10,10 @@ Select C functions based on CPU feature detection at module load time.
 Support `when: "cpu_has_avx2"`, `when: "cpu_has_avx512f"`, `when: "cpu_has_neon"`.
 The condition is evaluated once at module init, not per call.
 
+**NEEDS DESIGN DISCUSSION** -- see AGENTS.md for open questions about which
+architectures to support, how CPUID/MRS detection should work, and the grammar
+for `cpu_has_*` conditions.
+
 Parser: accept cpu_has_* identifiers in when: conditions.
 Generator: emit a static int flag per feature, set once from CPUID/MRS.
 Runtime: add CPUID helper to c2py_runtime.c (__get_cpuid on x86, /proc/cpuinfo,
@@ -89,6 +93,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 ## Completed
 
 - P0: Parameter count validation -- raises ValueError on sig mismatch
+- P2: GIL release (`gil_release: true`) -- global toggle, per-function enable, tested
 - YAML type coercion -- auto-coerce bare int/float in map/when/checks
 - Better check failure messages -- include actual runtime values
 - Buffer format vs C type compile-time validation -- raises ValueError
@@ -96,7 +101,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - Template expansion -- `expand:` key with `${VAR}` substitution
 - Comprehensive dispatch-over-all-types example -- typedispatch test case, Example 4 in spec
 - Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
-- Test coverage -- 10 versions x 12 tests passing
+- Test coverage -- 10 versions x 13 uniform tests, 10 peer review tests
 - GIL release design rationale -- documented in specification.md
 - ABI matrix populated across all 10 Python versions
 - Arch-specific clocks -- rdtsc (x86), CNTVCT_EL0 (ARM64), mftb (POWER)
@@ -116,3 +121,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - Buffer struct layout mismatch fixed
 - `-Wall -Werror` clean on all generated code
 - 10 Python versions in test matrix (2.7, 3.6-3.14)
+- Contiguity check: rejects strided arrays, negative strides, accepts C/F-contiguous
+- Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
+- Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)
+- Debug build support: `--asan` flag, `CC`/`CFLAGS`/`LDFLAGS` env vars, `gcc -shared -g -O0`

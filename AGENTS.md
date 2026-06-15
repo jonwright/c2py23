@@ -169,6 +169,91 @@ Run the uniform test script directly (requires built `.so` files):
 python tests/test_uniform.py
 ```
 
+Run the peer review tests (alias + contiguity, requires numpy):
+```bash
+pip install numpy
+python tests/test_peer_review.py
+```
+
+## Debug Builds
+
+For segfault investigation, build with debug symbols and no optimization:
+```bash
+CC=gcc CFLAGS="-g -O0 -Wall -Werror" c2py23 build tests/cases/fill/fill.c2py
+```
+
+Then run under GDB:
+```bash
+gdb --args python3 -c "import sys; sys.path.insert(0,'tests/cases/fill'); import fillmod; ..."
+```
+
+With ASan for memory error detection:
+```bash
+c2py23 build --asan tests/cases/fill/fill.c2py
+```
+
+Valgrind leak check:
+```bash
+valgrind --leak-check=full python3 tests/test_leaks.py
+```
+
+## SIMD Dispatch / CPU Feature Detection (P1 - PLANNING)
+
+**Status: Not started. Design discussion needed before implementation.**
+
+### Open Questions
+
+1. Which architectures to support?
+   - x86_64: avx2, avx512f (CPUID leaf 7)
+   - ARM64: neon (always present on arm64), asimd (MRS ID_AA64PFR0_EL1)
+   - POWER: vsx? (not requested so far)
+
+2. How should CPU detection work?
+   - Option A: inline asm in c2py_runtime.c (__get_cpuid on x86, MRS on arm64)
+   - Option B: read /proc/cpuinfo (portable, no asm, but slow and Linux-only)
+   - Option C: dlopen libcpuid or similar (adds dependency)
+   - Preferred: Option A for x86_64 and arm64, with /proc/cpuinfo fallback.
+
+3. Grammar for `when:` conditions
+   - `when: "cpu_has_avx2"` -- function-level dispatch
+   - Should this be per-overload or per-function? (per-overload is natural since different C functions correspond to different SIMD paths)
+   - What if no matching CPU feature is found? Fall back to a non-SIMD overload.
+
+4. Where does the dispatch happen?
+   - At `_impl` level: select the right C function pointer at module init, call through pointer
+   - Static bool flag per feature, checked in the _impl dispatch chain
+   - The feature check is done once at module init, not per call
+
+### Proposed Grammar (tentative)
+
+```yaml
+functions:
+  - py_sig: "process(arr: buffer) -> void"
+    c_overloads:
+      - sig: "process_avx2(double *arr, int n)"
+        map: {arr: "arr.ptr", n: "arr.n"}
+        when: "arr.format == 'd' and cpu_has_avx2"
+      - sig: "process_scalar(double *arr, int n)"
+        map: {arr: "arr.ptr", n: "arr.n"}
+        when: "arr.format == 'd'"
+    default_raise: "ValueError: unsupported format"
+```
+
+### Implementation Sketch
+
+1. `parser.py`: Add `cpu_has_*` as valid identifiers in `when:` expressions
+2. `generator.py`: At module init, emit calls to detect CPU features and store in static bools
+3. `c2py_runtime.h/c`: Add `c2py_cpu_has(const char *feature)` function:
+   - Returns 1/0 for known features
+   - Uses __get_cpuid on x86, MRS on arm64, /proc/cpuinfo parsing as fallback
+4. In `_impl` function: before the dispatch chain, evaluate cpu_has_* as pre-computed bools
+
+### When to Start
+
+Discuss with stakeholders which CPU features are needed for ImageD11.
+The implementation depends on knowing the target architectures and
+the specific SIMD functions that ImageD11 will provide.
+
 ## Contributing Guidelines
 
 1. **Always use 7-bit ASCII encoding** -- no unicode characters
@@ -178,3 +263,6 @@ python tests/test_uniform.py
 5. Test across all supported Python versions before committing
 6. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
 7. Generated C code should compile with `gcc -Wall -Werror`
+8. Run both `test_uniform.py` and `test_peer_review.py` before committing
+9. Run `python3 tests/test_all.py` for multi-version validation
+10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
