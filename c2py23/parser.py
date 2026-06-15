@@ -739,7 +739,7 @@ def _validate_module(mod, base_dir):
             actual_count = c_funcs.get(c_name)
 
             if actual_count is not None and c2py_count != actual_count:
-                warnings.warn(
+                raise ValueError(
                     "P0: param count mismatch for '%s' in %s: "
                     ".c2py sig has %d params, C source has %d params" % (
                         c_name, mod.name, c2py_count, actual_count))
@@ -764,7 +764,7 @@ def _validate_module(mod, base_dir):
                     if not _expr_refers_to(expr, buf_name):
                         continue
                     if cp.base_type != expected_ctype:
-                        warnings.warn(
+                        raise ValueError(
                             "P4: format check '%s.format == '%s'' implies %s*, "
                             "but overload '%s' uses %s* for param '%s' in %s" % (
                                 buf_name, fmt_char, expected_ctype,

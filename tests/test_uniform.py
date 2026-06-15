@@ -1,6 +1,7 @@
 """Uniform test script for c2py23 - runs identically on Python 2.7 through 3.14.
 
-Tests all four test cases: arraysum, fill, dot, transform.
+Tests all test cases: arraysum, fill, dot, transform, types, optional,
+docstring, constants, timing, scalar_output, template, typedispatch.
 Uses ctypes arrays (buffer protocol works on 2.7 and 3.x) + memoryview for shape.
 On Python 2.7, some tests are skipped due to old buffer protocol limitations.
 """
@@ -286,6 +287,76 @@ def test_template():
     print("PASS: template")
 
 
+def test_typedispatch():
+    """Test format dispatch over all 10 PEP 3118 buffer types.
+    
+    Covers the complete format-to-ctype mapping:
+      'B' -> uint8_t   'b' -> int8_t
+      'H' -> uint16_t  'h' -> int16_t
+      'I' -> uint32_t  'i' -> int32_t
+      'Q' -> uint64_t  'q' -> int64_t
+      'f' -> float     'd' -> double
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'typedispatch'))
+    import dispatchmod
+
+    # uint8_t (format 'B')
+    arr_B = (ctypes.c_uint8 * 3)(0, 0, 0)
+    dispatchmod.fill(arr_B, 42)
+    assert list(arr_B) == [42, 42, 42], "uint8 fill failed: %s" % list(arr_B)
+
+    # int8_t (format 'b')
+    arr_b = (ctypes.c_int8 * 4)(0, 0, 0, 0)
+    dispatchmod.fill(arr_b, -7)
+    assert list(arr_b) == [-7, -7, -7, -7], "int8 fill failed: %s" % list(arr_b)
+
+    # uint16_t (format 'H')
+    arr_H = (ctypes.c_uint16 * 3)(0, 0, 0)
+    dispatchmod.fill(arr_H, 99)
+    assert list(arr_H) == [99, 99, 99], "uint16 fill failed: %s" % list(arr_H)
+
+    # int16_t (format 'h')
+    arr_h = (ctypes.c_int16 * 4)(0, 0, 0, 0)
+    dispatchmod.fill(arr_h, -13)
+    assert list(arr_h) == [-13, -13, -13, -13], "int16 fill failed: %s" % list(arr_h)
+
+    # uint32_t (format 'I')
+    arr_I = (ctypes.c_uint32 * 3)(0, 0, 0)
+    dispatchmod.fill(arr_I, 1000000)
+    assert list(arr_I) == [1000000, 1000000, 1000000], "uint32 fill failed: %s" % list(arr_I)
+
+    # int32_t (format 'i')
+    arr_i = (ctypes.c_int32 * 4)(0, 0, 0, 0)
+    dispatchmod.fill(arr_i, -1000000)
+    assert list(arr_i) == [-1000000, -1000000, -1000000, -1000000], "int32 fill failed: %s" % list(arr_i)
+
+    # uint64_t (format 'Q')
+    arr_Q = (ctypes.c_uint64 * 3)(0, 0, 0)
+    dispatchmod.fill(arr_Q, 9999999999)
+    assert list(arr_Q) == [9999999999, 9999999999, 9999999999], "uint64 fill failed: %s" % list(arr_Q)
+
+    # int64_t (format 'q')
+    arr_q = (ctypes.c_int64 * 4)(0, 0, 0, 0)
+    dispatchmod.fill(arr_q, -9999999999)
+    assert list(arr_q) == [-9999999999, -9999999999, -9999999999, -9999999999], "int64 fill failed: %s" % list(arr_q)
+
+    # float32 (format 'f')
+    arr_f = (ctypes.c_float * 4)(0, 0, 0, 0)
+    dispatchmod.fill(arr_f, 3.14)
+    vals_f = _to_list(arr_f)
+    for v in vals_f:
+        assert abs(v - 3.14) < 0.01, "float32 fill failed: %s" % vals_f
+
+    # float64 (format 'd')
+    arr_d = (ctypes.c_double * 3)(0, 0, 0)
+    dispatchmod.fill(arr_d, 2.718)
+    vals_d = _to_list(arr_d)
+    for v in vals_d:
+        assert abs(v - 2.718) < 0.0001, "float64 fill failed: %s" % vals_d
+
+    print("PASS: typedispatch")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -301,6 +372,7 @@ def main():
         ("timing", test_timing),
         ("scalar_output", test_scalar_output),
         ("template", test_template),
+        ("typedispatch", test_typedispatch),
     ]
     passed = 0
     failed = 0

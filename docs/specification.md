@@ -438,6 +438,110 @@ Key design point: the wrapper never transposes or copies data. Both C functions
 receive the same raw pointer; the dispatch only changes how `n` is computed and
 which C function interprets the layout.
 
+### Example 4: Dispatch Over All Buffer Types
+
+This example demonstrates `when:` dispatch over all 10 PEP 3118 format
+characters, mapping each to its corresponding C fixed-width type.
+
+**C source** (`typedispatch.c`):
+```c
+#include <stdint.h>
+
+void fill_u8(uint8_t *arr, int n, uint8_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_i8(int8_t *arr, int n, int8_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_u16(uint16_t *arr, int n, uint16_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_i16(int16_t *arr, int n, int16_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_u32(uint32_t *arr, int n, uint32_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_i32(int32_t *arr, int n, int32_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_u64(uint64_t *arr, int n, uint64_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_i64(int64_t *arr, int n, int64_t value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_f32(float *arr, int n, float value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+void fill_f64(double *arr, int n, double value) {
+    int i; for (i = 0; i < n; i++) arr[i] = value;
+}
+```
+
+**Interface** (`typedispatch.c2py`):
+```yaml
+module: dispatchmod
+source: [typedispatch.c]
+headers: [stdint.h]
+
+functions:
+  - py_sig: "fill(arr: buffer, value: float) -> void"
+    c_overloads:
+      - sig: "fill_u8(uint8_t *arr, int n, uint8_t value)"
+        when: "arr.format == 'B'"
+      - sig: "fill_i8(int8_t *arr, int n, int8_t value)"
+        when: "arr.format == 'b'"
+      - sig: "fill_u16(uint16_t *arr, int n, uint16_t value)"
+        when: "arr.format == 'H'"
+      - sig: "fill_i16(int16_t *arr, int n, int16_t value)"
+        when: "arr.format == 'h'"
+      - sig: "fill_u32(uint32_t *arr, int n, uint32_t value)"
+        when: "arr.format == 'I'"
+      - sig: "fill_i32(int32_t *arr, int n, int32_t value)"
+        when: "arr.format == 'i'"
+      - sig: "fill_u64(uint64_t *arr, int n, uint64_t value)"
+        when: "arr.format == 'Q'"
+      - sig: "fill_i64(int64_t *arr, int n, int64_t value)"
+        when: "arr.format == 'q'"
+      - sig: "fill_f32(float *arr, int n, float value)"
+        when: "arr.format == 'f'"
+      - sig: "fill_f64(double *arr, int n, double value)"
+        when: "arr.format == 'd'"
+    default_raise: "TypeError: expected buffer of type B,b,H,h,I,i,Q,q,f,d"
+```
+
+**Complete Format-to-C-Type Mapping**:
+
+| PEP 3118 | Format char | C Type      | Size |
+|----------|-------------|-------------|------|
+| ubyte    | `B`         | `uint8_t`   | 1    |
+| byte     | `b`         | `int8_t`    | 1    |
+| ushort   | `H`         | `uint16_t`  | 2    |
+| short    | `h`         | `int16_t`   | 2    |
+| uint     | `I`         | `uint32_t`  | 4    |
+| int      | `i`         | `int32_t`   | 4    |
+| ulonglong| `Q`         | `uint64_t`  | 8    |
+| longlong | `q`         | `int64_t`   | 8    |
+| float    | `f`         | `float`     | 4    |
+| double   | `d`         | `double`    | 8    |
+
+**Python call**:
+```python
+import ctypes, sys
+sys.path.insert(0, '.')
+import dispatchmod
+
+# Dispatch by buffer format character
+arr = (ctypes.c_uint8 * 5)(0,0,0,0,0)
+dispatchmod.fill(arr, 42)
+# arr == [42, 42, 42, 42, 42]  -- dispatched to fill_u8
+
+arr2 = (ctypes.c_double * 3)(0,0,0)
+dispatchmod.fill(arr2, 3.14)
+# arr2 == [3.14, 3.14, 3.14]   -- dispatched to fill_f64
+```
+
 ## Generated Wrapper Structure
 
 For each function in the `.c2py` file, the generator produces two C functions:

@@ -3,11 +3,13 @@
 Feedback from porting ImageD11's 58 C functions from f2py to c2py23.
 Covering safety, usability, and features needed for Phase 2/3 of the migration.
 
+**Status:** 7 of 9 implemented. 2 items remain: SIMD dispatch, build-isolation docs.
+
 ---
 
 ## Safety
 
-### 1. Parameter count validation at codegen time
+### 1. Parameter count validation at codegen time -- DONE
 
 **Severity: Critical**  |  Real bug hit
 
@@ -21,7 +23,10 @@ behavior at runtime -- `ns` landed in `verbose`'s slot, `nf` became `ns`, and
 actual C function declaration (from the header or .c file). Emit a hard error
 at codegen time if they don't match. At minimum, emit a warning.
 
-### 2. Compile-time validation of buffer format vs C type
+**Resolution:** Implemented. `_validate_module()` in parser.py parses C source
+files, extracts function parameter counts, and raises `ValueError` on mismatch.
+
+### 2. Compile-time validation of buffer format vs C type -- DONE
 
 **Severity: High**
 
@@ -34,11 +39,15 @@ but is not portable.
 **Request:** Map buffer format checks to corresponding C types and warn if the
 C function prototype uses a different-width type (e.g. `int32_t*` vs `int*`).
 
+**Resolution:** Implemented. `_validate_module()` includes P4 check that maps
+format characters in checks to expected C types via `_FORMAT_TO_CTYPE` and
+raises `ValueError` when the overload uses a different-size pointer type.
+
 ---
 
 ## Usability
 
-### 3. Direct support for fixed-width integer types
+### 3. Direct support for fixed-width integer types -- DONE
 
 **Severity: High**  |  43 thin wrappers, 87 type references
 
@@ -56,7 +65,11 @@ Map them to PEP 3118 format characters automatically:
 `uint16_t*` -> `H`, `int32_t*` -> `i`, `uint8_t*` -> `B`, `int8_t*` -> `b`,
 `int64_t*` -> `q`, `uint32_t*` -> `I`, `int16_t*` -> `h`.
 
-### 4. Handle integer literal map values
+**Resolution:** Implemented. Parser accepts all 8 fixed-width types
+(`int8_t`..`uint64_t`) in C signatures directly. Mapped to PEP 3118 format
+characters via `_FORMAT_TO_CTYPE` in parser.py. ImageD11 thin wrappers removed.
+
+### 4. Handle integer literal map values -- DONE
 
 **Severity: Medium**
 
@@ -71,7 +84,10 @@ and the error message is unhelpful.
 constant expressions), or at minimum give a clear error message:
 "map values must be strings; got int: 0. Did you mean '0'?"
 
-### 5. Better buffer check error messages
+**Resolution:** Implemented. YAML type coercion in parser auto-coerces bare
+int/float in map, when, and checks values. `verbose: 0` works directly.
+
+### 5. Better buffer check error messages -- DONE
 
 **Severity: Medium**
 
@@ -87,7 +103,11 @@ difficult. The user has to add debug prints to discover the actual format.
 ValueError: check failed: labels1.format == 'i' (got 'l')
 ```
 
-### 6. Output scalar convention option
+**Resolution:** Implemented. Generator emits format comparison failure messages
+with actual values: `check failed: expr (got format='X')`, `check failed: expr
+(got 'X' vs 'Y')`, etc.
+
+### 6. Output scalar convention option -- DONE
 
 **Severity: Low**  |  Useful for migration
 
@@ -109,6 +129,11 @@ scalar return values would simplify testing and migration.
 
 **Request:** Option to annotate `intent(out)` scalar parameters in the C sig
 so c2py23 returns them as Python return values, matching f2py behavior.
+
+**Resolution:** Implemented. `outputs:` key on C overloads declares pointer
+params as output scalars. c2py23 auto-allocates 1-element stack variables,
+calls the C function, and returns values in a Python tuple. Tested in
+`tests/cases/scalar_output/`.
 
 ---
 
@@ -134,7 +159,7 @@ c_overloads:
 built-in CPU feature predicates: `cpu_has_avx2`, `cpu_has_avx512`,
 `cpu_has_neon`, etc. The condition is evaluated once at module load time.
 
-### 8. Preprocessor template pattern support
+### 8. Preprocessor template pattern support -- DONE
 
 **Severity: Low**  |  Phase 2 nice-to-have (PLAN.md)
 
@@ -152,6 +177,10 @@ Each variant needs its own .c2py entry with a different C symbol name.
 **Request:** Support for parameterized .c2py function definitions that expand
 to multiple variants, similar to a YAML loop/macro. Alternatively, document
 the recommended approach for template-based code generation with c2py23.
+
+**Resolution:** Implemented. `expand:` key with `${VAR}` substitution creates
+N variants from a single template. Tested in `tests/cases/template/`.
+Documented in `docs/specification.md` under "Template Expansion".
 
 ---
 
@@ -176,18 +205,19 @@ transparently.
 
 ## Summary
 
-| # | Request | Severity |
-|---|---------|----------|
-| 1 | Parameter count validation | Critical |
-| 2 | Buffer format vs C type validation | High |
-| 3 | Direct fixed-width integer types | High |
-| 4 | Integer literal map values | Medium |
-| 5 | Better check failure messages | Medium |
-| 6 | Output scalar convention option | Low |
-| 7 | CPU feature detection (SIMD dispatch) | Medium |
-| 8 | Template pattern support | Low |
-| 9 | --no-build-isolation docs | Low |
+| # | Request | Severity | Status |
+|---|---------|----------|--------|
+| 1 | Parameter count validation | Critical | DONE |
+| 2 | Buffer format vs C type validation | High | DONE |
+| 3 | Direct fixed-width integer types | High | DONE |
+| 4 | Integer literal map values | Medium | DONE |
+| 5 | Better check failure messages | Medium | DONE |
+| 6 | Output scalar convention option | Low | DONE |
+| 7 | CPU feature detection (SIMD dispatch) | Medium | OPEN |
+| 8 | Template pattern support | Low | DONE |
+| 9 | --no-build-isolation docs | Low | DEFERRED |
 
-#1 caused a real CI failure (bloboverlaps on Python 3.11).
-#3 adds 43 wrapper functions and 87 type-punning casts to the codebase.
-Both should be prioritized.
+Items 1-6 and 8 are complete. Item 7 (SIMD dispatch) is the main blocker for
+ImageD11 Phase 3. Item 9 is deferred -- the plan is to publish binary wheels
+to PyPI (one per platform/arch, Python-version-independent via ctypes-style
+distribution), eliminating the need for `--no-build-isolation` entirely.
