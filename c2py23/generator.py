@@ -713,6 +713,9 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False)
     # Restrict checks
     _emit_restrict_checks(out, buf_params, func)
 
+    # Contiguity checks
+    _emit_contiguity_checks(out, buf_params)
+
     # Call impl (with timing ticks around it)
     impl_args = []
     for p in buf_params:
@@ -728,7 +731,7 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False)
     out.append('')
 
     # Cleanup
-    if len(buf_params) >= 2:
+    if len(buf_params) >= 1:
         out.append('cleanup:')
     for p in reversed(buf_params):
         out.append('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
@@ -845,6 +848,50 @@ def _emit_restrict_checks(out, buf_params, func):
             out.append('        goto cleanup;')
             out.append('    }')
             out.append('')
+
+
+def _emit_contiguity_checks(out, buf_params):
+    """Emit contiguity validation for each buffer.
+
+    Accepts C-contiguous and Fortran-contiguous layouts.
+    Rejects strided arrays, negative strides, indirect buffers.
+    """
+    if not buf_params:
+        return
+
+    for p in buf_params:
+        name = p.name
+        fmt = lambda s: s.format(name)
+        out.append('    /* contiguity check: {0} */'.format(name))
+        out.append('    do {')
+        out.append('        int _ok = 1;')
+        out.append('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
+        out.append(fmt('        if (buf_{0}.ndim >= 1) {{'))
+        out.append(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
+        out.append('            int _d;')
+        out.append('            /* check C-contiguous */')
+        out.append(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
+        out.append(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+        out.append(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+        out.append(fmt('                _expected *= buf_{0}.shape[_d];'))
+        out.append('            }')
+        out.append('            if (_ok) break;')
+        out.append('            /* check F-contiguous */')
+        out.append('            _ok = 1;')
+        out.append(fmt('            _expected = buf_{0}.itemsize;'))
+        out.append(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
+        out.append(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+        out.append(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+        out.append(fmt('                _expected *= buf_{0}.shape[_d];'))
+        out.append('            }')
+        out.append('        }')
+        out.append('        if (!_ok) {')
+        out.append('            PyErr_SetString(PyExc_ValueError,')
+        out.append('                "buffer not contiguous (C or Fortran contiguous required)");')
+        out.append('            goto cleanup;')
+        out.append('        }')
+        out.append('    } while(0);')
+        out.append('')
 
 
 # ---------------------------------------------------------------------------

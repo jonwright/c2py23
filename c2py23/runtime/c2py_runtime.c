@@ -146,6 +146,7 @@ int c2py_runtime_init(void)
     RESOLVE_REQ(C2PY.exc_RuntimeError, "PyExc_RuntimeError");
     RESOLVE_REQ(C2PY.exc_MemoryError, "PyExc_MemoryError");
     RESOLVE_REQ(C2PY.Err_SetString, "PyErr_SetString");
+    RESOLVE_REQ(C2PY.Err_Format, "PyErr_Format");
 
     /* --- Module creation --- */
     {

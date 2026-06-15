@@ -181,6 +181,7 @@ typedef struct {
     void *exc_MemoryError;
     void (*Err_SetString)(PyObject*, const char*);
     PyObject* (*Err_Occurred)(void);
+    PyObject* (*Err_Format)(PyObject*, const char*, ...);
 
     /* None singleton (immortal, INCREF/DECREF unnecessary) */
     PyObject *none_obj;
@@ -225,6 +226,7 @@ extern c2py_api_t C2PY;
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()
 #define PyErr_Occurred()               C2PY.Err_Occurred()
+#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #define Py_RETURN_NONE                 do { C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; } while(0)
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
