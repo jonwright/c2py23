@@ -87,55 +87,54 @@ The `build` subcommand also supports `--generate-only` and `--compile-only` flag
 | Return `float` | C `float` or `double` return |
 
 **C pointer element types**: `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`,
-`uint32_t`, `int64_t`, `uint64_t`, `int`, `float`, `double`, `char`
+`uint32_t`, `int64_t`, `uint64_t`, `int`, `float`, `double`, `char`, `void`
+
+The `void*` pointer type maps from Python `int` (pointer-width, casts via `intptr_t`).
+This is for opaque addresses the user manages (GPU memory, custom allocators, etc.).
+The wrapper never dereferences `void*` -- it is a pure address passthrough.
 
 **Output scalars** (`outputs:` key): supports `int8_t`, `int16_t`, `int32_t`,
 `uint8_t`, `uint16_t`, `uint32_t`, `int64_t`, `uint64_t`, `float`, `double`,
 `int` as return-by-pointer parameters.
 
-No structs, enums, nested pointers, or heap allocation. All memory is flat and owned by Python.
+## What It Doesn't Do
+
+- No structs, enums, nested pointers, or heap allocation -- all memory is flat and owned by Python
+- No `-lpython` link -- one `.so` works on Python 2.7 through 3.14 (nimpy-style `dlopen(NULL)` + `dlsym()` at load time)
+- No copies or transpositions -- zero-copy, C functions operate on buffers in-place
+- No numpy required -- `ctypes` arrays, `memoryview`, `bytearray`, and anything supporting PEP 3118 works
 
 ## Features
 
-- **Format dispatch** -- call different C functions based on buffer element type (`float` vs `double` vs `int32_t`)
-- **Shape dispatch** -- call different C functions based on buffer dimensionality ([N,3] vs [3,N])
-- **Template expansion** -- `expand:` key generates multiple function variants via `${VAR}` substitution
-- **SIMD dispatch** -- `variants:` key dispatches to ISA-specific kernel variants based on CPU feature flags; static dispatch resolved at module init. Supports multi-flag compilation (same kernel compiled with `-mavx2`, `-mavx512f`, etc.)
-- **CPU feature detection** -- runtime headers detect avx2, avx512f, neon, asimd, sve, and other CPU features via CPUID/MRS
-- **GIL release** -- `gil_release: true` releases the GIL during C calls for parallelism; per-function and per-overload
-- **Output scalars** -- `outputs:` key auto-allocates return-by-pointer params as Python tuple values (f2py compat)
-- **Module constants** -- `constants:` key emits integer module-level constants
-- **Optional parameters** -- `int` and `float` params support `= default_value`
-- **Custom docstrings** -- `doc:` key overrides auto-generated docstrings
-- **Default raise** -- `default_raise:` specifies exception type and message when no overload matches
-- **restrict enforcement** -- the wrapper checks that writable buffers do not alias; C code can assume `restrict`
-- **PEP 3118 buffer protocol** -- accepts any object supporting the buffer interface (`bytes`, `bytearray`, `array.array`, `memoryview`, `ctypes` arrays, numpy arrays, etc.)
-- **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14. Uses `dlopen(NULL)` + `dlsym()` to resolve CPython API at load time. Originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy).
-- **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` used when PEP 3118 is unavailable
-- **Zero-copy** -- the wrapper never allocates, copies, or transposes memory; all buffers are owned and managed by Python
-- **Contiguity enforcement** -- validates C and Fortran-order contiguity, rejects strided or indirect buffers
-- **Per-function timing** -- `timing: true` enables cycle-count instrumentation of C call overhead
-- **Arch-specific clocks** -- `rdtsc` (x86), `CNTVCT_EL0` (ARM64), `mftb` (POWER) for low-overhead timing
-- **METH_FASTCALL** -- on Python 3.12+, the wrapper uses `METH_FASTCALL` for reduced call overhead
-- **Codegen validation** -- parameter count mismatch between .c2py sig and C source emits a warning
-- **Type validation** -- format checks (e.g. `buffer.format == 'i'`) are validated against C pointer types
-- **Check diagnostics** -- check failures include actual runtime values (e.g. `got format='l'`)
-- **ASan support** -- `c2py23 build --asan` links with `-fsanitize=address` for leak detection
+The `.c2py` YAML interface defines Python signatures, C overloads, and dispatch conditions.
+The generator emits a single-file C99 wrapper with no heap allocations.
+
+- **Buffer protocol** with format dispatch (`float` vs `double` vs `int32_t`), arithmetic checks (`a.n >= b.n + 2`), and contiguity enforcement
+- **Overload dispatch** by buffer type, shape, CPU features (AVX2/AVX-512/NEON), or arbitrary `when:` conditions; variants statically resolved at init
+- **Template expansion** (`expand:` with `${VAR}` substitution) for generating typed variants
+- **GIL release** (`gil_release: true`) per-function or per-overload for parallel C calls
+- **Output scalars** (`outputs:`) return-by-pointer parameters as Python tuple values
+- **Optional parameters** with defaults, custom docstrings, `default_raise:` error messages
+- **Opaque pointers** -- `void*` maps from Python `int` for user-managed memory (GPU, custom allocators)
+- **Per-function timing** with `rdtsc`/`CNTVCT_EL0`/`mftb` clocks, decoded via ctypes
+- **ASan support** via `c2py23 build --asan`
+- **Separate generate/compile** steps for meson/cmake/setuptools integration
+- **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` when PEP 3118 is unavailable
 
 ## Supported Python Versions
 
 | Version | Container | Tests |
 |---------|-----------|-------|
-| 2.7.18 | ubuntu20.04 | 12/13 pass, 1 skip (transform) |
-| 3.6.15 | debian10 | 13/13 pass |
-| 3.7.17 | ubuntu24.04 | 13/13 pass |
-| 3.8.10 | ubuntu20.04 | 13/13 pass |
-| 3.9.25 | ubuntu24.04 | 13/13 pass |
-| 3.10.20 | ubuntu24.04 | 13/13 pass |
-| 3.11.15 | ubuntu24.04 | 13/13 pass |
-| 3.12.3 | ubuntu24.04 | 13/13 pass |
-| 3.13.14 | ubuntu24.04 | 13/13 pass |
-| 3.14.6 | ubuntu24.04 | 13/13 pass (GIL-enabled; free-threaded not yet supported) |
+| 2.7.18 | ubuntu20.04 | 13/14 pass, 1 skip (transform) |
+| 3.6.15 | debian10 | 14/14 pass |
+| 3.7.17 | ubuntu24.04 | 14/14 pass |
+| 3.8.10 | ubuntu20.04 | 14/14 pass |
+| 3.9.25 | ubuntu24.04 | 14/14 pass |
+| 3.10.20 | ubuntu24.04 | 14/14 pass |
+| 3.11.15 | ubuntu24.04 | 14/14 pass |
+| 3.12.3 | ubuntu24.04 | 14/14 pass |
+| 3.13.14 | ubuntu24.04 | 14/14 pass |
+| 3.14.6 | ubuntu24.04 | 14/14 pass (GIL-enabled; free-threaded not yet supported) |
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
@@ -185,7 +184,7 @@ c2py23/
   tests/
     cases/                    # Test cases (C source + .c2py interface)
     run_tests.sh              # Build + test for one Python version
-    test_uniform.py           # 2.7-3.14 compatible test runner (13 tests)
+    test_uniform.py           # 2.7-3.14 compatible test runner (14 tests)
     test_all.py               # Orchestrator across snakepit containers
     test_leaks.py             # Memory stress test (valgrind compatible)
     test_peer_review.py       # Alias + contiguity enforcement tests (requires numpy)

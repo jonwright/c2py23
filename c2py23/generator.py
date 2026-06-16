@@ -225,12 +225,16 @@ def _emit_static_dispatch(out, func, buf_params, scalar_params):
 
 def _emit_impl_func(out, func, buf_params, scalar_params, timing, has_gil_release):
     name = func.name
+    void_ptr_names = _collect_void_ptr_names(func)
     params_c = []
     for p in buf_params:
         params_c.append('Py_buffer *buf_' + p.name)
     for p in scalar_params:
         if p.pytype == 'int':
-            params_c.append('int c_' + p.name)
+            if p.name in void_ptr_names:
+                params_c.append('intptr_t c_' + p.name)
+            else:
+                params_c.append('int c_' + p.name)
         else:
             params_c.append('double c_' + p.name)
 
@@ -534,6 +538,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                     if sp.name == p.name:
                         if p.base_type == 'int':
                             args.append('c_' + p.name)
+                        elif p.base_type == 'void':
+                            args.append('(void *)(intptr_t)c_' + p.name)
                         elif p.base_type == 'float':
                             args.append('(float)c_' + p.name)
                         elif p.base_type == 'double':
@@ -545,6 +551,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                 c_str = _expr_to_c(expr, buf_params, scalar_params, ol)
                 if p.is_pointer and _is_ptr_expr(expr):
                     c_str = '(' + p.ctype + ')' + c_str
+                elif p.is_pointer and p.base_type == 'void':
+                    c_str = '(void *)(intptr_t)' + c_str
                 elif not p.is_pointer and p.base_type == 'int' and _expr_is_n_count(expr):
                     c_str = '(int)(' + c_str + ')'
                 elif not p.is_pointer and p.base_type == 'float':
@@ -771,10 +779,10 @@ def _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing):
     out.append('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params, timing)
+    _emit_wrapper_locals(out, buf_params, scalar_params, func, timing)
 
     # Arg parse via PyArg_ParseTuple
-    fmt_str = _build_parse_format(all_params)
+    fmt_str = _build_parse_format(all_params, func)
     parse_args = ['args', '"' + fmt_str + '"']
     for p in all_params:
         if p.pytype == 'buffer':
@@ -804,7 +812,7 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
     out.append('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params, timing)
+    _emit_wrapper_locals(out, buf_params, scalar_params, func, timing)
 
     # Arg count check (handle optional params with defaults)
     total = len(all_params)
@@ -826,6 +834,7 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
     out.append('')
 
     # Extract args directly from the array (only up to nargs)
+    void_ptr_names = _collect_void_ptr_names(func)
     idx = 0
     for p in all_params:
         is_optional = (p.default is not None)
@@ -840,7 +849,10 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
                 out.append('    {')
             out.append('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
             out.append('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
-            out.append('        c_{0} = (int)_c2py_tmp;'.format(p.name))
+            if p.name in void_ptr_names:
+                out.append('        c_{0} = (intptr_t)_c2py_tmp;'.format(p.name))
+            else:
+                out.append('        c_{0} = (int)_c2py_tmp;'.format(p.name))
             out.append('    }')
         else:
             out.append('    /* extract float: {0} from args[{1}]{2} */'.format(
@@ -864,17 +876,24 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
     out.append('')
 
 
-def _emit_wrapper_locals(out, buf_params, scalar_params, timing=False):
+def _emit_wrapper_locals(out, buf_params, scalar_params, func, timing=False):
     """Emit local variable declarations shared by both wrappers."""
+    void_ptr_names = _collect_void_ptr_names(func)
     for p in buf_params:
         out.append('    PyObject *py_' + p.name + ' = NULL;')
     for p in scalar_params:
         default_val = p.default
         if p.pytype == 'int':
-            if default_val is None:
-                out.append('    int c_%s = 0;' % p.name)
+            if p.name in void_ptr_names:
+                if default_val is None:
+                    out.append('    intptr_t c_%s = 0;' % p.name)
+                else:
+                    out.append('    intptr_t c_%s = %d;' % (p.name, int(default_val)))
             else:
-                out.append('    int c_%s = %d;' % (p.name, int(default_val)))
+                if default_val is None:
+                    out.append('    int c_%s = 0;' % p.name)
+                else:
+                    out.append('    int c_%s = %d;' % (p.name, int(default_val)))
         else:
             if default_val is None:
                 out.append('    double c_%s = 0.0;' % p.name)
@@ -952,11 +971,34 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False)
     out.append('    return ret;')
 
 
-def _build_parse_format(py_params):
+def _collect_void_ptr_names(func):
+    """Return set of scalar param names that map to C void* in any overload."""
+    if func is None:
+        return set()
+    scalar_names = set(p.name for p in func.py_params if p.pytype == 'int')
+    result = set()
+    for ol in func.overloads:
+        if ol.variants:
+            entries = [(v.params, ol.map_exprs) for v in ol.variants]
+        else:
+            entries = [(ol.params, ol.map_exprs)]
+        for params, map_exprs in entries:
+            for cp in params:
+                if cp.is_pointer and cp.base_type == 'void':
+                    expr = map_exprs.get(cp.name)
+                    if expr is not None and isinstance(expr, Var) and expr.name in scalar_names:
+                        result.add(expr.name)
+    return result
+
+
+def _build_parse_format(py_params, func=None):
     """Build the PyArg_ParseTuple format string.
 
     Inserts '|' before the first optional parameter (one with a default).
+    If func is provided, Python int params that map to C void* use
+    pointer-width format 'l' (long) instead of 'i' (int).
     """
+    void_ptr_names = _collect_void_ptr_names(func) if func else set()
     fmt = ''
     hit_optional = False
     for p in py_params:
@@ -966,7 +1008,10 @@ def _build_parse_format(py_params):
         if p.pytype == 'buffer':
             fmt += 'O'
         elif p.pytype == 'int':
-            fmt += 'i'
+            if p.name in void_ptr_names:
+                fmt += 'l'
+            else:
+                fmt += 'i'
         elif p.pytype == 'float':
             fmt += 'd'
     return fmt

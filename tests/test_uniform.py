@@ -458,6 +458,36 @@ def test_gil_release():
     print("PASS: gil_release")
 
 
+def test_address():
+    """Test opaque void* pointers passed as Python int.
+
+    Demonstrates that Python int values can map to C void* parameters.
+    This is useful for passing GPU pointers, allocator handles, or
+    other opaque addresses without Python managing the memory.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'address'))
+    import addressmod
+
+    # Allocate a buffer in Python, pass its address as int to C
+    buf = (ctypes.c_int * 10)()
+    ptr = ctypes.addressof(buf)
+
+    # Store via void* -- C side dereferences the int as a pointer
+    ret = addressmod.address_store(ptr, 42, 3)
+    assert ret == 0, "address_store(ptr, 42, 3) returned %d, expected 0" % ret
+    assert buf[3] == 42, "buf[3] = %d, expected 42 after address_store" % buf[3]
+
+    # NULL pointer returns error
+    ret = addressmod.address_store(0, 99, 0)
+    assert ret == -1, "address_store(0, 99, 0) returned %d, expected -1" % ret
+
+    # Verify other elements are untouched
+    assert buf[0] == 0, "buf[0] was modified, expected 0"
+    assert buf[9] == 0, "buf[9] was modified, expected 0"
+
+    print("PASS: address")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -475,6 +505,7 @@ def main():
         ("template", test_template),
         ("typedispatch", test_typedispatch),
         ("gil_release", test_gil_release),
+        ("address", test_address),
     ]
     passed = 0
     failed = 0
