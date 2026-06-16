@@ -35,6 +35,7 @@ PYTHON_VERSIONS = [
     ("3.12", "ubuntu24.04.sif"),
     ("3.13", "ubuntu24.04.sif"),
     ("3.14", "ubuntu24.04.sif"),
+    ("3.14t", "ubuntu24.04.sif"),
 ]
 
 _log_file = None

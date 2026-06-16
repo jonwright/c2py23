@@ -22,6 +22,13 @@ int main(void) {
     /* --- Basic info --- */
     printf("PYVER %s\n", Py_GetVersion());
 
+    /* --- Free-threading detection --- */
+#ifdef Py_GIL_DISABLED
+    printf("FREE_THREADED %d\n", Py_GIL_DISABLED ? 1 : 0);
+#else
+    printf("FREE_THREADED 0\n");
+#endif
+
     /* --- Type sizes --- */
     printf("SIZEOF void_ptr      %zu\n", sizeof(void*));
     printf("SIZEOF Py_ssize_t    %zu\n", sizeof(Py_ssize_t));
@@ -36,6 +43,16 @@ int main(void) {
         printf("OFFSET PyObject.ob_type    %td\n",
                (char*)&tmp->ob_type - (char*)tmp);
         printf("SIZEOF PyObject            %zu\n", sizeof(PyObject));
+#ifdef Py_GIL_DISABLED
+        /* On free-threaded builds, PyObject has additional fields.
+         * ob_refcnt does not exist directly; report the sub-fields. */
+        {
+            printf("OFFSET ob_ref_local        %td\n",
+                   (char*)&tmp->ob_ref_local - (char*)tmp);
+            printf("OFFSET ob_ref_shared       %td\n",
+                   (char*)&tmp->ob_ref_shared - (char*)tmp);
+        }
+#endif
     }
 
     /* --- Py_buffer layout --- */

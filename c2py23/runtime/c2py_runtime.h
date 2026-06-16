@@ -49,14 +49,46 @@ typedef long Py_ssize_t;
 /* CPython type definitions (stable layouts across versions)          */
 /* ------------------------------------------------------------------ */
 
-/* PyObject - we only store/compare pointers; the layout here is for
- * PyModuleDef_Base embedding and sizeof checks only. */
+/* PyObject layout: differs between GIL-enabled and free-threaded builds.
+ *
+ * GIL-enabled (CPython 2.7 - 3.14 standard): 16 bytes LP64
+ *   offset 0: Py_ssize_t ob_refcnt
+ *   offset 8: void *ob_type
+ *
+ * Free-threaded (CPython 3.13t+ --disable-gil): 32 bytes LP64
+ *   offset  0: uintptr_t ob_tid
+ *   offset  8: uint16_t ob_flags
+ *   offset 10: uint8_t  ob_mutex
+ *   offset 11: uint8_t  ob_gc_bits
+ *   offset 12: uint32_t ob_ref_local
+ *   offset 16: Py_ssize_t ob_ref_shared   <-- external refcount
+ *   offset 24: void *ob_type
+ *
+ * We define both layouts.  Generated code uses macros (C2PY_SET_MNAME,
+ * C2PY_SET_MDOC, etc.) that work with either layout via C2PY offsets.
+ */
+
+/* GIL-enabled PyObject layout (standard CPython) */
 typedef struct _c2py_object {
     Py_ssize_t ob_refcnt;
     void *ob_type;
 } PyObject;
 
-/* Shorthand for embedding PyObject at the head of a struct */
+/* Free-threaded PyObject layout (CPython --disable-gil) */
+/* PyMutex: per-object lock, uint8_t with two-bit state (private) */
+typedef struct { uint8_t _bits; } PyMutex;
+
+typedef struct _c2py_object_ft {
+    uintptr_t ob_tid;
+    uint16_t ob_flags;
+    PyMutex ob_mutex;
+    uint8_t ob_gc_bits;
+    uint32_t ob_ref_local;
+    Py_ssize_t ob_ref_shared;
+    void *ob_type;
+} PyObject_FT;
+
+/* Shorthand for embedding PyObject at the head of a struct (GIL layout) */
 #define PyObject_HEAD \
     Py_ssize_t ob_refcnt; \
     void *ob_type;
@@ -83,7 +115,7 @@ typedef struct {
     void *internal;
 } Py_buffer;
 
-/* PyMethodDef: stable layout since 1.0 */
+/* PyMethodDef: stable layout across all Python versions */
 typedef struct {
     const char *ml_name;
     PyCFunction ml_meth;
@@ -91,7 +123,7 @@ typedef struct {
     const char *ml_doc;
 } PyMethodDef;
 
-/* PyModuleDef_Base: stable core layout since Python 3.0 */
+/* PyModuleDef_Base: standard GIL-enabled layout (Python 3.0+) */
 typedef struct PyModuleDef_Base {
     PyObject ob_base;
     PyObject *(*m_init)(void);
@@ -99,7 +131,15 @@ typedef struct PyModuleDef_Base {
     PyObject *m_copy;
 } PyModuleDef_Base;
 
-/* PyModuleDef for Python 3.x  (core fields ABI-stable across 3.x) */
+/* PyModuleDef_Base for free-threaded builds (PyObject is 32 bytes) */
+typedef struct PyModuleDef_Base_FT {
+    PyObject_FT ob_base;
+    PyObject *(*m_init)(void);
+    Py_ssize_t m_index;
+    PyObject *m_copy;
+} PyModuleDef_Base_FT;
+
+/* PyModuleDef for Python 3.x standard GIL layout */
 typedef struct PyModuleDef {
     PyModuleDef_Base m_base;
     const char *m_name;
@@ -111,6 +151,19 @@ typedef struct PyModuleDef {
     void *m_clear;
     void *m_free;
 } PyModuleDef;
+
+/* PyModuleDef for free-threaded builds (PyModuleDef_Base is 56 bytes) */
+typedef struct PyModuleDef_FT {
+    PyModuleDef_Base_FT m_base;
+    const char *m_name;
+    const char *m_doc;
+    Py_ssize_t m_size;
+    PyMethodDef *m_methods;
+    void *m_slots;
+    void *m_traverse;
+    void *m_clear;
+    void *m_free;
+} PyModuleDef_FT;
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                          */
@@ -136,6 +189,13 @@ typedef struct PyModuleDef {
 /* Module init macro - initializes the PyModuleDef_Base embedded in PyModuleDef. */
 #define PyModuleDef_HEAD_INIT { {1, NULL}, NULL, 0, NULL }
 
+/* Module init macro for free-threaded builds (PyObject is 32 bytes).
+ * ob_ref_shared = 1, ob_type = NULL, m_init = NULL, m_index = 0, m_copy = NULL.
+ * ob_mutex is zeroed via {0} (PyMutex is struct { uint8_t _bits; }).
+ * Other PyObject fields (ob_tid, ob_flags, ob_gc_bits, ob_ref_local) are zeroed. */
+#define PyModuleDef_HEAD_INIT_FT \
+    { {0, 0, {0}, 0, 0, 1, NULL}, NULL, 0, NULL}
+
 /* ------------------------------------------------------------------ */
 /* Function pointer table - populated by c2py_runtime_init()          */
 /* ------------------------------------------------------------------ */
@@ -146,7 +206,12 @@ typedef struct {
     int version_minor;
 
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
+    int is_free_threaded;           /* 1 = Python built with --disable-gil */
     Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
+    Py_ssize_t pyobject_size;      /* actual sizeof(PyObject) for this Python version */
+    Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
+    Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
+    ptrdiff_t ob_refcnt_offset;    /* offset of ob_refcnt (or ob_ref_shared on FT) in PyObject */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
@@ -248,23 +313,22 @@ extern c2py_api_t C2PY;
 /* is not an exported symbol)                                         */
 /* ------------------------------------------------------------------ */
 
-/* Manual refcount increment - our PyObject has ob_refcnt first.
- * Safe on CPython 2.7 through 3.11 where refcount is a simple
- * Py_ssize_t; on 3.12+ the real Py_IncRef symbol is used instead. */
+/* Manual refcount increment - accesses ob_refcnt via the correct offset
+ * for the Python build (ob_refcnt on GIL, ob_ref_shared on free-threaded).
+ * Safe on GIL-enabled builds where refcount is a simple Py_ssize_t field.
+ * On free-threaded builds this fallback is UNSAFE (ob_ref_shared requires
+ * atomic operations); always prefer Py_IncRef / Py_DecRef on 3.12+. */
 static inline void _c2py_inc_ref_manual(PyObject *op)
 {
-    ++op->ob_refcnt;
+    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
+    ++(*refcnt);
 }
 
 static inline void _c2py_dec_ref_manual(PyObject *op)
 {
-    --op->ob_refcnt;
-    if (op->ob_refcnt == 0) {
-        /* Cannot call _Py_Dealloc without knowing its symbol name.
-         * This path should be unreachable if the CPython C API is used
-         * correctly (Py_DECREF is only called on objects whose lifetime
-         * is managed by calls through the interpreter's own API).
-         * Log a diagnostic and leak to avoid a use-after-free crash. */
+    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
+    --(*refcnt);
+    if (*refcnt == 0) {
         fprintf(stderr, "c2py_runtime: _c2py_dec_ref_manual reached zero "
                 "refcount for %p -- possible leak\n", (void*)op);
     }

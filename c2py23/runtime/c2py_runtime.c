@@ -234,6 +234,40 @@ int c2py_runtime_init(void)
         }
     }
 
+    /* --- Detect free-threaded build ---
+     * The version string on free-threaded builds contains "free-threading".
+     * We also verify with Py_IncRef existence (free-threaded builds must
+     * export Py_IncRef for atomic refcount operations).
+     */
+    {
+        typedef const char* (*ver_fn)(void);
+        ver_fn getver = (ver_fn)dlsym(dl, "Py_GetVersion");
+        const char *vstr = getver ? getver() : "";
+        C2PY.is_free_threaded = (vstr && strstr(vstr, "free-threading") != NULL);
+    }
+
+    /* --- Set ABI layout --- */
+    if (C2PY.is_free_threaded) {
+        /* Free-threaded PyObject layout (32 bytes LP64):
+         *   ob_tid:0 ob_flags:8 ob_mutex:10 ob_gc_bits:11
+         *   ob_ref_local:12 ob_ref_shared:16 ob_type:24 */
+        C2PY.pyobject_size = 32;
+        C2PY.ob_refcnt_offset = 16;  /* ob_ref_shared */
+    } else {
+        /* Standard GIL-enabled PyObject layout (16 bytes LP64):
+         *   ob_refcnt:0 ob_type:8 */
+        C2PY.pyobject_size = 16;
+        C2PY.ob_refcnt_offset = 0;   /* ob_refcnt */
+    }
+    C2PY.pyobject_size_ft = 32;
+
+    /* pymoduledef_max_size: pad generously for both layouts */
+    {
+        Py_ssize_t sz_gil = sizeof(PyModuleDef);
+        Py_ssize_t sz_ft  = sizeof(PyModuleDef_FT);
+        C2PY.pymoduledef_max_size = (sz_gil > sz_ft) ? sz_gil : sz_ft;
+    }
+
     /* --- Buffer protocol (required) --- */
     RESOLVE_REQ(C2PY.GetBuffer, "PyObject_GetBuffer");
     RESOLVE_REQ(C2PY.ReleaseBuffer, "PyBuffer_Release");
@@ -315,17 +349,28 @@ int c2py_runtime_init(void)
      * through _Py_IncRef (internal name on some builds) to manual
      * increment of the ob_refcnt field (always the first member of
      * PyObject, matching our struct definition in c2py_runtime.h).
-     */
+     *
+     * On free-threaded builds, manual refcounting is UNSAFE (ob_ref_shared
+     * requires atomic operations).  Py_IncRef/Py_DecRef MUST be resolved
+     * or we fail init. */
     {
         if (_resolve((void**)&C2PY.IncRef, "Py_IncRef") != 0)
             _resolve((void**)&C2PY.IncRef, "_Py_IncRef");
-        if (C2PY.IncRef == NULL)
-            C2PY.IncRef = _c2py_inc_ref_manual;
-
         if (_resolve((void**)&C2PY.DecRef, "Py_DecRef") != 0)
             _resolve((void**)&C2PY.DecRef, "_Py_DecRef");
-        if (C2PY.DecRef == NULL)
-            C2PY.DecRef = _c2py_dec_ref_manual;
+
+        if (C2PY.is_free_threaded) {
+            if (C2PY.IncRef == NULL || C2PY.DecRef == NULL) {
+                fprintf(stderr, "c2py_runtime: FATAL - free-threaded build "
+                        "requires Py_IncRef / Py_DecRef symbols\n");
+                return -1;
+            }
+        } else {
+            if (C2PY.IncRef == NULL)
+                C2PY.IncRef = _c2py_inc_ref_manual;
+            if (C2PY.DecRef == NULL)
+                C2PY.DecRef = _c2py_dec_ref_manual;
+        }
     }
 
     /* --- Object attribute access --- */

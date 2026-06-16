@@ -24,7 +24,7 @@ The long-term goal is a substrate for:
 - SIMD dispatch within C functions, potentially at the wrapper level
 - Accurate timing instrumentation (cycle counters, wall-clock)
 - GIL release for pure-C sections
-- Thread-safe extensions in free-threaded Python builds
+- Thread-safe extensions in free-threaded Python builds (3.14t+)
 
 ## Grammar
 
@@ -641,6 +641,12 @@ typedef struct {
     void *dl_handle;
     int version_major, version_minor;
 
+    int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
+    int is_free_threaded;           /* 1 = Python built with --disable-gil */
+    Py_ssize_t pybuffer_size;       /* actual sizeof(Py_buffer) for this version */
+    Py_ssize_t pyobject_size;       /* actual sizeof(PyObject) for this version */
+    ptrdiff_t ob_refcnt_offset;     /* offset of refcount field within PyObject */
+
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
     void (*ReleaseBuffer)(Py_buffer*);
@@ -648,8 +654,6 @@ typedef struct {
     int (*AsWriteBuffer)(PyObject*, void**, Py_ssize_t*);        /* 2.7 only */
     void (*Err_Clear)(void);
     int buffer_api_is_pep3118;  /* 0 on 2.7, 1 on 3.x */
-    size_t pybuffer_size;
-    int use_fastcall;
 
     /* Argument parsing */
     int (*ParseTuple)(PyObject*, const char*, ...);
@@ -672,6 +676,7 @@ typedef struct {
     void *exc_TypeError, *exc_ValueError, *exc_RuntimeError, *exc_MemoryError;
     void (*Err_SetString)(PyObject*, const char*);
     PyObject* (*Err_Occurred)(void);
+    PyObject* (*Err_Format)(PyObject*, const char*, ...);
 
     /* Module creation */
     PyObject* (*Module_Create2)(PyModuleDef*, int);
@@ -687,8 +692,13 @@ typedef struct {
     void (*IncRef)(PyObject*);
     void (*DecRef)(PyObject*);
 
+    /* GIL management */
+    void* (*SaveThread)(void);
+    void (*RestoreThread)(void*);
+
     /* None singleton */
     PyObject *none_obj;
+
 } c2py_api_t;
 ```
 
@@ -818,16 +828,137 @@ mymod.array_stats.set_gil_release(False)
 These follow the same pattern as `c2py23.perf.read_enabled` /
 `c2py23.perf.set_enabled` for timing instrumentation.
 
-### Free-Threading (Python 3.14+)
+### Free-Threading (Python 3.14t)
 
-In free-threaded CPython builds (3.14+, compiled with `--disable-gil`),
-the GIL is absent. `PyEval_SaveThread` / `PyEval_RestoreThread` become
-no-ops. The `gil_release` flag is harmless -- it compiles to nothing on
-these builds.
+Free-threaded CPython (3.14+, compiled with `--disable-gil`, commonly named
+`python3.14t`) eliminates the Global Interpreter Lock. This enables true
+parallelism but introduces ABI differences that affect any C extension that
+defines its own CPython types.
 
-However, buffer acquisition and reference counting must become atomic
-in free-threaded builds. This is a separate concern (PLAN.md P3) and
-does not affect the GIL release design.
+#### ABI Differences
+
+The `PyObject` struct layout differs between GIL-enabled and free-threaded builds:
+
+| Field              | Standard (GIL)   | Free-threaded      |
+|--------------------|------------------|--------------------|
+| sizeof(PyObject)   | 16 bytes (LP64)  | 32 bytes (LP64)    |
+| sizeof(PyModuleDef)| 80 bytes         | 120 bytes          |
+| ob_refcnt (refcount)| offset 0       | offset 16 (`ob_ref_shared`) |
+| ob_type            | offset 8         | offset 24          |
+
+The free-threaded PyObject has additional fields between the thread-id and the
+external refcount: `ob_tid` (thread ID), `ob_flags` (biased refcount flags),
+`PyMutex ob_mutex` (per-object lock), `ob_gc_bits` (GC state), `ob_ref_local`
+(local refcount), then `ob_ref_shared` (the externally visible refcount) at
+offset 16, and `ob_type` at offset 24.
+
+c2py23 defines both layouts (`PyObject` / `PyObject_FT`, `PyModuleDef` /
+`PyModuleDef_FT`) in `c2py_runtime.h`. Generated wrappers emit both a standard
+and a free-threaded `PyModuleDef` at compile time and select the appropriate
+one at module init time.
+
+#### Runtime Detection
+
+Detection happens in `c2py_runtime_init()`. The version string from
+`Py_GetVersion()` is checked for the substring `"free-threading"`:
+
+```c
+C2PY.is_free_threaded = (strstr(Py_GetVersion(), "free-threading") != NULL);
+```
+
+When detected, `C2PY.ob_refcnt_offset` is set to 16 (the `ob_ref_shared` field)
+instead of 0. Manual refcount operations (`_c2py_inc_ref_manual`) become
+fatal -- `Py_IncRef` / `Py_DecRef` must be resolved from the interpreter.
+
+#### Generated Code
+
+The generator produces dual module definition structs:
+
+```c
+/* Standard GIL layout */
+static PyModuleDef _module_def = {
+    PyModuleDef_HEAD_INIT,
+    "modname", NULL, -1, NULL /* m_methods set at init */,
+    NULL, NULL, NULL, NULL
+};
+
+/* Free-threaded layout */
+static PyModuleDef_FT _module_def_ft = {
+    PyModuleDef_HEAD_INIT_FT,
+    "modname", NULL, -1, NULL /* m_methods set at init */,
+    NULL, NULL, NULL, NULL
+};
+```
+
+At init time, the correct one is selected:
+
+```c
+PyObject* PyInit_modname(void) {
+    c2py_runtime_init();
+    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;
+
+    if (C2PY.is_free_threaded) {
+        _module_def_ft.m_methods = methods;
+        return C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);
+    } else {
+        _module_def.m_methods = methods;
+        return C2PY.Module_Create2(&_module_def, 1013);
+    }
+}
+```
+
+No compile-time Python headers are included, so a single `.so` built on any
+machine works on both standard and free-threaded interpreters without
+recompilation.
+
+#### GIL Behavior
+
+On free-threaded builds, `PyEval_SaveThread` and `PyEval_RestoreThread` are
+no-ops. The `gil_release` flag in `.c2py` files is harmless -- the generated
+code still compiles and runs correctly, it just has no effect on free-threaded
+builds.
+
+**Important:** c2py23 modules do NOT declare `Py_MOD_GIL_NOT_USED`. When loaded
+by a free-threaded interpreter, CPython re-enables the GIL for the module. This
+produces a `RuntimeWarning`:
+
+```
+RuntimeWarning: The global interpreter lock (GIL) has been enabled to load
+module 'mymod', which has not declared that it can run safely without the GIL.
+```
+
+This is safe-by-default behavior: the wrapped C code may not be thread-safe,
+so the GIL is preserved. Users who have verified that their C code is
+thread-safe can suppress the warning:
+
+```bash
+PYTHON_GIL=0 python3.14t -c "import mymod; ..."
+python3.14t -Xgil=0 -c "import mymod; ..."
+```
+
+Or within Python:
+
+```python
+import warnings
+warnings.filterwarnings("ignore", message=".*GIL.*")
+```
+
+#### Refcounting on Free-Threaded Builds
+
+On free-threaded builds, `Py_INCREF` / `Py_DECREF` use atomic operations.
+c2py23 resolves `Py_IncRef` and `Py_DecRef` at runtime (available from
+CPython 3.12+). The manual refcount fallback (`_c2py_inc_ref_manual` /
+`_c2py_dec_ref_manual`) is **disabled** on free-threaded builds -- if
+`Py_IncRef`/`Py_DecRef` cannot be resolved, init fails with a fatal error.
+This prevents silent data races from non-atomic `++op->ob_refcnt`.
+
+#### Compatibility Matrix
+
+| Python Build | sizeof(PyObject) | Refcount field | GIL behavior | Supported |
+|-------------|-----------------|----------------|-------------|-----------|
+| 2.7 - 3.13 (standard) | 16 bytes | `ob_refcnt` at offset 0 | `PyEval_SaveThread` releases | Yes |
+| 3.14 (standard) | 16 bytes | `ob_refcnt` at offset 0 | `PyEval_SaveThread` releases | Yes |
+| 3.14t (free-threaded) | 32 bytes | `ob_ref_shared` at offset 16 | `PyEval_SaveThread` is no-op; GIL re-enabled for module | Yes |
 
 ## SIMD Dispatch and Multi-Flag Compilation
 
@@ -848,5 +979,4 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **Thread safety** -- for free-threaded Python 3.14+, wrap critical sections
-  for atomic refcounting and buffer acquisition
+- **Windows port** -- platform `GetModuleHandle(NULL)` + `GetProcAddress()` equivalent of `dlopen`/`dlsym`; MSVC/clang-cl build path; LLP64 type handling

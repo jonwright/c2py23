@@ -33,7 +33,13 @@ if [ ! -d "$VENV_DIR" ]; then
         }
     else
         # Python 3.x uses venv
-        "$PYTHON" -m venv "$VENV_DIR"
+        # Free-threaded Python 3.14t may not have ensurepip; use --without-pip
+        IS_FT=$("$PYTHON" -c "import sysconfig; print(1 if sysconfig.get_config_var('Py_GIL_DISABLED') else 0)" 2>/dev/null || echo "0")
+        if [ "$IS_FT" = "1" ]; then
+            "$PYTHON" -m venv --without-pip "$VENV_DIR"
+        else
+            "$PYTHON" -m venv "$VENV_DIR"
+        fi
     fi
 fi
 
@@ -46,7 +52,12 @@ else
 fi
 
 echo "Installing c2py23..."
-pip install -e "$PROJECT_DIR" 2>&1 | tail -3
+IS_FT=$("$PYTHON" -c "import sysconfig; print(1 if sysconfig.get_config_var('Py_GIL_DISABLED') else 0)" 2>/dev/null || echo "0")
+if [ "$IS_FT" = "1" ]; then
+    python -m pip install --break-system-packages -e "$PROJECT_DIR" 2>&1 | tail -3
+else
+    pip install -e "$PROJECT_DIR" 2>&1 | tail -3
+fi
 
 # Build all test modules
 echo ""
@@ -65,7 +76,7 @@ python test_uniform.py
 # Run peer review tests (alias + contiguity, numpy required)
 echo ""
 echo "Running peer review tests..."
-pip install numpy 2>&1 | tail -1 || echo "(numpy install skipped - tests will SKIP)"
+pip install numpy 2>&1 | tail -1 || python -m pip install --break-system-packages numpy 2>&1 | tail -1 || echo "(numpy install skipped - tests will SKIP)"
 python test_peer_review.py
 
 # Run regression tests for referee report bug fixes

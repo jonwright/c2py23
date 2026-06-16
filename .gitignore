@@ -39,4 +39,6 @@ examples/kissfft_wrap/*_wrapper.c
 examples/kissfft_wrap/*.so
 examples/lz4_wrap/*_wrapper.c
 examples/lz4_wrap/*.so
+examples/threading_bench/*_wrapper.c
+examples/threading_bench/*.so
 /tests/test_workspace/

@@ -134,7 +134,8 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 | 3.11.15 | ubuntu24.04 | 14/14 pass |
 | 3.12.3 | ubuntu24.04 | 14/14 pass |
 | 3.13.14 | ubuntu24.04 | 14/14 pass |
-| 3.14.6 | ubuntu24.04 | 14/14 pass (GIL-enabled; free-threaded not yet supported) |
+| 3.14.6 | ubuntu24.04 | 14/14 pass |
+| 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded; GIL re-enabled for c2py23 modules) |
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
@@ -147,6 +148,7 @@ The `examples/` directory contains three worked examples:
 - **KissFFT** (`examples/kissfft_wrap/`) -- real and complex FFT over float buffers
 - **LZ4** (`examples/lz4_wrap/`) -- compress/decompress over byte buffers
 - **SIMD Dispatch** (`examples/simd_dispatch/`) -- multi-flag compilation with CPU feature dispatch; includes meson.build, CMakeLists.txt, and setup.py build system integration demos
+- **Threading Benchmark** (`examples/threading_bench/`) -- Monte Carlo pi comparing GIL release, free-threading (3.14t), and OpenMP parallelism
 
 ## Testing
 
@@ -181,6 +183,7 @@ c2py23/
     kissfft_wrap/             # KissFFT wrapper (real + complex FFT)
     lz4_wrap/                 # LZ4 compression wrapper
     simd_dispatch/            # SIMD dispatch demo (Makefile/meson/cmake/setuptools)
+    threading_bench/          # Threading benchmark (GIL release, free-threading, OpenMP)
   tests/
     cases/                    # Test cases (C source + .c2py interface)
     run_tests.sh              # Build + test for one Python version
@@ -207,4 +210,4 @@ c2py23/
 
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
-- Thread safety for free-threaded 3.14+ not yet addressed
+- Thread safety for free-threaded 3.14+ handled by CPython re-enabling the GIL for c2py23 modules (safe-by-default).
