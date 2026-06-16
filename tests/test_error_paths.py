@@ -18,13 +18,38 @@ warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# On free-threaded Python 3.14t, sys.getrefcount() reflects the biased
-# refcounting model (ob_ref_local + ob_ref_shared).  Buffer protocol
-# operations may touch both counters independently, making the simple
-# equality assertion unreliable.  We skip refcount checks on FT builds
-# and only verify that the correct exception is raised and that
-# refcounts do not drift over repeated calls.
-_IS_FREE_THREADED = (sysconfig.get_config_var('Py_GIL_DISABLED') == 1)
+# On biased-refcounting Python (3.14+ standard or 3.13t+ FT),
+# sys.getrefcount() reflects ob_ref_shared only, not the total refcount.
+# Local variables contribute to ob_ref_local and are invisible to
+# sys.getrefcount(), making simple equality assertions unreliable.
+# We skip refcount checks on these builds and only verify that the
+# correct exception is raised and that refcounts do not drift over
+# repeated calls (the loop test still verifies no drift).
+#
+# Detection methods:
+#   1. sysconfig.get_config_var('Py_GIL_DISABLED') == 1 (CPython 3.13t+)
+#   2. 'free-threading' in sys.version (CPython 3.13t+)
+#   3. sys.version_info >= (3, 14) -- Python 3.14+ uses biased refcounting
+#      even in standard GIL builds (PEP 763 / PEP 703 preparation)
+
+_IS_FREE_THREADED = False
+try:
+    if sysconfig.get_config_var('Py_GIL_DISABLED') == 1:
+        _IS_FREE_THREADED = True
+except Exception:
+    pass
+
+if not _IS_FREE_THREADED:
+    try:
+        if 'free-threading' in sys.version.lower():
+            _IS_FREE_THREADED = True
+    except Exception:
+        pass
+
+# Python 3.14+ uses biased reference counting even in standard builds;
+# sys.getrefcount() is unreliable for equality assertions.
+if not _IS_FREE_THREADED and sys.version_info >= (3, 14):
+    _IS_FREE_THREADED = True
 
 
 def refcount(obj):

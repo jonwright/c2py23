@@ -40,6 +40,22 @@ PYTHON_VERSIONS = [
 
 _log_file = None
 
+# Common signal names for crash diagnostics
+_SIGNAL_NAMES = {
+    1: 'SIGHUP', 2: 'SIGINT', 3: 'SIGQUIT', 4: 'SIGILL',
+    5: 'SIGTRAP', 6: 'SIGABRT', 7: 'SIGBUS', 8: 'SIGFPE',
+    9: 'SIGKILL', 10: 'SIGUSR1', 11: 'SIGSEGV', 12: 'SIGUSR2',
+    13: 'SIGPIPE', 14: 'SIGALRM', 15: 'SIGTERM', 16: 'SIGSTKFLT',
+    17: 'SIGCHLD', 18: 'SIGCONT', 19: 'SIGSTOP', 20: 'SIGTSTP',
+    21: 'SIGTTIN', 22: 'SIGTTOU', 23: 'SIGURG', 24: 'SIGXCPU',
+    25: 'SIGXFSZ', 26: 'SIGVTALRM', 27: 'SIGPROF', 28: 'SIGWINCH',
+    29: 'SIGIO', 30: 'SIGPWR', 31: 'SIGSYS',
+}
+
+
+def _signal_name(sig):
+    return _SIGNAL_NAMES.get(sig, 'signal {}'.format(sig))
+
 
 def log_write(message):
     if _log_file:
@@ -72,8 +88,18 @@ def print_step(message):
     log_write(">> " + message)
 
 
-def run_apptainer(sif_file, command, capture_output=True):
-    """Run a command inside an Apptainer container."""
+def run_apptainer(sif_file, command, capture_output=True, timeout=600):
+    """Run a command inside an Apptainer container.
+
+    Args:
+        sif_file: Name of the .sif container file
+        command: Bash command to run inside the container
+        capture_output: If True, capture stdout/stderr
+        timeout: Maximum seconds before forcibly killing (default 600s = 10 min)
+
+    Returns:
+        (returncode, stdout, stderr) - stderr may contain error info on crash
+    """
     sif_path = os.path.join(SNAKEPIT_DIR, sif_file)
     if not os.path.exists(sif_path):
         print_error("SIF file not found: {}".format(sif_path))
@@ -95,15 +121,27 @@ def run_apptainer(sif_file, command, capture_output=True):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            stdout, stderr = proc.communicate()
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                print_error("Command timed out after {}s -- killing".format(timeout))
+                proc.kill()
+                stdout, stderr = proc.communicate()
+                return -9, "", "TIMEOUT after {}s (possibly infinite loop or hang)".format(timeout)
             if isinstance(stdout, bytes):
                 stdout = stdout.decode('utf-8', errors='replace')
             if isinstance(stderr, bytes):
                 stderr = stderr.decode('utf-8', errors='replace')
             return proc.returncode, stdout, stderr
         else:
-            ret = subprocess.call(apptainer_cmd)
+            ret = subprocess.call(apptainer_cmd, timeout=timeout)
             return ret, "", ""
+    except subprocess.TimeoutExpired:
+        print_error("Command timed out after {}s (no-capture mode)".format(timeout))
+        return -9, "", "TIMEOUT after {}s".format(timeout)
+    except OSError as e:
+        print_error("OS error running apptainer: " + str(e))
+        return 1, "", str(e)
     except Exception as e:
         print_error("Error running apptainer: " + str(e))
         return 1, "", str(e)
@@ -119,7 +157,16 @@ def test_python_version(python_version, sif_file):
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 
     if retcode != 0:
-        print_error("Test failed for Python " + python_version)
+        if retcode == -9:
+            reason = "TIMED OUT (possible infinite loop or hang)"
+        elif retcode < 0:
+            reason = "KILLED by signal {}".format(-retcode)
+        elif retcode > 128:
+            sig = retcode - 128
+            reason = "CRASHED with signal {} ({})".format(sig, _signal_name(sig))
+        else:
+            reason = "exit code {}".format(retcode)
+        print_error("Test failed for Python {}: {}".format(python_version, reason))
         log_write("STDOUT:\n" + stdout)
         log_write("STDERR:\n" + stderr)
         print("--- STDOUT ---")

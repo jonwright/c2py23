@@ -13,11 +13,14 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <sys/auxv.h>
+#include <pthread.h>
 #include "c2py_runtime.h"
 
 /* Global API table */
 c2py_api_t C2PY = {0};
 static volatile int _c2py_runtime_initialized = 0;
+static int _c2py_init_result = 0;
+static pthread_once_t _c2py_init_once = PTHREAD_ONCE_INIT;
 
 /* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ---- */
 
@@ -76,7 +79,7 @@ static int _resolve(void **ptr, const char *name)
 #define RESOLVE_REQ(ptr, name) do { \
     if (_resolve((void**)&(ptr), name) != 0) { \
         fprintf(stderr, "c2py_runtime: FATAL - missing symbol: %s\n", name); \
-        return -1; \
+        return; \
     } \
 } while(0)
 
@@ -196,11 +199,9 @@ static void _c2py_probe_cpu_features(void)
 }
 
 
-int c2py_runtime_init(void)
+static void _c2py_runtime_init_once(void)
 {
-    if (_c2py_runtime_initialized) {
-        return 0; /* Already initialized */
-    }
+    _c2py_init_result = -1;  /* assume failure until full success */
 
     /* CPU feature probing runs first -- does not depend on Python */
     _c2py_probe_cpu_features();
@@ -210,7 +211,7 @@ int c2py_runtime_init(void)
         fprintf(stderr, "c2py_runtime: dlopen(NULL) failed: %s\n", dlerror());
         fprintf(stderr, "c2py_runtime: interpreter may be statically linked "
                 "(requires --enable-shared or export-dynamic).\n");
-        return -1;
+        return;
     }
 
     void *dl = C2PY.dl_handle;
@@ -235,15 +236,34 @@ int c2py_runtime_init(void)
     }
 
     /* --- Detect free-threaded build ---
-     * The version string on free-threaded builds contains "free-threading".
-     * We also verify with Py_IncRef existence (free-threaded builds must
-     * export Py_IncRef for atomic refcount operations).
+     *
+     * Detection priority (first successful method wins):
+     * 1. Py_GetVersion() string contains "free-threading" (CPython 3.13+).
+     * 2. _Py_IsGILEnabled exists and returns 0 (CPython 3.13+ FT builds).
+     *    This is an exported function: int _Py_IsGILEnabled(void).
+     * 3. Py_GIL_DISABLED config var... but we cannot easily query that
+     *    without #include <Python.h> or cpython/initconfig.h.  On the
+     *    rare builds where neither 1 nor 2 works, the user should set
+     *    C2PY.is_free_threaded via a debug override at runtime.
      */
     {
+        /* Method 1: version string */
         typedef const char* (*ver_fn)(void);
         ver_fn getver = (ver_fn)dlsym(dl, "Py_GetVersion");
         const char *vstr = getver ? getver() : "";
-        C2PY.is_free_threaded = (vstr && strstr(vstr, "free-threading") != NULL);
+        int found_ft = 0;
+        if (vstr && strstr(vstr, "free-threading") != NULL)
+            found_ft = 1;
+
+        /* Method 2: _Py_IsGILEnabled (CPython 3.13+) */
+        if (!found_ft) {
+            typedef int (*gil_check_fn)(void);
+            gil_check_fn gilchk = (gil_check_fn)dlsym(dl, "_Py_IsGILEnabled");
+            if (gilchk && gilchk() == 0)
+                found_ft = 1;
+        }
+
+        C2PY.is_free_threaded = found_ft;
     }
 
     /* --- Set ABI layout --- */
@@ -271,6 +291,7 @@ int c2py_runtime_init(void)
     /* --- Buffer protocol (required) --- */
     RESOLVE_REQ(C2PY.GetBuffer, "PyObject_GetBuffer");
     RESOLVE_REQ(C2PY.ReleaseBuffer, "PyBuffer_Release");
+    if (C2PY.GetBuffer == NULL || C2PY.ReleaseBuffer == NULL) return;
 
     /* --- Old buffer protocol (Python 2.x only) --- */
     C2PY.AsReadBuffer = (int (*)(PyObject*, const void**, Py_ssize_t*))
@@ -279,6 +300,7 @@ int c2py_runtime_init(void)
         dlsym(dl, "PyObject_AsWriteBuffer");
     C2PY.Err_Clear = (void (*)(void))dlsym(dl, "PyErr_Clear");
     RESOLVE_REQ(C2PY.Err_Clear, "PyErr_Clear");
+    if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
     /* --- Buffer struct size ---
@@ -296,22 +318,27 @@ int c2py_runtime_init(void)
     /* --- Argument parsing (required) --- */
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
     RESOLVE(C2PY.ParseTupleAndKeywords, "PyArg_ParseTupleAndKeywords");
+    if (C2PY.ParseTuple == NULL) return;
 
     /* --- Error detection for fastcall scalar conversion --- */
     RESOLVE_REQ(C2PY.Err_Occurred, "PyErr_Occurred");
+    if (C2PY.Err_Occurred == NULL) return;
 
     /* --- Value construction (required) --- */
     RESOLVE_REQ(C2PY.Long_FromLong, "PyLong_FromLong");
     RESOLVE(C2PY.Long_FromLongLong, "PyLong_FromLongLong");
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
+    if (C2PY.Long_FromLong == NULL || C2PY.Float_FromDouble == NULL) return;
 
     /* --- Tuple construction (required) --- */
     RESOLVE_REQ(C2PY.Tuple_New, "PyTuple_New");
     RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
+    if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL) return;
 
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
     RESOLVE_REQ(C2PY.Float_AsDouble, "PyFloat_AsDouble");
+    if (C2PY.Long_AsLong == NULL || C2PY.Float_AsDouble == NULL) return;
 
     /* --- Exception handling (required) --- */
     RESOLVE_REQ(C2PY.exc_TypeError, "PyExc_TypeError");
@@ -320,6 +347,9 @@ int c2py_runtime_init(void)
     RESOLVE_REQ(C2PY.exc_MemoryError, "PyExc_MemoryError");
     RESOLVE_REQ(C2PY.Err_SetString, "PyErr_SetString");
     RESOLVE_REQ(C2PY.Err_Format, "PyErr_Format");
+    if (C2PY.exc_TypeError   == NULL || C2PY.exc_ValueError  == NULL ||
+        C2PY.exc_RuntimeError == NULL || C2PY.exc_MemoryError == NULL ||
+        C2PY.Err_SetString    == NULL || C2PY.Err_Format      == NULL) return;
 
     /* One dereference is always needed to reach the real PyObject*:
      * - Pre-3.12: PyExc_* are PyObject* globals (heap type pointers).
@@ -363,7 +393,7 @@ int c2py_runtime_init(void)
             if (C2PY.IncRef == NULL || C2PY.DecRef == NULL) {
                 fprintf(stderr, "c2py_runtime: FATAL - free-threaded build "
                         "requires Py_IncRef / Py_DecRef symbols\n");
-                return -1;
+                return;
             }
         } else {
             if (C2PY.IncRef == NULL)
@@ -375,13 +405,16 @@ int c2py_runtime_init(void)
 
     /* --- Object attribute access --- */
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
+    if (C2PY.SetAttrString == NULL) return;
 
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
+    if (C2PY.Long_FromVoidPtr == NULL) return;
 
     /* --- GIL management --- */
     RESOLVE_REQ(C2PY.SaveThread, "PyEval_SaveThread");
     RESOLVE_REQ(C2PY.RestoreThread, "PyEval_RestoreThread");
+    if (C2PY.SaveThread == NULL || C2PY.RestoreThread == NULL) return;
 
     /* --- None singleton ---
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,
@@ -399,10 +432,16 @@ int c2py_runtime_init(void)
         C2PY.none_obj = (PyObject*)none;
         if (C2PY.none_obj == NULL) {
             fprintf(stderr, "c2py_runtime: could not resolve Py_None\n");
-            return -1;
+            return;
         }
     }
 
+    _c2py_init_result = 0;
     _c2py_runtime_initialized = 1;
-    return 0;
+}
+
+int c2py_runtime_init(void)
+{
+    pthread_once(&_c2py_init_once, _c2py_runtime_init_once);
+    return _c2py_init_result;
 }
