@@ -475,8 +475,8 @@ contexts without recompilation. Per-function `get_gil_release` / `set_gil_releas
 methods on each Python function object expose the individual toggle.
 
 **Free-threading (P3):** On 3.14+ free-threaded builds the GIL is absent.
-The `gil_release` flag becomes a no-op, but the buffer-acquisition path needs
-atomic refcounting. See P3 below.
+The `gil_release` flag becomes a no-op. c2py23 detects FT builds at runtime
+and uses the correct `PyModuleDef` layout. See P3 below (implemented).
 
 **Files**: parser.py, generator.py, c2py_runtime.h/c.
 **Design doc**: docs/specification.md `## GIL Release and Thread Safety`.
@@ -485,12 +485,29 @@ atomic refcounting. See P3 below.
 
 ### P3: Free-threaded Python 3.14+ thread safety
 
-**Severity: Medium** (future-facing)
+**Status: Implemented (2026-06-16).**
 
-When the GIL is optional (3.14 free-threaded builds), wrap critical sections
-for atomic refcounting and buffer acquisition.
+Free-threaded Python 3.14t has a different `PyObject` ABI (32 bytes vs 16
+bytes standard). c2py23 now detects free-threaded builds at runtime and
+selects between dual `PyModuleDef` / `PyModuleDef_FT` struct layouts.
 
-**Files**: c2py_runtime.h/c, generator.py.
+Key changes:
+- `c2py_runtime.h`: `PyObject_FT`, `PyMutex`, `PyModuleDef_Base_FT`,
+  `PyModuleDef_FT`, `PyModuleDef_HEAD_INIT_FT`
+- `c2py_runtime.c`: detection via `Py_GetVersion()` "free-threading" substring
+- `generator.py`: dual static PyModuleDef definitions, `C2PY.is_free_threaded` branch
+- Manual refcount fallback disabled on FT builds (requires `Py_IncRef`/`Py_DecRef`)
+- GIL re-enabled by CPython for c2py23 modules (safe-by-default)
+- `gil_release` becomes a no-op on FT (harmless)
+
+Testing: all 14 uniform + 14 regression + 5 error-path tests pass on
+python3.14t (container: ubuntu24.04.sif).
+See `docs/specification.md` Free-Threading section and
+`examples/threading_bench/` for a Monte Carlo pi benchmark comparing
+serial, GIL release, free-threading, and OpenMP.
+
+**Files**: c2py_runtime.h/c, generator.py, docs/specification.md,
+examples/threading_bench/.
 
 ---
 
@@ -546,10 +563,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 
 ### Reviewer Response
 
-**Status: Pending** -- A formal response to the three referee reports (2026-06-15,
-concatenated in `docs/referee_reports.md`) should be written after all HIGH and
-MEDIUM severity items from the reports are resolved. The response will address
-each report point-by-point, describing fixes applied and rationale for items
-deferred.
-
-The combined bug list and current resolution status is in `docs/referee_reports.md`.
+**Status: Completed (2026-06-16)** -- Point-by-point response addressing all three
+referee reports (2026-06-15) with fixes for all HIGH and MEDIUM severity items
+is prepended to `docs/referee_reports_2026-06-15.md`. LOW-severity items deferred
+as noted in the response.

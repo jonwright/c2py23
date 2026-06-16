@@ -69,16 +69,37 @@ def collect_abi(python_version, sif_file):
     print("  Collecting ABI for Python %s ..." % python_version)
 
     # Build and run inside container.
-    # Some Python configs omit -lpythonN; add it explicitly if missing.
-    build_and_run = (
-        "cd /workspace && "
-        "CFG=$(echo $(%s-config --includes --ldflags 2>/dev/null)) && "
-        "if echo \"$CFG\" | grep -qv -- '-lpython'; then "
-        "  CFG=\"$CFG -lpython%s\"; "
-        "fi && "
-        "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
-        "/tmp/check_abi 2>&1" % (py, python_version)
-    )
+    # Most Python installations provide pythonX.Y-config; some (e.g. 3.14t
+    # installed via uv) do not.  For those, fall back to sysconfig.
+    is_ft = python_version.endswith('t')
+
+    if is_ft:
+        # Use sysconfig to get include and library paths
+        build_and_run = (
+            "cd /workspace && "
+            "INCLUDE=$(%s -c \"import sysconfig; "
+            " print(sysconfig.get_path('include'))\" 2>/dev/null) && "
+            "LIBDIR=$(%s -c \"import sysconfig; "
+            " print(sysconfig.get_config_var('LIBDIR'))\" 2>/dev/null) && "
+            "LDLIB=$(%s -c \"import sysconfig; "
+            " print(sysconfig.get_config_var('LDLIBRARY'))\" 2>/dev/null) && "
+            "LNAME=$(echo \"$LDLIB\" | sed 's/^lib\\(.*\\)\\.so.*$/\\1/') && "
+            "CFG=\"-I$INCLUDE -L$LIBDIR -Wl,-rpath,$LIBDIR -l$LNAME\" && "
+            "echo \"CFG=$CFG\" && "
+            "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
+            "/tmp/check_abi 2>&1" % (py, py, py)
+        )
+    else:
+        # Some Python configs omit -lpythonN; add it explicitly if missing.
+        build_and_run = (
+            "cd /workspace && "
+            "CFG=$(echo $(%s-config --includes --ldflags 2>/dev/null)) && "
+            "if echo \"$CFG\" | grep -qv -- '-lpython'; then "
+            "  CFG=\"$CFG -lpython%s\"; "
+            "fi && "
+            "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
+            "/tmp/check_abi 2>&1" % (py, python_version)
+        )
     ret, stdout, stderr = run_apptainer(sif_file, build_and_run)
 
     if ret != 0:
