@@ -1,7 +1,9 @@
 """Unit tests for parser and generator bug fixes from referee reports.
 
 Tests: B1 (VARARGS wrapper signature), B3 (unmatched paren), B4 (L/l format mapping),
-P4 (coerce warning), P5 (trailing newline), INT_MAX overflow check present.
+P4 (coerce warning), P5 (trailing newline), INT_MAX overflow check present,
++ coverage gaps: empty expand, default_raise, optional int=0 (falsy),
+outputs + GIL release order, keyword argument rejection.
 """
 from __future__ import print_function
 
@@ -242,6 +244,203 @@ def test_INT_MAX_check_absent_when_no_int_n():
     code = generate(mod)
     assert 'buffer too large' not in code, (
         "INT_MAX guard must not appear when no n/length-derived int params")
+    test_passed()
+
+
+def test_empty_expand():
+    """expand with zero-length list: should produce no functions, no crash."""
+    from c2py23.parser import _expand_func_template, _parse_func
+
+    raw_func = {
+        'py_sig': 'sum_a(arr: buffer) -> int',
+        'c_overloads': [{
+            'sig': 'int sum_a(const int *arr, int n)',
+            'map': {'arr': 'arr.ptr', 'n': 'arr.n'}
+        }],
+        'expand': {'SUFFIX': [], 'TYPE': []},
+    }
+    expanded = _expand_func_template(raw_func, 'test.c2py')
+    assert expanded == [], "Empty expand must produce empty list, got %s" % expanded
+    test_passed()
+
+
+def test_default_raise_valid():
+    """default_raise with a known exception type must generate correct C code."""
+    from c2py23.parser import parse_expr
+
+    mod = ModuleDef(
+        name='defraise',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='f',
+                py_params=[PyParam('arr', 'buffer', None)],
+                return_type='void',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='void do_f(float *arr, int n)',
+                    params=[CParam('arr', 'float *', 'float', True, True),
+                            CParam('n', 'int', 'int', False, False)],
+                    return_type='void',
+                    map_exprs={'arr': parse_expr("arr.ptr"),
+                                'n': parse_expr("arr.n")},
+                    when_expr=parse_expr("arr.format == 'f'"),
+                )],
+                default_raise='ValueError: no matching overload',
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+    )
+    code = generate(mod)
+    assert 'PyExc_ValueError' in code, (
+        "default_raise must emit PyExc_ValueError")
+    assert 'no matching overload' in code, (
+        "default_raise message must appear in generated C")
+    test_passed()
+
+
+def test_optional_int_default_zero():
+    """Optional int param with default 0: must not be mistaken for 'no default' (falsy edge case)."""
+    from c2py23.parser import PyParam, _parse_py_sig
+
+    name, params, ret = _parse_py_sig('f(arr: buffer, flags: int = 0) -> void', 'test.c2py')
+    assert len(params) == 2
+    assert params[1].default == 0, "default=0 must be stored as int 0, got %s" % repr(params[1].default)
+    assert params[1].default is not None, "default=0 must not be conflated with None"
+
+    from c2py23.parser import parse_expr
+
+    mod = ModuleDef(
+        name='optzero',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='f',
+                py_params=[PyParam('arr', 'buffer', None),
+                            PyParam('flags', 'int', 0)],
+                return_type='void',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='void do_f(float *arr, int n, int flags)',
+                    params=[CParam('arr', 'float *', 'float', True, True),
+                            CParam('n', 'int', 'int', False, False),
+                            CParam('flags', 'int', 'int', False, False)],
+                    return_type='void',
+                    map_exprs={'arr': parse_expr("arr.ptr"),
+                                'n': parse_expr("arr.n"),
+                                'flags': parse_expr("flags")},
+                    when_expr=None,
+                )],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+    )
+    code = generate(mod)
+    # Verify default=0 appears in the C code for local var initialization
+    assert 'int c_flags = 0;' in code, (
+        "Optional int=0 must emit 'int c_flags = 0;', got: %s"
+        % code[code.find('c_flags'):][:50] if 'c_flags' in code else 'no c_flags')
+    test_passed()
+
+
+def test_outputs_with_gil_release():
+    """GIL restore must happen before output tuple construction (outputs + gil_release combined)."""
+    from c2py23.parser import parse_expr
+
+    ol = COverload(
+        sig_str='int get_min_max(const float *arr, int n, float *minv, float *maxv)',
+        params=[CParam('arr', 'const float *', 'float', True, True),
+                CParam('n', 'int', 'int', False, False),
+                CParam('minv', 'float *', 'float', False, False),
+                CParam('maxv', 'float *', 'float', False, False)],
+        return_type='int',
+        map_exprs={'arr': parse_expr("arr.ptr"),
+                    'n': parse_expr("arr.n")},
+        when_expr=None,
+        outputs={'minv': 'float', 'maxv': 'float'},
+    )
+
+    mod = ModuleDef(
+        name='outgil',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='stats',
+                py_params=[PyParam('arr', 'buffer', None)],
+                return_type='void',
+                checks=[],
+                overloads=[ol],
+                default_raise=None,
+                doc=None,
+                gil_release=True,
+            )
+        ],
+        constants={},
+        timing=False,
+    )
+    code = generate(mod)
+    # GIL restore must appear before output tuple construction
+    restore_pos = code.find('PyEval_RestoreThread')
+    tuple_pos = code.find('PyTuple_New')
+
+    if restore_pos >= 0 and tuple_pos >= 0:
+        assert restore_pos < tuple_pos, (
+            "PyEval_RestoreThread (pos %d) must come before PyTuple_New (pos %d)"
+            % (restore_pos, tuple_pos))
+    # And the gil_release flag should be emitted
+    assert '_c2py_gil_release_enabled' in code, (
+        "GIL release must emit module-level flag")
+    test_passed()
+
+
+def test_keyword_argument_rejection():
+    """METH_VARARGS without METH_KEYWORDS must reject keyword arguments."""
+    from c2py23.parser import parse_expr
+
+    mod = ModuleDef(
+        name='nokw',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='f',
+                py_params=[PyParam('arr', 'buffer', None),
+                            PyParam('n', 'int', None)],
+                return_type='void',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='void do_f(float *arr, int n)',
+                    params=[CParam('arr', 'float *', 'float', True, True),
+                            CParam('n', 'int', 'int', False, False)],
+                    return_type='void',
+                    map_exprs={'arr': parse_expr("arr.ptr"),
+                                'n': parse_expr("n")},
+                    when_expr=None,
+                )],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+    )
+    code = generate(mod)
+    # Must NOT have METH_KEYWORDS on any method def
+    assert 'METH_KEYWORDS' not in code, (
+        "METH_VARARGS functions must not use METH_KEYWORDS")
+    assert 'METH_VARARGS' in code, (
+        "Function must use METH_VARARGS flag")
     test_passed()
 
 

@@ -112,7 +112,7 @@ No structs, enums, nested pointers, or heap allocation. All memory is flat and o
 - **PEP 3118 buffer protocol** -- accepts any object supporting the buffer interface (`bytes`, `bytearray`, `array.array`, `memoryview`, `ctypes` arrays, numpy arrays, etc.)
 - **nimpy-style runtime** -- no `-lpython` link dependency; one `.so` works on Python 2.7 through 3.14. Uses `dlopen(NULL)` + `dlsym()` to resolve CPython API at load time. Originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy).
 - **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` used when PEP 3118 is unavailable
-- **Zero-copy** -- the wrapper never allocates, copies, or transposes memory
+- **Zero-copy** -- the wrapper never allocates, copies, or transposes memory; all buffers are owned and managed by Python
 - **Contiguity enforcement** -- validates C and Fortran-order contiguity, rejects strided or indirect buffers
 - **Per-function timing** -- `timing: true` enables cycle-count instrumentation of C call overhead
 - **Arch-specific clocks** -- `rdtsc` (x86), `CNTVCT_EL0` (ARM64), `mftb` (POWER) for low-overhead timing
@@ -208,7 +208,4 @@ c2py23/
 
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
-- All memory management is in Python
-- Check expression language does not support arithmetic (`+`, `-`, `*`); buffer size relationships
-  must use comparisons (`>=`, `==`, etc.) with direct attribute values
 - Thread safety for free-threaded 3.14+ not yet addressed

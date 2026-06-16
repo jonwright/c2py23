@@ -246,11 +246,12 @@ Key work items:
 
 ### P3: Reviewer Response
 
-**Status: Pending.**
+**Status: Completed (2026-06-16).**
 
-After SIMD dispatch (P1) is implemented and the bugs identified in the three
-referee reports (2026-06-15, see `docs/referee_reports.md`) are all resolved,
-write a formal point-by-point response document addressing each report.
+Point-by-point response addressing all three referee reports (2026-06-15)
+prepended to `docs/referee_reports_2026-06-15.md`. All HIGH and MEDIUM
+severity items resolved. Remaining LOW-severity and design items (B2, P2,
+P3) deferred; tracked in the response document.
 
 ### P4: Free-Threaded Python 3.14+ Support
 
