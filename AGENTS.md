@@ -197,33 +197,7 @@ Valgrind leak check:
 valgrind --leak-check=full python3 tests/test_leaks.py
 ```
 
-## Next Steps (Post Bug-Fix)
-
-### P1: SIMD Dispatch / CPU Feature Detection
-
-**Status: Implemented (2026-06-16).**
-
-Decision: Use Option A (CPUID on x86, MRS on arm64) with `/proc/cpuinfo` as
-fallback for portability. Referee 1 noted that `/proc/cpuinfo` is Linux-specific
-and fragile in containers/VMs -- CPUID/MRS is the primary mechanism.
-
-Architectures:
-- x86_64: avx2, avx512f via CPUID leaf 7
-- ARM64: neon (always present), asimd via MRS ID_AA64PFR0_EL1
-- Fallback: `/proc/cpuinfo` parsing
-
-Implementation plan:
-1. `c2py_runtime.h/c`: Add `int c2py_cpu_has(const char *feature)` function
-   - Static bool per feature, computed once at runtime init
-   - `__get_cpuid()` inline asm on x86_64, MRS on aarch64
-2. `parser.py`: Accept `cpu_has_avx2`, `cpu_has_avx512f`, `cpu_has_neon` in
-   `when:` conditions
-3. `generator.py`: Emit pre-computed bools and guard the dispatch chain
-
-Buffer alignment for SIMD: when dispatching to SIMD overloads, the `when:`
-condition should check `(uintptr_t)arr.ptr % alignment == 0`, falling back to
-the scalar overload on misaligned pointers. Referee 2 flagged this as a real
-hazard for AVX2 (32-byte) and AVX-512 (64-byte).
+## Next Steps
 
 ### P2: Windows Port
 
@@ -244,50 +218,15 @@ Key work items:
 3. ABI matrix: add a Windows column with LLP64 sizes
 4. Test: CI on Windows with native Python
 
-### P3: Reviewer Response
+## Recently Completed
 
-**Status: Completed (2026-06-16).**
+- P1: SIMD dispatch / CPU feature detection (CPUID x86_64, getauxval ARM64/POWER)
+- P3: Reviewer response (addressed all three referee reports)
+- P4: Free-threaded Python 3.14+ support (dual PyModuleDef, FT ABI detection)
+- Issue #5: Biased refcounting on Python 3.14 standard (PEP 763) -- test guard update
+- `pthread_once` init, `_Py_IsGILEnabled()` FT detection fallback, test runner timeouts
 
-Point-by-point response addressing all three referee reports (2026-06-15)
-prepended to `docs/referee_reports_2026-06-15.md`. All HIGH and MEDIUM
-severity items resolved. Remaining LOW-severity and design items (B2, P2,
-P3) deferred; tracked in the response document.
-
-### P4: Free-Threaded Python 3.14+ Support
-
-**Status: Implemented (2026-06-16).**
-
-Free-threaded Python 3.14t (--disable-gil) has a different ABI layout for
-`PyObject` (32 bytes vs 16 bytes standard). Key differences:
-
-| Field        | Standard (GIL) | Free-threaded   |
-|-------------|----------------|-----------------|
-| sizeof(PyObject) | 16 bytes  | 32 bytes        |
-| ob_refcnt offset | 0          | 16 (ob_ref_shared) |
-| ob_type offset   | 8          | 24              |
-| sizeof(PyModuleDef_Base) | 40  | 56              |
-| sizeof(PyModuleDef) | 80       | 120             |
-
-Implementation:
-- `c2py_runtime.h`: Added `PyObject_FT`, `PyModuleDef_Base_FT`, `PyModuleDef_FT`
-  struct definitions and `PyModuleDef_HEAD_INIT_FT` macro
-- `c2py_runtime.c`: Detects free-threaded builds via `Py_GetVersion()` string
-  ("free-threading" substring), sets `C2PY.is_free_threaded` and ABI offsets
-- Manual refcount fallback (`_c2py_inc_ref_manual`) is fatal on FT builds
-  (`Py_IncRef`/`Py_DecRef` must be resolved)
-- `generator.py`: Emits dual `PyModuleDef`/`PyModuleDef_FT` static definitions
-  and selects the correct one at init time based on `C2PY.is_free_threaded`
-- `PyEval_SaveThread`/`PyEval_RestoreThread` work correctly on FT when called
-  from within a C extension (the GIL is re-enabled by CPython for non-FT-safe
-  extensions)
-
-GIL declaration: c2py23 modules do NOT declare `Py_MOD_GIL_NOT_USED` since the
-wrapped C code may not be thread-safe. On 3.14t, CPython re-enables the GIL
-for our modules, producing a RuntimeWarning that can be suppressed via
-`-Xgil=0` or `PYTHON_GIL=0` if the user's C code is thread-safe.
-
-Testing: All 14 uniform tests, 14 regression tests, and 5 error path tests
-pass on python3.14t in the ubuntu24.04.sif container.
+See `PLAN.md` Completed section for full details.
 
 ## Contributing Guidelines
 

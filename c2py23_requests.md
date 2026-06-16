@@ -3,7 +3,7 @@
 Feedback from porting ImageD11's 58 C functions from f2py to c2py23.
 Covering safety, usability, and features needed for Phase 2/3 of the migration.
 
-**Status:** 7 of 9 implemented. 2 items remain: SIMD dispatch, build-isolation docs.
+**Status:** 8 of 9 implemented. 1 item remains: build-isolation docs (deferred, covered by P4 binary wheels).
 
 ---
 
@@ -139,7 +139,7 @@ calls the C function, and returns values in a Python tuple. Tested in
 
 ## Features
 
-### 7. CPU feature detection for SIMD dispatch
+### 7. CPU feature detection for SIMD dispatch -- DONE
 
 **Severity: Medium**  |  Phase 3 blocker (PLAN.md)
 
@@ -158,6 +158,12 @@ c_overloads:
 **Request:** Support `when:` conditions in `c_overloads` with a set of
 built-in CPU feature predicates: `cpu_has_avx2`, `cpu_has_avx512`,
 `cpu_has_neon`, etc. The condition is evaluated once at module load time.
+
+**Resolution:** Implemented. Two-level group/variant dispatch with CPUID (x86_64)
+and getauxval (ARM64/POWER) probing at init time. Feature globals
+(e.g. `c2py_amd64_avx2`) are populated in `c2py_runtime_init()`. Supports
+`.rebind()` for manual variant override, switch and function-pointer dispatch
+forms, and worked example in `examples/simd_dispatch/`. See PLAN.md P1.
 
 ### 8. Preprocessor template pattern support -- DONE
 
@@ -213,11 +219,10 @@ transparently.
 | 4 | Integer literal map values | Medium | DONE |
 | 5 | Better check failure messages | Medium | DONE |
 | 6 | Output scalar convention option | Low | DONE |
-| 7 | CPU feature detection (SIMD dispatch) | Medium | OPEN |
+| 7 | CPU feature detection (SIMD dispatch) | Medium | DONE |
 | 8 | Template pattern support | Low | DONE |
 | 9 | --no-build-isolation docs | Low | DEFERRED |
 
-Items 1-6 and 8 are complete. Item 7 (SIMD dispatch) is the main blocker for
-ImageD11 Phase 3. Item 9 is deferred -- the plan is to publish binary wheels
+Items 1-8 are complete. Item 9 is deferred -- the plan is to publish binary wheels
 to PyPI (one per platform/arch, Python-version-independent via ctypes-style
 distribution), eliminating the need for `--no-build-isolation` entirely.

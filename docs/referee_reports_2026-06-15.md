@@ -2,7 +2,7 @@
 
 **Date of reports:** 2026-06-15
 **Git revision at time of reports:** `fb88407` (approx)
-**Resolution commit:** `901742d`
+**Resolution commit:** `18be1f9`
 **Response prepared:** 2026-06-16
 
 ---
@@ -22,7 +22,7 @@ and design items are noted below with their current status.
 | B4 | MEDIUM | `'L'` maps to type not in `_C_TYPES_INT` | RESOLVED | `'l'`/`'L'` remapped to `int64_t`/`uint64_t` |
 | B5 | LOW | `subprocess.run` use in test scripts | RESOLVED | Replaced with `subprocess.call`/`Popen` |
 | P1 | LOW | `PyErr_Clear` not guarded | RESOLVED | `RESOLVE_REQ` added |
-| P2 | LOW | `c2py_runtime_init()` TOCTOU | MITIGATED | `volatile` flag added; GIL-serialized in practice |
+| P2 | LOW | `c2py_runtime_init()` TOCTOU | RESOLVED | `pthread_once` init in `18be1f9` |
 | P3 | LOW | 32-bit Py_buffer sizes unverified | OPEN | No 32-bit container in CI; Linux-x86_64 only |
 | P4 | LOW | Coerce warning format args swapped | RESOLVED | Warning message rewritten |
 | P5 | LOW | No trailing newline in generated C | RESOLVED | `generate()` appends final `\n` |

@@ -134,12 +134,12 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 | 3.11.15 | ubuntu24.04 | 14/14 pass |
 | 3.12.3 | ubuntu24.04 | 14/14 pass |
 | 3.13.14 | ubuntu24.04 | 14/14 pass |
-| 3.14.6 | ubuntu24.04 | 14/14 pass |
+| 3.14.6 | ubuntu24.04 | 14/14 pass (PEP 763 biased refcounting) |
 | 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded; GIL re-enabled for c2py23 modules) |
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
-`test_regression_fixes.py` (codegen validation, 9 tests).
+`test_regression_fixes.py` (codegen validation, 14 tests).
 
 ## Examples
 
@@ -148,7 +148,7 @@ The `examples/` directory contains three worked examples:
 - **KissFFT** (`examples/kissfft_wrap/`) -- real and complex FFT over float buffers
 - **LZ4** (`examples/lz4_wrap/`) -- compress/decompress over byte buffers
 - **SIMD Dispatch** (`examples/simd_dispatch/`) -- multi-flag compilation with CPU feature dispatch; includes meson.build, CMakeLists.txt, and setup.py build system integration demos
-- **Threading Benchmark** (`examples/threading_bench/`) -- Monte Carlo pi comparing GIL release, free-threading (3.14t), and OpenMP parallelism
+- **Threading Benchmark** (`examples/threading_bench/`) -- Monte Carlo pi comparing serial, GIL release, free-threading (3.14t), and OpenMP parallelism
 
 ## Testing
 
@@ -190,12 +190,13 @@ c2py23/
     test_uniform.py           # 2.7-3.14 compatible test runner (14 tests)
     test_all.py               # Orchestrator across snakepit containers
     test_leaks.py             # Memory stress test (valgrind compatible)
-    test_peer_review.py       # Alias + contiguity enforcement tests (requires numpy)
-    test_error_paths.py       # Refcount stability on error paths
-    test_regression_fixes.py  # Parser/generator bug-fix unit tests
+    test_peer_review.py       # Alias + contiguity enforcement tests (10 tests, requires numpy)
+    test_error_paths.py       # Refcount stability on error paths (5 tests)
+    test_regression_fixes.py  # Parser/generator unit tests (14 tests)
+    test_interpreters.py      # Sub-interpreter support tests
     check_abi.c               # ABI introspection tool
     populate_abi_matrix.py    # Collect ABI data from all containers
-    abi_matrix.json           # Py_buffer/PyObject layout across 10 versions
+    abi_matrix.json           # Py_buffer/PyObject layout across 11 versions
   docs/                       # Specification and grammar
   PLAN.md                     # Future work and roadmap
 ```

@@ -37,7 +37,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - Template expansion -- `expand:` key with `${VAR}` substitution
 - Comprehensive dispatch-over-all-types example -- typedispatch test case, Example 4 in spec
 - Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
-- Test coverage -- 10 versions x 13 uniform tests, 10 peer review tests
+- Test coverage -- 11 versions x 14 uniform tests, 10 peer review tests
 - GIL release design rationale -- documented in specification.md
 - ABI matrix populated across all 10 Python versions
 - Arch-specific clocks -- rdtsc (x86), CNTVCT_EL0 (ARM64), mftb (POWER)
@@ -56,7 +56,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - `__array_struct__` evaluated and removed
 - Buffer struct layout mismatch fixed
 - `-Wall -Werror` clean on all generated code
-- 10 Python versions in test matrix (2.7, 3.6-3.14)
+- 11 Python versions in test matrix (2.7, 3.6-3.14, 3.14t)
 - Contiguity check: rejects strided arrays, negative strides, accepts C/F-contiguous
 - Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)
