@@ -13,7 +13,7 @@ functions:
       - "src.ndim == 1"
       - "dst.ndim == 1"
     c_overloads:
-      - sig: "int lz4_compress(const char *src, char *dst, int srcSize, int dstCapacity)"
+      - sig: "int lz4_compress(const uint8_t *src, uint8_t *dst, int srcSize, int dstCapacity)"
         map:
           src: "src.ptr"
           dst: "dst.ptr"
@@ -27,7 +27,7 @@ functions:
       - "src.ndim == 1"
       - "dst.ndim == 1"
     c_overloads:
-      - sig: "int lz4_decompress(const char *src, char *dst, int compressedSize, int dstCapacity)"
+      - sig: "int lz4_decompress(const uint8_t *src, uint8_t *dst, int compressedSize, int dstCapacity)"
         map:
           src: "src.ptr"
           dst: "dst.ptr"

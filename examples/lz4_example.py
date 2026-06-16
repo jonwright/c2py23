@@ -31,8 +31,9 @@ def test_compress_decompress():
     print("Original: %d bytes -> Compressed: %d bytes (%.1f%%)" % (
         n, compressed_size, 100.0 * compressed_size / n))
 
+    compressed = (ctypes.c_uint8 * compressed_size)(*dst[:compressed_size])
     decompressed = (ctypes.c_uint8 * n)(0)
-    result = lz4mod.decompress(dst, decompressed)
+    result = lz4mod.decompress(compressed, decompressed)
 
     if result < 0:
         print("Decompression failed: %d" % result)
