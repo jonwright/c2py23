@@ -7,7 +7,7 @@ from __future__ import print_function
 
 from c2py23.parser import (
     Var, Attr, Subscript, IntLit, StrLit, Compare, BinOp, UnaryOp,
-    PyParam, CParam, COverload, FuncDef, ModuleDef,
+    PyParam, CParam, COverload, CVariant, FuncDef, ModuleDef,
 )
 
 
@@ -55,11 +55,27 @@ def _emit_forward_decls(out, mod):
     seen = set()
     for func in mod.functions:
         for ol in func.overloads:
-            c_name = _extract_c_name(ol.sig_str)
-            if c_name not in seen:
-                seen.add(c_name)
-                out.append(_c_decl_from_overload(ol))
+            if ol.variants:
+                for v in ol.variants:
+                    c_name = _extract_c_name(v.sig_str)
+                    if c_name not in seen:
+                        seen.add(c_name)
+                        out.append(_c_decl_from_variant(v))
+            else:
+                c_name = _extract_c_name(ol.sig_str)
+                if c_name not in seen:
+                    seen.add(c_name)
+                    out.append(_c_decl_from_overload(ol))
     out.append('')
+
+
+def _c_decl_from_variant(v):
+    """Generate an extern declaration for a variant's C function."""
+    ret = v.return_type if v.return_type != 'void' else 'void'
+    parts = []
+    for p in v.params:
+        parts.append(p.ctype + ' ' + p.name)
+    return 'extern {} {}({});'.format(ret, _extract_c_name(v.sig_str), ', '.join(parts))
 
 
 def _extract_c_name(sig_str):
@@ -88,8 +104,13 @@ def _emit_timing_decls(out, mod):
     for func in mod.functions:
         out.append('static c2py_perf_t _perf_{0};'.format(func.name))
         for ol in func.overloads:
-            c_name = _extract_c_name(ol.sig_str)
-            out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+            if ol.variants:
+                for v in ol.variants:
+                    c_name = _extract_c_name(v.sig_str)
+                    out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+            else:
+                c_name = _extract_c_name(ol.sig_str)
+                out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
     out.append('')
 
 
@@ -113,11 +134,89 @@ def _emit_function(out, func, module_name, timing, has_gil_release):
     buf_params = [p for p in func.py_params if p.pytype == 'buffer']
     scalar_params = [p for p in func.py_params if p.pytype != 'buffer']
 
+    has_groups = any(ol.variants for ol in func.overloads)
+    if has_groups:
+        _emit_static_dispatch(out, func, buf_params, scalar_params)
+
     # _impl function
     _emit_impl_func(out, func, buf_params, scalar_params, timing, has_gil_release)
 
     # _wrapper function
     _emit_wrapper_func(out, func, buf_params, scalar_params, timing)
+
+
+# ---------------------------------------------------------------------------
+# Static (pre-resolved) dispatch for grouped overloads
+# ---------------------------------------------------------------------------
+
+def _emit_static_dispatch(out, func, buf_params, scalar_params):
+    """Emit variant index variables, resolve functions, and rebind function
+    for functions with grouped overloads (variants: key)."""
+    name = func.name
+    out.append('/* ---- Variant dispatch for {} ---- */'.format(name))
+    out.append('')
+
+    # Gather groups (overloads with variants)
+    groups = []
+    for i, ol in enumerate(func.overloads):
+        if ol.variants:
+            groups.append((i, ol))
+
+    # Per-group variant index + name
+    for gi, (i, ol) in enumerate(groups):
+        gname = ol.group_name or 'group{}'.format(gi)
+        out.append('static int _var_{}_{} = -1;'.format(name, gi))
+        out.append('static const char *_vname_{}_{} = NULL;'.format(name, gi))
+
+    out.append('')
+
+    # Resolve function for each group
+    for gi, (i, ol) in enumerate(groups):
+        out.append('static void _resolve_{}_{}(void) {{'.format(name, gi))
+        for vi, v in enumerate(ol.variants):
+            if v.when_expr is not None:
+                when_c = _expr_to_c(v.when_expr, buf_params, scalar_params, None)
+                out.append('    if ({}) {{'.format(when_c))
+                out.append('        _var_{}_{} = {}; _vname_{}_{} = "{}"; return;'
+                           .format(name, gi, vi, name, gi, v.name))
+                out.append('    }')
+        # Default (last variant, always matches)
+        last_vi = len(ol.variants) - 1
+        out.append('    _var_{}_{} = {}; _vname_{}_{} = "{}";'
+                   .format(name, gi, last_vi, name, gi, ol.variants[last_vi].name))
+        out.append('}')
+        out.append('')
+
+    # Aggregate resolve for all groups
+    out.append('static void _resolve_{}(void) {{'.format(name))
+    for gi in range(len(groups)):
+        out.append('    _resolve_{}_{}();'.format(name, gi))
+    out.append('}')
+    out.append('')
+
+    # Rebind C function
+    out.append('static PyObject* _rebind_{}(PyObject *self, PyObject *args) {{'.format(name))
+    out.append('    const char *target = NULL;')
+    out.append('    if (!C2PY.ParseTuple(args, "z", &target)) return NULL;')
+    out.append('')
+    out.append('    if (target == NULL) {')
+    out.append('        _resolve_{}();'.format(name))
+    out.append('        Py_RETURN_NONE;')
+    out.append('    }')
+    out.append('')
+    # Check each group's variant names
+    for gi, (i, ol) in enumerate(groups):
+        gname = ol.group_name or 'group{}'.format(gi)
+        for vi, v in enumerate(ol.variants):
+            out.append('    if (!strcmp(target, "{}")) {{'.format(v.name))
+            out.append('        _var_{}_{} = {}; _vname_{}_{} = "{}";'.format(name, gi, vi, name, gi, v.name))
+            out.append('        Py_RETURN_NONE;')
+            out.append('    }')
+    out.append('')
+    out.append('    C2PY.Err_SetString(C2PY.exc_ValueError, "unknown variant");')
+    out.append('    return NULL;')
+    out.append('}')
+    out.append('')
 
 
 # ---------------------------------------------------------------------------
@@ -165,21 +264,87 @@ def _emit_impl_func(out, func, buf_params, scalar_params, timing, has_gil_releas
 
 
 def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gil_release):
-    """Emit the if/else chain for overload dispatch."""
+    """Emit the dispatch chain for overload selection.
+    
+    For flat overloads: standard if/else chain (backward compatible).
+    For grouped overloads (variants: key): outer if/else on group when:
+    conditions, inner switch on pre-resolved variant index.
+    """
     overloads = func.overloads
     default_raise = func.default_raise
     name = func.name
 
-    # Single unconditional overload: emit directly wrapped in {}
+    has_groups = any(ol.variants for ol in overloads)
+    if not has_groups:
+        _emit_flat_dispatch(out, overloads, buf_params, scalar_params, timing, name,
+                            has_gil_release and func.gil_release, default_raise)
+        return
+
+    # Grouped dispatch: build group index -> entry mapping
+    group_index = 0
+    for i, ol in enumerate(overloads):
+        is_group = ol.variants is not None
+        is_last = (i == len(overloads) - 1)
+
+        if i == 0:
+            if ol.when_expr is not None:
+                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
+                out.append('    if (' + when_c + ') {')
+            else:
+                out.append('    {  /* group 0 (always) */')
+        else:
+            if ol.when_expr is not None:
+                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
+                out.append('    } else if (' + when_c + ') {')
+            else:
+                out.append('    } else {  /* group {} (always) */'.format(i))
+
+        if is_group:
+            # --- Inner variant dispatch ---
+            gi = group_index
+            out.append('        /* group {}: {} variants */'.format(
+                gi, len(ol.variants)))
+
+            # Check if all variants have the same C signature for fn-ptr optimization
+            # (For now, always use switch; fn-ptr optimization deferred)
+            out.append('        switch (_var_{}_{}) {{'.format(name, gi))
+
+            for vi, v in enumerate(ol.variants):
+                # Create a synthetic COverload for _emit_c_call
+                syn_ol = COverload(v.sig_str, v.params, v.return_type,
+                                   ol.map_exprs, v.when_expr,
+                                   name=v.name, outputs=v.outputs)
+                out.append('        case {}:'.format(vi))
+                _emit_c_call(out, syn_ol, buf_params, scalar_params, timing, name,
+                             has_gil_release and func.gil_release, indent='            ')
+                out.append('            break;')
+            out.append('        default: break;')
+            out.append('        }')
+            group_index += 1
+        else:
+            # Flat overload within a mixed list
+            out.append('        /* {} */'.format(ol.sig_str))
+            _emit_c_call(out, ol, buf_params, scalar_params, timing, name,
+                         has_gil_release and func.gil_release)
+
+    if default_raise:
+        out.append('    } else {')
+        _emit_default_raise_body(out, default_raise)
+    out.append('    }')
+
+
+def _emit_flat_dispatch(out, overloads, buf_params, scalar_params, timing, name,
+                        gil_release_call, default_raise):
+    """Emit the standard if/else chain for flat overloads."""
+    # Single unconditional overload
     if len(overloads) == 1 and overloads[0].when_expr is None:
         out.append('    /* overload 0 (always) */')
         out.append('    {')
         _emit_c_call(out, overloads[0], buf_params, scalar_params, timing, name,
-                     has_gil_release and func.gil_release)
+                     gil_release_call)
         out.append('    }')
         return
 
-    # Multiple overloads or conditional: if/else chain
     for i, ol in enumerate(overloads):
         if i == 0:
             if ol.when_expr is not None:
@@ -195,7 +360,7 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gi
                 out.append('    } else {  /* overload {} (always) */'.format(i))
         out.append('        /* {} */'.format(ol.sig_str))
         _emit_c_call(out, ol, buf_params, scalar_params, timing, name,
-                     has_gil_release and func.gil_release)
+                     gil_release_call)
 
     if default_raise:
         out.append('    } else {')
@@ -318,12 +483,14 @@ def _is_simple_expr(expr):
     return False
 
 
-def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_release_call=False):
+def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_release_call=False, indent=None):
     """Emit a C function call for one overload.
     
     Handles optional output scalars (ol.outputs): auto-allocates 1-element
     stack variables, passes pointers, and returns values as Python objects.
     """
+    if indent is None:
+        indent = '        '
     c_name = _extract_c_name(ol.sig_str)
     perf_name = '_perf_{0}__{1}'.format(func_name, c_name)
     outputs = getattr(ol, 'outputs', {}) or {}
@@ -805,16 +972,25 @@ def _get_buf_flags(buf_param, func):
     Returns a string like "PyBUF_STRIDES | PyBUF_FORMAT" or 
     "PyBUF_WRITABLE | PyBUF_STRIDES | PyBUF_FORMAT".
     """
-    # Check if this buffer is used as writable in any overload
     is_writable = False
     for ol in func.overloads:
-        for cp in ol.params:
-            if cp.is_pointer and not cp.is_const:
-                # Check if this cp maps from this buffer
-                expr = ol.map_exprs.get(cp.name)
-                if expr is not None and _expr_refers_to(expr, buf_param.name):
-                    is_writable = True
+        if ol.variants:
+            for v in ol.variants:
+                for cp in v.params:
+                    if cp.is_pointer and not cp.is_const:
+                        expr = ol.map_exprs.get(cp.name)
+                        if expr is not None and _expr_refers_to(expr, buf_param.name):
+                            is_writable = True
+                            break
+                if is_writable:
                     break
+        else:
+            for cp in ol.params:
+                if cp.is_pointer and not cp.is_const:
+                    expr = ol.map_exprs.get(cp.name)
+                    if expr is not None and _expr_refers_to(expr, buf_param.name):
+                        is_writable = True
+                        break
         if is_writable:
             break
 
@@ -846,19 +1022,31 @@ def _emit_restrict_checks(out, buf_params, func):
 
     Any non-const pointer must not alias with any other pointer.
     """
-    # Determine which buffers are writable
     writable = set()
     const_set = set()
     for p in buf_params:
         for ol in func.overloads:
-            for cp in ol.params:
-                if cp.is_pointer:
-                    expr = ol.map_exprs.get(cp.name)
-                    if expr is not None and _expr_refers_to(expr, p.name):
-                        if cp.is_const:
-                            const_set.add(p.name)
-                        else:
-                            writable.add(p.name)
+            if ol.variants:
+                all_params = []
+                for v in ol.variants:
+                    all_params.extend(v.params)
+                for cp in all_params:
+                    if cp.is_pointer:
+                        expr = ol.map_exprs.get(cp.name)
+                        if expr is not None and _expr_refers_to(expr, p.name):
+                            if cp.is_const:
+                                const_set.add(p.name)
+                            else:
+                                writable.add(p.name)
+            else:
+                for cp in ol.params:
+                    if cp.is_pointer:
+                        expr = ol.map_exprs.get(cp.name)
+                        if expr is not None and _expr_refers_to(expr, p.name):
+                            if cp.is_const:
+                                const_set.add(p.name)
+                            else:
+                                writable.add(p.name)
 
     # Check writable vs writable, and writable vs const
     checked = set()
@@ -1075,10 +1263,17 @@ def _emit_constants(out, mod):
             out.append('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
             out.append('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
             for ol in func.overloads:
-                c_name = _extract_c_name(ol.sig_str)
-                perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
-                out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
-                out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                if ol.variants:
+                    for v in ol.variants:
+                        c_name = _extract_c_name(v.sig_str)
+                        perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
+                        out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                        out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                else:
+                    c_name = _extract_c_name(ol.sig_str)
+                    perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
+                    out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                    out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
     if has_gil:
         out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
         out.append('            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));')
@@ -1092,6 +1287,7 @@ def _emit_constants(out, mod):
 def _emit_module_init(out, mod):
     name = mod.name
     has_gil = any(f.gil_release for f in mod.functions)
+    has_variants = any(any(ol.variants for ol in f.overloads) for f in mod.functions)
     has_attrs = mod.constants or mod.timing or has_gil
     out.append('')
     out.append('/* ' + '-' * 44 + ' */')
@@ -1105,13 +1301,28 @@ def _emit_module_init(out, mod):
         for p in func.py_params:
             py_args.append('{}: {}'.format(p.name, p.pytype))
         default_doc = '{}({}) -> {}'.format(func.name, ', '.join(py_args), func.return_type)
-        return func.doc if func.doc is not None else default_doc
+        doc = func.doc if func.doc is not None else default_doc
+        # Append variant info for grouped functions
+        groups = [ol for ol in func.overloads if ol.variants]
+        if groups:
+            vnames = []
+            for ol in groups:
+                for v in ol.variants:
+                    vnames.append(v.name)
+            doc += '\\nVariants: ' + ', '.join(vnames)
+        return doc
 
     # --- VARARGS method table (Python < 3.12) ---
     out.append('static PyMethodDef _methods_varargs[] = {')
     for func in mod.functions:
         out.append('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(
             func.name, func.name, _doc(func)))
+    if has_variants:
+        for func in mod.functions:
+            if any(ol.variants for ol in func.overloads):
+                out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
+                           .format(func.name))
+                out.append('     "rebind variant for {0}"}},'.format(func.name))
     out.append('    {NULL, NULL, 0, NULL}')
     out.append('};')
     out.append('')
@@ -1121,6 +1332,12 @@ def _emit_module_init(out, mod):
     for func in mod.functions:
         out.append('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(
             func.name, func.name, _doc(func)))
+    if has_variants:
+        for func in mod.functions:
+            if any(ol.variants for ol in func.overloads):
+                out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
+                           .format(func.name))
+                out.append('     "rebind variant for {0}"}},'.format(func.name))
     out.append('    {NULL, NULL, 0, NULL}')
     out.append('};')
     out.append('')
@@ -1136,9 +1353,17 @@ def _emit_module_init(out, mod):
     out.append('};')
     out.append('')
 
+    # Resolve calls at init
+    resolve_calls = ''
+    if has_variants:
+        for func in mod.functions:
+            if any(ol.variants for ol in func.overloads):
+                resolve_calls += '    _resolve_{}();\n'.format(func.name)
+
     # Python 3 init
     out.append('PyObject* PyInit_{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
+    out.append(resolve_calls)
     out.append('')
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('    _module_def.m_methods = methods;')
@@ -1167,6 +1392,7 @@ def _emit_module_init(out, mod):
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
+    out.append(resolve_calls)
     if has_attrs:
         out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
         out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')

@@ -350,6 +350,10 @@ typedef struct {
     uint64_t t_wrap_min;       /* min wrapper overhead (ns) */
     uint64_t t_wrap_max;       /* max wrapper overhead (ns) */
     uint64_t t_wrap_total;     /* accumulated wrapper overhead */
+
+    int variant;               /* active variant index (0-based), -1 if unset */
+    int group_idx;             /* active outer group index, -1 if flat */
+    const char *variant_name;  /* points to static string, NULL if unset */
 } c2py_perf_t;
 
 /* Returns monotonic time in cycles or nanoseconds depending on arch.
@@ -443,6 +447,34 @@ static inline void c2py_perf_record_call(c2py_perf_t *p,
         if (c_dur > p->t_c_max) p->t_c_max = c_dur;
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* CPU feature probing (for user extensibility, callable from         */
+/* __attribute__((constructor)) functions)                            */
+/* ------------------------------------------------------------------ */
+
+#ifdef __x86_64__
+static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
+    unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+    __asm__ __volatile__(
+        "cpuid"
+        : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+        : "a"(leaf), "c"(subleaf));
+    switch (reg & 3) {
+    case 0: return eax;
+    case 1: return ebx;
+    case 2: return ecx;
+    default: return edx;
+    }
+}
+
+static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
+    return (c2py_cpuid_reg(leaf, subleaf, reg) >> bit) & 1;
+}
+
+/* Do NOT call cpu_supports from constructors; it may malloc internally.
+ * Use c2py_cpuid_bit() instead for custom feature probes. */
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Init function                                                      */

@@ -62,16 +62,39 @@ class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is
     """ctype is the full C type string, base_type is the element type"""
     pass
 
-class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr'])):
-    """A C function overload alternative with optional outputs dict for scalar outputs.
-    
-    outputs maps C parameter names to ctypes types (e.g. {'minval': 'double', 'maxval': 'float'}).
-    Output params are auto-allocated as 1-element arrays and returned as tuple values.
+class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr', 'name', 'group_name', 'variants'])):
+    """A C function overload alternative or a dispatch group.
+
+    For flat overloads (backward compatible):
+        sig_str, params, return_type, map_exprs, when_expr are populated.
+        name is optional (required if when_expr is static for rebind support).
+        variants is None.
+
+    For grouped dispatch:
+        variants is a non-empty list of CVariant.
+        sig_str, params, return_type are None.
+        map_exprs is the shared argument map for all variants in the group.
+        when_expr is the per-call group condition (e.g. data.format == 'f').
+        group_name is an optional label (for rebind qualifiers, docstrings).
+
+    outputs maps C parameter names to ctypes types (e.g. {'minval': 'double'}).
+    Output params are auto-allocated as 1-element arrays and returned in the tuple.
     """
-    def __new__(cls, sig_str, params, return_type, map_exprs, when_expr, outputs=None):
-        self = super(COverload, cls).__new__(cls, sig_str, params, return_type, map_exprs, when_expr)
+    def __new__(cls, sig_str, params, return_type, map_exprs, when_expr,
+                name=None, group_name=None, variants=None, outputs=None):
+        self = super(COverload, cls).__new__(cls, sig_str, params, return_type,
+                                              map_exprs, when_expr,
+                                              name, group_name, variants)
         self.outputs = outputs or {}
         return self
+
+class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type', 'when_expr', 'outputs'])):
+    """A variant within a dispatch group. Inherits map_exprs from the parent group.
+
+    name is required for rebind, docstring, and timing identification.
+    when_expr is the static (CPU feature) dispatch condition, or None for default.
+    outputs is an optional dict for scalar output parameters (same format as COverload).
+    """
 
 class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc', 'gil_release'])):
     pass
@@ -573,21 +596,69 @@ def _parse_func(raw, path):
 
     overloads = []
     for ol in raw.get('c_overloads', []):
-        sig_str = _get_required(ol, 'sig', path)
-        c_name, c_params, c_ret = _parse_c_sig(sig_str, path)
-        map_raw = _get_required(ol, 'map', path)
-        map_exprs = {}
-        for cname, expr_str in map_raw.items():
-            expr_str = _coerce_expr_value(expr_str, 'map', path)
-            map_exprs[cname] = parse_expr(expr_str)
-        when_raw = ol.get('when')
-        if when_raw is not None:
-            when_raw = _coerce_expr_value(when_raw, 'when', path)
-        when_expr = parse_expr(when_raw)
-        outputs = ol.get('outputs', {})
-        if outputs and not isinstance(outputs, dict):
-            raise ValueError("'outputs' must be a dict in {}".format(path))
-        overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr, outputs))
+        # --- Grouped dispatch (has 'variants:') ---
+        if 'variants' in ol:
+            variants_raw = ol.get('variants', [])
+            if not variants_raw:
+                raise ValueError("'variants' must be a non-empty list in {}".format(path))
+            if 'sig' in ol:
+                raise ValueError("Grouped overload cannot have 'sig'; use 'map:' and 'when:' at group level in {}".format(path))
+
+            # Group-level when: (per-call dynamic condition)
+            when_raw = ol.get('when')
+            if when_raw is not None:
+                when_raw = _coerce_expr_value(when_raw, 'when', path)
+            group_when = parse_expr(when_raw)
+
+            # Group-level map: (shared argument preparation)
+            map_raw = _get_required(ol, 'map', path)
+            group_map = {}
+            for cname, expr_str in map_raw.items():
+                expr_str = _coerce_expr_value(expr_str, 'map', path)
+                group_map[cname] = parse_expr(expr_str)
+
+            group_name = ol.get('group')
+
+            # Parse variants
+            variants = []
+            for v in variants_raw:
+                v_sig_str = _get_required(v, 'sig', path)
+                v_c_name, v_params, v_ret = _parse_c_sig(v_sig_str, path)
+                v_name = v.get('name')
+                if v_name is None:
+                    raise ValueError("Variant requires a 'name' in {}".format(path))
+                v_when_raw = v.get('when')
+                if v_when_raw is not None:
+                    v_when_raw = _coerce_expr_value(v_when_raw, 'when', path)
+                v_when_expr = parse_expr(v_when_raw)
+                v_outputs = v.get('outputs', {})
+                if v_outputs and not isinstance(v_outputs, dict):
+                    raise ValueError("'outputs' must be a dict in {}".format(path))
+                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs))
+
+            overloads.append(COverload(None, None, None, group_map, group_when,
+                                       group_name=group_name, variants=variants))
+        else:
+            # --- Flat overload (backward compatible) ---
+            sig_str = _get_required(ol, 'sig', path)
+            c_name, c_params, c_ret = _parse_c_sig(sig_str, path)
+            map_raw = _get_required(ol, 'map', path)
+            map_exprs = {}
+            for cname, expr_str in map_raw.items():
+                expr_str = _coerce_expr_value(expr_str, 'map', path)
+                map_exprs[cname] = parse_expr(expr_str)
+            when_raw = ol.get('when')
+            if when_raw is not None:
+                when_raw = _coerce_expr_value(when_raw, 'when', path)
+            when_expr = parse_expr(when_raw)
+            outputs = ol.get('outputs', {})
+            if outputs and not isinstance(outputs, dict):
+                raise ValueError("'outputs' must be a dict in {}".format(path))
+            oname = ol.get('name')
+            if oname is not None and not isinstance(oname, _STRING_TYPES):
+                oname = str(oname)
+            overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr,
+                                       name=oname, outputs=outputs))
 
     default_raise = raw.get('default_raise')
     doc = raw.get('doc')
@@ -742,15 +813,21 @@ def _validate_module(mod, base_dir):
 
     for func in mod.functions:
         for ol in func.overloads:
-            c_name = _extract_c_name(ol.sig_str)
-            c2py_count = len(ol.params)
-            actual_count = c_funcs.get(c_name)
+            # Validate both flat and grouped overloads
+            targets = []
+            if ol.variants:
+                for v in ol.variants:
+                    targets.append((_extract_c_name(v.sig_str), len(v.params), v))
+            else:
+                targets.append((_extract_c_name(ol.sig_str), len(ol.params), ol))
 
-            if actual_count is not None and c2py_count != actual_count:
-                raise ValueError(
-                    "P0: param count mismatch for '%s' in %s: "
-                    ".c2py sig has %d params, C source has %d params" % (
-                        c_name, mod.name, c2py_count, actual_count))
+            for c_name, c2py_count, entry in targets:
+                actual_count = c_funcs.get(c_name)
+                if actual_count is not None and c2py_count != actual_count:
+                    raise ValueError(
+                        "P0: param count mismatch for '%s' in %s: "
+                        ".c2py sig has %d params, C source has %d params" % (
+                            c_name, mod.name, c2py_count, actual_count))
 
         # P4: format checks -> C type validation
         fmt_checks = _find_format_check(func.checks)
@@ -763,20 +840,28 @@ def _validate_module(mod, base_dir):
                 continue
 
             for ol in func.overloads:
-                for cp in ol.params:
-                    if not cp.is_pointer:
-                        continue
-                    expr = ol.map_exprs.get(cp.name)
-                    if expr is None:
-                        continue
-                    if not _expr_refers_to(expr, buf_name):
-                        continue
-                    if cp.base_type != expected_ctype:
-                        raise ValueError(
-                            "P4: format check '%s.format == '%s'' implies %s*, "
-                            "but overload '%s' uses %s* for param '%s' in %s" % (
-                                buf_name, fmt_char, expected_ctype,
-                                c_name, cp.base_type, cp.name, mod.name))
+                # For grouped overloads, validate each variant
+                if ol.variants:
+                    check_entries = [(v.params, v.sig_str) for v in ol.variants]
+                else:
+                    check_entries = [(ol.params, ol.sig_str)]
+
+                for use_params, use_sig_str in check_entries:
+                    for cp in use_params:
+                        if not cp.is_pointer:
+                            continue
+                        expr = ol.map_exprs.get(cp.name)
+                        if expr is None:
+                            continue
+                        if not _expr_refers_to(expr, buf_name):
+                            continue
+                        if cp.base_type != expected_ctype:
+                            c_name = _extract_c_name(use_sig_str)
+                            raise ValueError(
+                                "P4: format check '%s.format == '%s'' implies %s*, "
+                                "but overload '%s' uses %s* for param '%s' in %s" % (
+                                    buf_name, fmt_char, expected_ctype,
+                                    c_name, cp.base_type, cp.name, mod.name))
 
 
 def _extract_c_name(sig_str):

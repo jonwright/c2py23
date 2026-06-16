@@ -27,6 +27,9 @@ class _c2py_perf_t(ctypes.Structure):
         ("t_wrap_min", ctypes.c_uint64),
         ("t_wrap_max", ctypes.c_uint64),
         ("t_wrap_total", ctypes.c_uint64),
+        ("variant",    ctypes.c_int),
+        ("group_idx",  ctypes.c_int),
+        ("variant_name", ctypes.c_void_p),
     ]
 
 
@@ -45,6 +48,16 @@ def read_perf(ptr_int):
         return {"call_count": 0}
     p = _c2py_perf_t.from_address(ptr_int)
     n = p.call_count
+    vname = ""
+    if p.variant_name:
+        try:
+            vname = ctypes.c_char_p(p.variant_name).value
+            if vname is None:
+                vname = ""
+            elif isinstance(vname, bytes):
+                vname = vname.decode('ascii', errors='replace')
+        except Exception:
+            vname = ""
     return {
         "call_count": n,
         "t_enter":    p.t_enter,
@@ -60,6 +73,9 @@ def read_perf(ptr_int):
         "wrap_min_ns":  p.t_wrap_min,
         "wrap_max_ns":  p.t_wrap_max,
         "wrap_mean_ns": p.t_wrap_total / n if n else 0,
+        "variant":    p.variant,
+        "group_idx":  p.group_idx,
+        "variant_name": vname,
     }
 
 

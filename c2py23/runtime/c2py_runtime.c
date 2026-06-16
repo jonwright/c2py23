@@ -12,11 +12,54 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <stdio.h>
+#include <sys/auxv.h>
 #include "c2py_runtime.h"
 
 /* Global API table */
 c2py_api_t C2PY = {0};
 static volatile int _c2py_runtime_initialized = 0;
+
+/* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ---- */
+
+#ifdef __x86_64__
+int c2py_amd64_mmx = 0;
+int c2py_amd64_sse = 0;
+int c2py_amd64_sse2 = 0;
+int c2py_amd64_sse3 = 0;
+int c2py_amd64_ssse3 = 0;
+int c2py_amd64_sse4_1 = 0;
+int c2py_amd64_sse4_2 = 0;
+int c2py_amd64_avx = 0;
+int c2py_amd64_avx2 = 0;
+int c2py_amd64_fma = 0;
+int c2py_amd64_avx512f = 0;
+int c2py_amd64_avx512bw = 0;
+int c2py_amd64_avx512dq = 0;
+int c2py_amd64_avx512vl = 0;
+int c2py_amd64_bmi1 = 0;
+int c2py_amd64_bmi2 = 0;
+int c2py_amd64_popcnt = 0;
+int c2py_amd64_lzcnt = 0;
+#endif
+
+#if defined(__aarch64__) || defined(__arm64__)
+int c2py_arm64_fp = 0;
+int c2py_arm64_asimd = 0;
+int c2py_arm64_aes = 0;
+int c2py_arm64_pmull = 0;
+int c2py_arm64_sha1 = 0;
+int c2py_arm64_sha2 = 0;
+int c2py_arm64_crc32 = 0;
+int c2py_arm64_sve = 0;
+int c2py_arm64_sve2 = 0;
+#endif
+
+#if defined(__powerpc64__) || defined(__powerpc__)
+int c2py_ppc64_altivec = 0;
+int c2py_ppc64_vsx = 0;
+int c2py_ppc64_power8 = 0;
+int c2py_ppc64_power9 = 0;
+#endif
 
 static int _resolve(void **ptr, const char *name)
 {
@@ -64,11 +107,103 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 }
 
 
+/* ---- CPU feature probing ---- */
+
+static void _c2py_probe_cpu_features(void)
+{
+#ifdef __x86_64__
+    unsigned int eax1, ebx1, ecx1, edx1;
+    unsigned int eax7, ebx7, ecx7, edx7;
+    unsigned int eax81, ebx81, ecx81, edx81;
+
+    /* Determine max standard leaf */
+    __asm__ __volatile__("cpuid"
+        : "=a"(eax1) : "a"(0) : "ebx", "ecx", "edx");
+    unsigned int max_std = eax1;
+
+    /* Leaf 1: baseline features */
+    if (max_std >= 1) {
+        __asm__ __volatile__("cpuid"
+            : "=a"(eax1), "=b"(ebx1), "=c"(ecx1), "=d"(edx1)
+            : "a"(1) : );
+        c2py_amd64_mmx    = (edx1 >> 23) & 1;
+        c2py_amd64_sse    = (edx1 >> 25) & 1;
+        c2py_amd64_sse2   = (edx1 >> 26) & 1;
+        c2py_amd64_sse3   = (ecx1 >>  0) & 1;
+        c2py_amd64_ssse3  = (ecx1 >>  9) & 1;
+        c2py_amd64_sse4_1 = (ecx1 >> 19) & 1;
+        c2py_amd64_sse4_2 = (ecx1 >> 20) & 1;
+        c2py_amd64_avx    = (ecx1 >> 28) & 1;
+        c2py_amd64_fma    = (ecx1 >> 12) & 1;
+        c2py_amd64_popcnt = (ecx1 >> 23) & 1;
+    }
+
+    /* Leaf 7, subleaf 0: extended features */
+    if (max_std >= 7) {
+        __asm__ __volatile__("cpuid"
+            : "=a"(eax7), "=b"(ebx7), "=c"(ecx7), "=d"(edx7)
+            : "a"(7), "c"(0));
+        c2py_amd64_bmi1    = (ebx7 >>  3) & 1;
+        c2py_amd64_avx2    = (ebx7 >>  5) & 1;
+        c2py_amd64_bmi2    = (ebx7 >>  8) & 1;
+        c2py_amd64_avx512f = (ebx7 >> 16) & 1;
+        c2py_amd64_avx512dq = (ebx7 >> 17) & 1;
+        c2py_amd64_avx512bw = (ebx7 >> 30) & 1;
+        c2py_amd64_avx512vl = (ebx7 >> 31) & 1;
+    }
+
+    /* Leaf 0x80000001: extended feature bits (LZCNT) */
+    /* Check extended leaf max first */
+    __asm__ __volatile__("cpuid"
+        : "=a"(eax81) : "a"(0x80000000) : "ebx", "ecx", "edx");
+    if (eax81 >= 0x80000001) {
+        __asm__ __volatile__("cpuid"
+            : "=a"(eax81), "=b"(ebx81), "=c"(ecx81), "=d"(edx81)
+            : "a"(0x80000001));
+        c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
+    }
+#endif
+
+#if defined(__aarch64__) || defined(__arm64__)
+    {
+        unsigned long hwcap = getauxval(AT_HWCAP);
+        unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+        /* ARM64 HWCAP bits (stable kernel ABI) */
+        c2py_arm64_fp    = (hwcap >> 0) & 1;
+        c2py_arm64_asimd = (hwcap >> 1) & 1;
+        c2py_arm64_aes   = (hwcap >> 3) & 1;
+        c2py_arm64_pmull = (hwcap >> 4) & 1;
+        c2py_arm64_sha1  = (hwcap >> 5) & 1;
+        c2py_arm64_sha2  = (hwcap >> 6) & 1;
+        c2py_arm64_crc32 = (hwcap >> 7) & 1;
+        c2py_arm64_sve   = (hwcap >> 22) & 1;
+        c2py_arm64_sve2  = (hwcap2 >> 1) & 1;
+    }
+#endif
+
+#if defined(__powerpc64__) || defined(__powerpc__)
+    {
+        unsigned long hwcap = getauxval(AT_HWCAP);
+        unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+        c2py_ppc64_altivec = (hwcap >> 28) & 1;        /* PPC_FEATURE_HAS_ALTIVEC = 0x10000000 */
+        c2py_ppc64_vsx     = (hwcap >>  7) & 1;         /* PPC_FEATURE_HAS_VSX     = 0x00000080 */
+        c2py_ppc64_power8  = (hwcap2 >> 31) & 1;        /* PPC_FEATURE2_ARCH_2_07  = 0x80000000 */
+        c2py_ppc64_power9  = (hwcap2 >> 23) & 1;        /* PPC_FEATURE2_ARCH_3_00  = 0x00800000 */
+    }
+#endif
+}
+
+
 int c2py_runtime_init(void)
 {
     if (_c2py_runtime_initialized) {
         return 0; /* Already initialized */
     }
+
+    /* CPU feature probing runs first -- does not depend on Python */
+    _c2py_probe_cpu_features();
 
     C2PY.dl_handle = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);
     if (C2PY.dl_handle == NULL) {
