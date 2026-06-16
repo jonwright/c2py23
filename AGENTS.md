@@ -201,7 +201,7 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 
 ### P1: SIMD Dispatch / CPU Feature Detection
 
-**Status: Design decided. Implementation pending.**
+**Status: Implemented (2026-06-16).**
 
 Decision: Use Option A (CPUID on x86, MRS on arm64) with `/proc/cpuinfo` as
 fallback for portability. Referee 1 noted that `/proc/cpuinfo` is Linux-specific
@@ -271,3 +271,68 @@ removal of GIL-dependent assumptions in `c2py_runtime_init()`.
 9. Run `python3 tests/test_all.py` for multi-version container validation
 10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
 11. Run valgrind on leak and error-path tests when changing wrapper generation
+
+## Writing Safe .c2py Definitions
+
+**Always validate buffer dimensions in `checks:` blocks.**  Without size
+checks, a caller can pass a too-small output buffer, causing the C function
+to write past the end and produce a segfault or silent memory corruption.
+
+### Required checks for every function with buffer parameters:
+
+1. **Format:** `"buf.format == 'd'"` -- ensure element type matches C pointer type
+2. **Dimensionality:** `"buf.ndim == 1"` or `"buf.ndim == 2"` -- reject unexpected shapes
+3. **Size relationships:** `"ibuf.n == obuf.n"` or `"obuf.n >= ibuf.n + 2"` --
+   the single most important check for preventing segfaults
+
+### Example: safe output buffer sizing
+
+```yaml
+# Correct: validates output is large enough
+checks:
+  - "a.format == 'f'"
+  - "out.format == 'f'"
+  - "out.n >= a.n"          # output at least as large as input
+
+# Wrong: missing size check -- segfault if out is too small
+checks:
+  - "a.format == 'f'"
+  - "out.format == 'f'"
+```
+
+### Additional safe checks to consider:
+
+- **Contiguity:** c2py23 enforces C/F-contiguity automatically, but check for specific
+  expectations (e.g., C-order only)
+- **Non-empty:** `"buf.n > 0"` when zero-length would be invalid
+- **Alignment:** `"(uintptr_t)buf.ptr % alignment == 0"` for SIMD overloads in
+  `when:` conditions (the scalar fallback handles misaligned cases)
+- **Alias:** c2py23 checks writable buffer aliasing at runtime; add
+  `default_raise:` for a clear error message
+
+### Remember:
+
+The C function receives raw pointers with no bounds information. If the
+Python caller passes a 100-element output buffer for a function expecting
+1000 elements, the C code will write 900 elements past the buffer end.
+There is no runtime instrumentation to catch this; the ONLY defense is
+the `checks:` block.
+
+## Keeping Documentation Current
+
+### README.md
+When adding a new feature, test case, or changing the public API:
+1. Update the "Features" list if a new capability is added
+2. Update the "Supported Types" table if new types are supported
+3. Update the "File Structure" diagram if files/directories are added/removed
+4. Verify the test count in "Supported Python Versions":
+   ```bash
+   python3 -c "import tests.test_uniform; print(len(tests.test_uniform.TEST_CASES))"
+   ```
+5. Update the "Limitations" section when removing or adding restrictions
+
+### AGENTS.md
+When completing a task listed in "Next Steps":
+1. Mark the status accurately -- do not leave "pending" after implementation
+2. Remove or archive completed items
+3. When adding new planned items, add them under "Next Steps"

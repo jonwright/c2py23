@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "lz4/lib/lz4.h"
+#include "../lz4/lib/lz4.h"
 
 int lz4_compress(const uint8_t *src, uint8_t *dst, int srcSize, int dstCapacity) {
     return LZ4_compress_default((const char *)src, (char *)dst, srcSize, dstCapacity);

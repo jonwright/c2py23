@@ -480,6 +480,12 @@ def _is_simple_expr(expr):
         return True
     if isinstance(expr, Attr) and isinstance(expr.obj, Var):
         return True  # a.n, a.len, a.ndim etc.
+    if isinstance(expr, UnaryOp):
+        return False
+    if isinstance(expr, BinOp):
+        if expr.op in ('and', 'or'):
+            return _is_simple_expr(expr.left) and _is_simple_expr(expr.right)
+        return False  # arithmetic is never simple
     return False
 
 
@@ -1203,6 +1209,8 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return '({}) && ({})'.format(left, right)
         elif expr.op == 'or':
             return '({}) || ({})'.format(left, right)
+        elif expr.op in ('+', '-', '*', '/', '%'):
+            return '({} {} {})'.format(left, expr.op, right)
         else:
             raise ValueError("Unknown binop: {}".format(expr.op))
 
@@ -1210,6 +1218,10 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         operand = _expr_to_c(expr.operand, buf_params, scalar_params, current_ol)
         if expr.op == 'not':
             return '!({})'.format(operand)
+        elif expr.op == '-':
+            return '-({})'.format(operand)
+        elif expr.op == '+':
+            return '+({})'.format(operand)
         else:
             raise ValueError("Unknown unary op: {}".format(expr.op))
 

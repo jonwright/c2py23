@@ -1,9 +1,9 @@
 module: lz4mod
 source:
-  - lz4/lib/lz4.c
+  - ../lz4/lib/lz4.c
   - lz4_thin.c
 headers:
-  - lz4/lib/lz4.h
+  - ../lz4/lib/lz4.h
 
 functions:
   - py_sig: "compress(src: buffer, dst: buffer) -> int"

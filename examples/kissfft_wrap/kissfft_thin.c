@@ -1,6 +1,6 @@
 #include <stdlib.h>
-#include "kissfft/kiss_fft.h"
-#include "kissfft/kiss_fftr.h"
+#include "../kissfft/kiss_fft.h"
+#include "../kissfft/kiss_fftr.h"
 
 void kissfft_rfft_forward(const float *data, float *spec, int n) {
     kiss_fftr_cfg cfg = kiss_fftr_alloc(n, 0, NULL, NULL);

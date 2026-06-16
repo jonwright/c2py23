@@ -161,7 +161,7 @@ _PY_SIG_RE = re.compile(
 _PYTYPE_MAP = {'buffer': 'buffer', 'int': 'int', 'float': 'float'}
 
 _PY_PARAM_RE = re.compile(
-    r'^(\w+)\s*:\s*(buffer|int|float)\s*(?:=\s*(-?\d+\.?\d*))?\s*$'
+    r'^(\w+)\s*:\s*(buffer|int|float)\s*(?:=\s*(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?))?\s*$'
 )
 
 def _parse_py_sig(sig_str, path):
@@ -195,6 +195,10 @@ def _parse_py_sig(sig_str, path):
                     raise ValueError(
                         "Buffer param '{}' cannot have a default value in '{}'".format(pname, sig_str))
                 if pytype == 'int':
+                    if not re.match(r'^-?\d+$', default_str):
+                        raise ValueError(
+                            "Integer param '{}' default '{}' is not a valid integer "
+                            "in '{}'".format(pname, default_str, sig_str))
                     default = int(default_str)
                 else:
                     default = float(default_str)
@@ -390,7 +394,7 @@ class _ExprParser(object):
         return self._parse_compare()
 
     def _parse_compare(self):
-        left = self._parse_term()
+        left = self._parse_additive()
         self._skip_ws()
         pos = self.pos
         # Try to match a comparison operator
@@ -408,8 +412,43 @@ class _ExprParser(object):
                 raise ValueError("Unknown comparison operator '{}'".format(op))
         else:
             return left
-        right = self._parse_term()
+        right = self._parse_additive()
         return Compare(left, op, right)
+
+    def _parse_additive(self):
+        left = self._parse_multiplicative()
+        while True:
+            self._skip_ws()
+            if self.pos < self.n and self.s[self.pos] in ('+', '-'):
+                op = self.s[self.pos]
+                self.pos += 1
+                right = self._parse_multiplicative()
+                left = BinOp(left, op, right)
+            else:
+                break
+        return left
+
+    def _parse_multiplicative(self):
+        left = self._parse_unary()
+        while True:
+            self._skip_ws()
+            if self.pos < self.n and self.s[self.pos] in ('*', '/', '%'):
+                op = self.s[self.pos]
+                self.pos += 1
+                right = self._parse_unary()
+                left = BinOp(left, op, right)
+            else:
+                break
+        return left
+
+    def _parse_unary(self):
+        self._skip_ws()
+        if self.pos < self.n and self.s[self.pos] in ('+', '-'):
+            op = self.s[self.pos]
+            self.pos += 1
+            operand = self._parse_unary()
+            return UnaryOp(op, operand)
+        return self._parse_term()
 
     def _parse_term(self):
         node = self._parse_primary()
@@ -885,4 +924,6 @@ def _expr_refers_to(expr, buf_name):
         return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
     elif isinstance(expr, BinOp):
         return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
+    elif isinstance(expr, UnaryOp):
+        return _expr_refers_to(expr.operand, buf_name)
     return False

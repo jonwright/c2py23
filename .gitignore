@@ -33,3 +33,10 @@ Thumbs.db
 /tests/test_venv_3.12/
 /tests/test_results.log
 examples/simd_dispatch/*_wrapper.c
+examples/simd_dispatch/*.so
+examples/simd_dispatch/*.o
+examples/kissfft_wrap/*_wrapper.c
+examples/kissfft_wrap/*.so
+examples/lz4_wrap/*_wrapper.c
+examples/lz4_wrap/*.so
+/tests/test_workspace/
