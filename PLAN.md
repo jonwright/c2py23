@@ -428,6 +428,17 @@ Where the user DOES want c2py23 to dispatch between hand-rolled
 microkernels (e.g. NASM assembly functions), the group/variant pattern
 with `when: "c2py_amd64_avx2"` handles it.
 
+**Multi-flag compilation**: The build system is orthogonal to c2py23.
+See `examples/simd_dispatch/` for a worked example: a single C kernel
+compiled with different `-m` flags and `-DKERNEL_FN=<name>`, producing
+ISA-specific `.o` files linked and wrapped by c2py23's grouped dispatch.
+
+**Remaining testing**: ARM64 and POWER64 CPU feature detection via
+`getauxval(AT_HWCAP)` is implemented but untested. Needs validation
+on aarch64 and ppc64le hardware (snakepit containers can provide
+user-mode emulation for basic smoke testing, but real hardware is
+needed for correctness verification of the MRS/HWCAP bit layouts).
+
 ---
 
 ### P2: GIL release via `gil_release: true`

@@ -829,9 +829,24 @@ However, buffer acquisition and reference counting must become atomic
 in free-threaded builds. This is a separate concern (PLAN.md P3) and
 does not affect the GIL release design.
 
+## SIMD Dispatch and Multi-Flag Compilation
+
+c2py23 provides CPU feature detection and two-level dispatch (buffer-type groups
++ CPU variants) as described in `PLAN.md` P1.  The build system is orthogonal:
+c2py23 wraps and links; the user's build system (make, CMake, meson, etc.)
+compiles source files with the appropriate `-m` flags.
+
+**Multi-flag compilation pattern**: a single C kernel is compiled multiple times
+with different `-m` flags and a `-DKERNEL_FN=<name>` rename macro, producing
+ISA-specific object files.  c2py23 lists the `.o` files in `source:` and
+dispatches between them via `c_overloads` with `variants:` and `when:` CPU
+feature conditions.
+
+See `examples/simd_dispatch/` for a complete worked example (SAXPY kernel
+compiled as avx512/avx2/scalar variants, wrapped with grouped dispatch, with
+Makefile and Python test harness).
+
 ## Future Work
 
-- **SIMD dispatch** -- select C functions based on CPU feature detection at
-  module load time (`cpu_has_avx2`, `cpu_has_avx512f`, `cpu_has_neon` etc.)
 - **Thread safety** -- for free-threaded Python 3.14+, wrap critical sections
   for atomic refcounting and buffer acquisition

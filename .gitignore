@@ -32,3 +32,4 @@ test_workspace/
 Thumbs.db
 /tests/test_venv_3.12/
 /tests/test_results.log
+examples/simd_dispatch/*_wrapper.c

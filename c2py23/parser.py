@@ -750,6 +750,10 @@ def _parse_c_func_from_files(file_list, base_dir):
         fpath = os.path.join(base_dir, fname)
         if not os.path.isfile(fpath):
             continue
+        # Only parse C source/header files; skip .o and other binary files
+        ext = os.path.splitext(fname)[1].lower()
+        if ext not in ('.c', '.h', '.i'):
+            continue
         with open(fpath, 'r') as f:
             content = f.read()
         content = _strip_c_comments(content)
