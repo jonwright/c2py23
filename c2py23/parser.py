@@ -770,10 +770,13 @@ def _strip_c_comments(text):
 
 def _count_c_params(params_str):
     """Count the number of parameters in a C function parameter string."""
-    if not params_str.strip():
+    stripped = params_str.strip()
+    if not stripped:
+        return 0
+    if stripped == 'void':
         return 0
     count = 1
-    for ch in params_str:
+    for ch in stripped:
         if ch == ',':
             count += 1
     return count
@@ -900,11 +903,15 @@ def _validate_module(mod, base_dir):
                             continue
                         if cp.base_type != expected_ctype:
                             c_name = _extract_c_name(use_sig_str)
-                            raise ValueError(
-                                "P4: format check '%s.format == '%s'' implies %s*, "
-                                "but overload '%s' uses %s* for param '%s' in %s" % (
-                                    buf_name, fmt_char, expected_ctype,
-                                    c_name, cp.base_type, cp.name, mod.name))
+                            # LP64 compat: bare 'int' == 'int32_t'
+                            if (cp.base_type, expected_ctype) not in (
+                                    ('int', 'int32_t'), ('int32_t', 'int'),
+                                    ('unsigned int', 'uint32_t'), ('uint32_t', 'unsigned int')):
+                                raise ValueError(
+                                    "P4: format check '%s.format == '%s'' implies %s*, "
+                                    "but overload '%s' uses %s* for param '%s' in %s" % (
+                                        buf_name, fmt_char, expected_ctype,
+                                        c_name, cp.base_type, cp.name, mod.name))
 
 
 def _extract_c_name(sig_str):

@@ -318,10 +318,11 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gi
                 syn_ol = COverload(v.sig_str, v.params, v.return_type,
                                    ol.map_exprs, v.when_expr,
                                    name=v.name, outputs=v.outputs)
-                out.append('        case {}:'.format(vi))
+                out.append('        case {}: {{'.format(vi))
                 _emit_c_call(out, syn_ol, buf_params, scalar_params, timing, name,
-                             has_gil_release and func.gil_release, indent='            ')
+                             has_gil_release and func.gil_release, indent='                ')
                 out.append('            break;')
+                out.append('        }')
             out.append('        default: break;')
             out.append('        }')
             group_index += 1
