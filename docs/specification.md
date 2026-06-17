@@ -42,6 +42,7 @@ timing: true                          # optional: enable perf timing
 functions:                            # required: list of wrapped functions
   - py_sig: "name(arg: type, ...) -> return_type"
     doc: "Custom docstring"           # optional: override auto-generated doc
+    gil_release: true                 # optional: release the GIL during C calls
     expand:                           # optional: template expansion
       VAR1: [val_a, val_b, ...]       #   variable name -> list of values
       VAR2: [val_a, val_b, ...]       #   all lists must have same length
@@ -49,11 +50,22 @@ functions:                            # required: list of wrapped functions
       - "expression"
       - ...
     c_overloads:                      # required: ordered list of alternatives
+      # flat overload:
       - sig: "c_function(c_params...) -> c_return"
+        name: "label"                 # optional: for timing/reference
         map: {c_param: expression, ...}
         when: "condition"             # optional: dispatch condition
         outputs:                      # optional: return-by-pointer scalars
           c_param_name: ctype         #   ctype: int, float, double, int32_t, etc.
+      # grouped dispatch (SIMD / CPU feature variants):
+      - map: {c_param: expression, ...}
+        when: "condition"             # optional: per-call group condition
+        group: "label"                # optional: group name
+        variants:                     # required for grouped: list of variants
+          - sig: "c_variant(c_params...) -> c_ret"
+            name: "label"             # required: variant name for rebind/doc
+            when: "cpu_feature_check" # optional: static (init-time) dispatch
+            outputs: {c_param: ctype}
       - ...
     default_raise: "TypeError: msg"   # optional: error when no overload matches
 ```
@@ -726,7 +738,7 @@ for any glibc-linked binary.
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
 - The GIL is held during all C function calls by default.
-  Individual functions or overloads may opt into GIL release via
+  Individual functions may opt into GIL release via
   `gil_release: true` (see below).
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`
 
@@ -761,16 +773,16 @@ correctness. The wrapper can release it:
 ```yaml
 functions:
   - py_sig: "array_stats(data: buffer) -> void"
-    gil_release: true                      # per-function default
+    gil_release: true                      # release the GIL for all overloads of this function
     c_overloads:
       - sig: "stats_f(const float *data, int n, ...)"
         map: {data: "data.ptr", n: "data.n"}
-        gil_release: false                 # per-overload override
 ```
 
-The `gil_release` key can appear at the function level (sets the default
-for all overloads) or on individual overloads (overrides the function
-default). If omitted, the GIL is held -- the safe default.
+The `gil_release` key appears at the function level only.  If omitted,
+the GIL is held -- the safe default.  Having it at function level means
+the Python caller can know, from looking at the function name alone,
+whether the GIL will be released during the call.
 
 The generated wrapper calls `PyEval_SaveThread()` before entering the C
 function and `PyEval_RestoreThread()` after returning. Between these
@@ -818,15 +830,15 @@ mymod._c2py_gil_release_enabled  # 1 = enabled, 0 = disabled
 mymod._c2py_gil_release_enabled = 0  # disable all GIL release
 ```
 
-Per-function get/set methods provide finer control:
+Per-function enable/disable uses the same ctypes pointer pattern as timing
+instrumentation (see `c2py23.perf.read_enabled` / `c2py23.perf.set_enabled`):
 
 ```python
-mymod.array_stats.get_gil_release()     # True or False
-mymod.array_stats.set_gil_release(False)
+import ctypes
+# disable GIL release for a specific function
+ptr = mymod._c2py_gil_release_array_stats
+ctypes.c_int.from_address(ptr).value = 0
 ```
-
-These follow the same pattern as `c2py23.perf.read_enabled` /
-`c2py23.perf.set_enabled` for timing instrumentation.
 
 ### Free-Threading (Python 3.14t)
 

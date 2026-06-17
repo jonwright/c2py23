@@ -112,7 +112,7 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 - **Buffer protocol** with format dispatch (`float` vs `double` vs `int32_t`), arithmetic checks (`a.n >= b.n + 2`), and contiguity enforcement
 - **Overload dispatch** by buffer type, shape, CPU features (AVX2/AVX-512/NEON), or arbitrary `when:` conditions; variants statically resolved at init
 - **Template expansion** (`expand:` with `${VAR}` substitution) for generating typed variants
-- **GIL release** (`gil_release: true`) per-function or per-overload for parallel C calls
+- **GIL release** (`gil_release: true`) per-function for parallel C calls
 - **Output scalars** (`outputs:`) return-by-pointer parameters as Python tuple values
 - **Optional parameters** with defaults, custom docstrings, `default_raise:` error messages
 - **Opaque pointers** -- `void*` maps from Python `int` for user-managed memory (GPU, custom allocators)

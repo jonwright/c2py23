@@ -266,7 +266,7 @@ static void _c2py_runtime_init_once(void)
         C2PY.is_free_threaded = found_ft;
     }
 
-    /* --- Set ABI layout --- */
+    /* --- Set ABI layout (provisional; runtime probe refines below) --- */
     if (C2PY.is_free_threaded) {
         /* Free-threaded PyObject layout (32 bytes LP64):
          *   ob_tid:0 ob_flags:8 ob_mutex:10 ob_gc_bits:11
@@ -303,11 +303,10 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
-    /* --- Buffer struct size ---
-     * CPython 2.x has Py_buffer.smalltable[2] (96 bytes LP64).
-     * CPython 3.x dropped smalltable; Debian/Ubuntu builds from 3.6+
-     * all have sizeof(Py_buffer)==80 (internal at offset 72).
-     * Use 80 for all 3.x, 96 for 2.x, to match observed ABI.
+    /* --- Buffer struct size (default) ---
+     * Runtime probe below will refine this.  Safe default: 80 for 3.x, 96 for 2.x.
+     * On Debian/Ubuntu this is always correct (all 3.6+ builds dropped smalltable).
+     * Upstream CPython 3.0-3.11 may need 96; the probe catches that case.
      */
     C2PY.pybuffer_size = (C2PY.version_major >= 3)
         ? C2PY_PYBUFFER_SZ_POST312 : C2PY_PYBUFFER_SZ_PRE312;
@@ -329,6 +328,38 @@ static void _c2py_runtime_init_once(void)
     RESOLVE(C2PY.Long_FromLongLong, "PyLong_FromLongLong");
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
     if (C2PY.Long_FromLong == NULL || C2PY.Float_FromDouble == NULL) return;
+
+    /* --- Runtime PyObject layout probe ---
+     * Create a temporary PyLong and check where ob_type lives.
+     * GIL layout (16 bytes): ob_refcnt:0  ob_type:8
+     * FT  layout (32 bytes): ob_tid:0 ... ob_type:24
+     * On GIL, offset 8 is a heap type pointer (high address).
+     * On FT,  offset 8 is ob_flags/mutex/gc_bits (small values).
+     * This verifies/overrides the version-based FT detection above.
+     */
+    {
+        PyObject *tmp = C2PY.Long_FromLong(1);
+        if (tmp) {
+            void *p8 = *(void**)((char*)tmp + 8);
+            /* A valid CPython type pointer is always a heap/data address
+             * well above 0x100000. ob_flags/mutex/gc_bits are small ints. */
+            if (p8 != NULL && (uintptr_t)p8 >= 0x100000) {
+                /* offset 8 is a pointer -> GIL layout confirmed */
+            } else {
+                /* offset 8 is not a pointer -> FT layout */
+                C2PY.is_free_threaded = 1;
+                C2PY.pyobject_size = 32;
+                C2PY.ob_refcnt_offset = 16;
+            }
+            /* DecRef: use direct dlsym (C2PY.DecRef not resolved yet) */
+            {
+                typedef void (*dref_fn)(PyObject*);
+                dref_fn dref = (dref_fn)dlsym(dl, "Py_DecRef");
+                if (!dref) dref = (dref_fn)dlsym(dl, "_Py_DecRef");
+                if (dref) dref(tmp);
+            }
+        }
+    }
 
     /* --- Tuple construction (required) --- */
     RESOLVE_REQ(C2PY.Tuple_New, "PyTuple_New");
@@ -433,6 +464,37 @@ static void _c2py_runtime_init_once(void)
         if (C2PY.none_obj == NULL) {
             fprintf(stderr, "c2py_runtime: could not resolve Py_None\n");
             return;
+        }
+    }
+
+    /* --- Runtime Py_buffer size probe ---
+     * PyBuffer_FillInfo sets view->internal = NULL. For a bytes object,
+     * this writes to offset 72 (80-byte layout) or 88 (96-byte layout).
+     * We probe with a sentinel to determine the real sizeof(Py_buffer).
+     * This is needed for non-Debian CPython 3.0-3.11 which still have
+     * smalltable[2] (96 bytes LP64); Debian/Ubuntu backported the removal.
+     */
+    {
+        unsigned char probe[96];
+        Py_buffer *pb = (Py_buffer*)probe;
+        typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
+        bytes_fn mkbytes = (bytes_fn)dlsym(dl, "PyBytes_FromStringAndSize");
+        if (!mkbytes)
+            mkbytes = (bytes_fn)dlsym(dl, "PyString_FromStringAndSize");
+        PyObject *by = mkbytes ? mkbytes("x", 1) : NULL;
+        if (by) {
+            memset(probe, 0xAA, sizeof(probe));
+            if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {
+                /* internal=NULL at offset 72 (80-byte layout) or
+                 * offset 88 (96-byte layout). If offset 72 is zeroed,
+                 * the internal field was written there -> 80-byte layout. */
+                if (*((char*)pb + 72) == 0)
+                    C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
+                else
+                    C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+                C2PY.ReleaseBuffer(pb);
+            }
+            C2PY.DecRef(by);
         }
     }
 

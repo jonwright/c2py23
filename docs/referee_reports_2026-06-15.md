@@ -61,7 +61,7 @@ prevent `int = 1e5` from producing a confusing ValueError.
 Three new test files were added in the fix commit:
 
 - `tests/test_regression_fixes.py` -- 9 tests covering B1, B3, B4, P4, P5,
-  and INT_MAX guard generation
+  and INT_MAX guard generation (now 14 tests as of 2026-06)
 - `tests/test_error_paths.py` -- 5 tests for refcount stability on format
   mismatch, size mismatch, successful calls, repeated calls, and alias
   detection error paths

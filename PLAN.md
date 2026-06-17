@@ -48,7 +48,7 @@ mechanism or `ctypes.CDLL` loader bootstrap.
 - Custom docstrings (`doc:` key)
 - Module-level integer constants
 - Format char dispatch (all single-byte PEP 3118 formats)
-- METH_FASTCALL vectorcall for Python 3.11+
+- METH_FASTCALL vectorcall for Python 3.12+
 - Py_buffer size detection (dynamic, version-based)
 - Py_IncRef fallback for pre-3.12 (manual refcount incr)
 - `or` operator in when/checks conditions

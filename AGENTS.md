@@ -152,7 +152,8 @@ YAML-based `.c2py` files define:
   - `py_sig:` -- Python signature
   - `expand:` -- template expansion with `${VAR}` substitution (optional)
   - `checks:` -- pre-conditions (optional)
-  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:` (optional)
+  - `gil_release:` -- release the GIL during C calls (optional, per-function)
+  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:`, `name:`, `variants:`, `group:` (optional)
   - `default_raise:` -- error when no overload matches (optional)
   - `doc:` -- custom docstring (optional)
 
@@ -297,7 +298,7 @@ When adding a new feature, test case, or changing the public API:
 3. Update the "File Structure" diagram if files/directories are added/removed
 4. Verify the test count in "Supported Python Versions":
    ```bash
-   python3 -c "import tests.test_uniform; print(len(tests.test_uniform.TEST_CASES))"
+   python3 -c "import tests.test_uniform; print(len([t for t in dir(tests.test_uniform) if t.startswith('test_')]))"
    ```
 5. Update the "Limitations" section when removing or adding restrictions
 
