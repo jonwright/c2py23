@@ -64,6 +64,10 @@ int c2py_ppc64_power8 = 0;
 int c2py_ppc64_power9 = 0;
 #endif
 
+/* Tick source frequency in Hz, detected once at runtime init.
+ * Declared extern in c2py_runtime.h so generated code can read it. */
+uint64_t c2py_tick_frequency_hz = 0;
+
 static int _resolve(void **ptr, const char *name)
 {
     *ptr = dlsym(C2PY.dl_handle, name);
@@ -196,6 +200,60 @@ static void _c2py_probe_cpu_features(void)
         c2py_ppc64_power9  = (hwcap2 >> 23) & 1;        /* PPC_FEATURE2_ARCH_3_00  = 0x00800000 */
     }
 #endif
+
+/* ---- Tick source frequency detection ---- */
+#if !defined(C2PY_USE_CYCLE_COUNTER)
+    c2py_tick_frequency_hz = 1000000000ULL;
+#else
+    /* C2PY_USE_CYCLE_COUNTER: detect arch cycle counter frequency */
+#if defined(__x86_64__) || defined(__i386__)
+    {
+        unsigned int eax, ebx, ecx, edx;
+        unsigned int max_std;
+        int got_freq = 0;
+        __asm__ __volatile__("cpuid" : "=a"(max_std) : "a"(0) : "ebx", "ecx", "edx");
+        if (max_std >= 0x15) {
+            __asm__ __volatile__("cpuid"
+                : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                : "a"(0x15));
+            if (ebx != 0 && eax != 0 && ecx != 0) {
+                c2py_tick_frequency_hz = (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
+                got_freq = 1;
+            }
+        }
+        if (!got_freq) {
+            /* Fallback: parse /proc/cpuinfo (works on Intel, AMD, etc.) */
+            FILE *f = fopen("/proc/cpuinfo", "r");
+            if (f) {
+                char line[256];
+                while (fgets(line, sizeof(line), f)) {
+                    double mhz;
+                    if (sscanf(line, "cpu MHz : %lf", &mhz) == 1) {
+                        c2py_tick_frequency_hz = (uint64_t)(mhz * 1000000.0 + 0.5);
+                        break;
+                    }
+                }
+                fclose(f);
+            }
+        }
+    }
+#elif defined(__aarch64__) || defined(__arm64__)
+    {
+        uint64_t freq;
+        __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
+        if (freq != 0) {
+            c2py_tick_frequency_hz = freq;
+        }
+    }
+#elif defined(__powerpc64__) || defined(__powerpc__)
+    {
+        /* On POWER the timebase frequency is typically 512 MHz but varies.
+         * Reading from /proc/device-tree/cpus/timebase-frequency is one
+         * option, but that path may not exist in containers.  Leave at 0. */
+    }
+#endif
+    /* If detection failed, c2py_tick_frequency_hz remains 0. */
+#endif
 }
 
 
@@ -325,7 +383,8 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Value construction (required) --- */
     RESOLVE_REQ(C2PY.Long_FromLong, "PyLong_FromLong");
-    RESOLVE(C2PY.Long_FromLongLong, "PyLong_FromLongLong");
+    RESOLVE_REQ(C2PY.Long_FromLongLong, "PyLong_FromLongLong");
+    RESOLVE_REQ(C2PY.Long_FromUnsignedLongLong, "PyLong_FromUnsignedLongLong");
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
     if (C2PY.Long_FromLong == NULL || C2PY.Float_FromDouble == NULL) return;
 

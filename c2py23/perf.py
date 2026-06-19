@@ -9,7 +9,12 @@ Usage:
     import my_timed_module
     stats = read_perf(my_timed_module._perf_myfunc)
     print(stats)
+
+    # With C2PY_USE_CYCLE_COUNTER, provide the frequency for correct ns:
+    stats = read_perf(my_timed_module._perf_myfunc,
+                      freq_hz=my_timed_module._c2py_tick_frequency())
 """
+from __future__ import print_function
 
 import ctypes
 
@@ -33,16 +38,38 @@ class _c2py_perf_t(ctypes.Structure):
     ]
 
 
-def read_perf(ptr_int):
+def _to_ns(ticks, freq_hz):
+    """Convert tick count to nanoseconds, guarding against freq_hz == 0."""
+    if freq_hz == 0 or freq_hz is None:
+        return ticks
+    return ticks * 1000000000 // freq_hz
+
+
+def read_perf(ptr_int, freq_hz=None):
     """Decode a c2py_perf_t from the raw pointer (as Python int).
 
-    Returns a dict with:
+    Parameters
+    ----------
+    ptr_int : int
+        Raw pointer to the c2py_perf_t struct (e.g. module._perf_myfunc).
+    freq_hz : int or None, optional
+        Tick source frequency in Hz.  When None or 0, the raw tick values
+        are returned under the _ns keys (correct for the default
+        clock_gettime source which returns nanoseconds).  When provided
+        and != 1e9, the values are converted and the raw tick values are
+        additionally returned under _cycles keys.
+
+    Returns
+    -------
+    dict with keys:
         call_count, t_enter, t_pre_c, t_post_c, t_exit,
         c_dur_ns, wrap_dur_ns,
         c_min_ns, c_max_ns, c_mean_ns,
         wrap_min_ns, wrap_max_ns, wrap_mean_ns.
-
-    All time values are in nanoseconds.
+      Additional keys when freq_hz is provided and != 1e9:
+        c_dur_cycles, wrap_dur_cycles,
+        c_min_cycles, c_max_cycles, c_mean_cycles,
+        wrap_min_cycles, wrap_max_cycles, wrap_mean_cycles.
     """
     if ptr_int == 0:
         return {"call_count": 0}
@@ -58,25 +85,41 @@ def read_perf(ptr_int):
                 vname = vname.decode('ascii', errors='replace')
         except Exception:
             vname = ""
-    return {
+
+    c_dur = p.t_post_c - p.t_pre_c
+    wrap_dur = (p.t_pre_c - p.t_enter) + (p.t_exit - p.t_post_c) \
+               if p.t_enter or p.t_exit else 0
+
+    result = {
         "call_count": n,
         "t_enter":    p.t_enter,
         "t_pre_c":    p.t_pre_c,
         "t_post_c":   p.t_post_c,
         "t_exit":     p.t_exit,
-        "c_dur_ns":   p.t_post_c - p.t_pre_c,
-        "wrap_dur_ns": (p.t_pre_c - p.t_enter) + (p.t_exit - p.t_post_c)
-                       if p.t_enter or p.t_exit else 0,
-        "c_min_ns":   p.t_c_min,
-        "c_max_ns":   p.t_c_max,
-        "c_mean_ns":  p.t_c_total / n if n else 0,
-        "wrap_min_ns":  p.t_wrap_min,
-        "wrap_max_ns":  p.t_wrap_max,
-        "wrap_mean_ns": p.t_wrap_total / n if n else 0,
+        "c_dur_ns":   _to_ns(c_dur, freq_hz),
+        "wrap_dur_ns": _to_ns(wrap_dur, freq_hz),
+        "c_min_ns":   _to_ns(p.t_c_min, freq_hz),
+        "c_max_ns":   _to_ns(p.t_c_max, freq_hz),
+        "c_mean_ns":  _to_ns(p.t_c_total / n, freq_hz) if n else 0,
+        "wrap_min_ns":  _to_ns(p.t_wrap_min, freq_hz),
+        "wrap_max_ns":  _to_ns(p.t_wrap_max, freq_hz),
+        "wrap_mean_ns": _to_ns(p.t_wrap_total / n, freq_hz) if n else 0,
         "variant":    p.variant,
         "group_idx":  p.group_idx,
         "variant_name": vname,
     }
+
+    if freq_hz is not None and freq_hz != 0 and freq_hz != 1000000000:
+        result["c_dur_cycles"]   = c_dur
+        result["wrap_dur_cycles"] = wrap_dur
+        result["c_min_cycles"]   = p.t_c_min
+        result["c_max_cycles"]   = p.t_c_max
+        result["c_mean_cycles"]  = p.t_c_total / n if n else 0
+        result["wrap_min_cycles"]  = p.t_wrap_min
+        result["wrap_max_cycles"]  = p.t_wrap_max
+        result["wrap_mean_cycles"] = p.t_wrap_total / n if n else 0
+
+    return result
 
 
 def read_enabled(enabled_ptr_int):

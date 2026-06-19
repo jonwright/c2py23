@@ -97,7 +97,7 @@ def _c_decl_from_overload(ol):
 # ---------------------------------------------------------------------------
 
 def _emit_timing_decls(out, mod):
-    """Emit global timing declarations: enabled flag + per-func/per-overload perf structs."""
+    """Emit global timing declarations: enabled flag, perf structs, tick API."""
     out.append('/* ---- Performance timing ---- */')
     out.append('static int _c2py_timing_enabled = 1;')
     out.append('')
@@ -111,6 +111,26 @@ def _emit_timing_decls(out, mod):
             else:
                 c_name = _extract_c_name(ol.sig_str)
                 out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+    out.append('')
+    out.append('/* Python-callable: return tick source frequency in Hz */')
+    out.append('static PyObject*')
+    out.append('__c2py_tick_frequency(PyObject *self, PyObject *args) {')
+    out.append('    (void)self;')
+    out.append('    if (!PyArg_ParseTuple(args, ""))')
+    out.append('        return NULL;')
+    out.append('    return PyLong_FromUnsignedLongLong(c2py_tick_frequency());')
+    out.append('}')
+    out.append('')
+    out.append('/* Python-callable: convert ticks to nanoseconds at given frequency */')
+    out.append('static PyObject*')
+    out.append('__c2py_ticks_to_ns(PyObject *self, PyObject *args) {')
+    out.append('    unsigned long long ticks, freq_hz;')
+    out.append('    (void)self;')
+    out.append('    if (!PyArg_ParseTuple(args, "KK", &ticks, &freq_hz))')
+    out.append('        return NULL;')
+    out.append('    return PyLong_FromUnsignedLongLong(')
+    out.append('        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));')
+    out.append('}')
     out.append('')
 
 
@@ -1381,6 +1401,11 @@ def _emit_module_init(out, mod):
                 out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
                            .format(func.name))
                 out.append('     "rebind variant for {0}"}},'.format(func.name))
+    if mod.timing:
+        out.append('    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,')
+        out.append('     "return tick source frequency in Hz"},')
+        out.append('    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,')
+        out.append('     "convert (ticks, freq_hz) to nanoseconds"},')
     out.append('    {NULL, NULL, 0, NULL}')
     out.append('};')
     out.append('')
@@ -1396,6 +1421,11 @@ def _emit_module_init(out, mod):
                 out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
                            .format(func.name))
                 out.append('     "rebind variant for {0}"}},'.format(func.name))
+    if mod.timing:
+        out.append('    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,')
+        out.append('     "return tick source frequency in Hz"},')
+        out.append('    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,')
+        out.append('     "convert (ticks, freq_hz) to nanoseconds"},')
     out.append('    {NULL, NULL, 0, NULL}')
     out.append('};')
     out.append('')

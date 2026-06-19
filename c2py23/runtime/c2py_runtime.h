@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <limits.h>
+#include <stdio.h>
 #include <time.h>
 
 #ifdef __cplusplus
@@ -230,6 +231,7 @@ typedef struct {
     /* Value construction */
     PyObject* (*Long_FromLong)(long);
     PyObject* (*Long_FromLongLong)(long long);
+    PyObject* (*Long_FromUnsignedLongLong)(unsigned long long);
     PyObject* (*Float_FromDouble)(double);
 
     /* Tuple construction */
@@ -286,6 +288,7 @@ extern c2py_api_t C2PY;
     C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyLong_FromLong(v)             C2PY.Long_FromLong(v)
 #define PyLong_FromLongLong(v)         C2PY.Long_FromLongLong(v)
+#define PyLong_FromUnsignedLongLong(v) C2PY.Long_FromUnsignedLongLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))
@@ -420,12 +423,25 @@ typedef struct {
     const char *variant_name;  /* points to static string, NULL if unset */
 } c2py_perf_t;
 
-/* Returns monotonic time in cycles or nanoseconds depending on arch.
- * The unit is consistent within a single run; differential timing
- * (t_post - t_pre) uses the same source and gives valid deltas.
- * On x86_64/ARM64: uses CPU cycle counter for lower overhead.
- * On others: clock_gettime(CLOCK_MONOTONIC) fallback.
+/* Returns monotonic nanoseconds by default via clock_gettime().
+ * Define -DC2PY_USE_CYCLE_COUNTER at build time to use the CPU's native
+ * cycle counter instead (rdtsc on x86, CNTVCT_EL0 on aarch64, timebase
+ * on POWER).  This gives lower overhead but returns platform-dependent
+ * cycle counts, not nanoseconds.
+ *
+ * To convert cycle counter deltas to nanoseconds:
+ *
+ *     uint64_t delta_ns = c2py_ticks_to_ns(t2 - t1, freq_hz);
+ *
+ * Obtain the counter frequency (Hz) on your platform:
+ *   x86:   CPUID leaf 0x15 (EBX/EAX * ECX), or /proc/cpuinfo "cpu MHz"
+ *   ARM64: MRS CNTFRQ_EL0, or /sys/devices/system/cpu/cpu0/regs/identification/processor_frequency
+ *   POWER: Read /proc/device-tree/cpus/timebase-frequency
+ *
+ * All tick calls are guarded by _c2py_do_time so there is zero cost
+ * when --timing is not enabled in the .c2py interface.
  */
+#if defined(C2PY_USE_CYCLE_COUNTER)
 #if defined(__x86_64__) || defined(__i386__)
 static inline uint64_t c2py_ticks(void) {
     unsigned int lo, hi;
@@ -449,12 +465,42 @@ static inline uint64_t c2py_ticks(void) {
 #endif
 }
 #else
+/* Unsupported arch: fall back to clock_gettime even with C2PY_USE_CYCLE_COUNTER */
 static inline uint64_t c2py_ticks(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 #endif
+#else
+static inline uint64_t c2py_ticks(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+#endif
+
+/* Convert cycle counter ticks to nanoseconds given the counter frequency
+ * in Hz.  Returns ticks * 1e9 / freq_hz.
+ * Safe against freq_hz == 0 (returns 0).  May overflow if ticks exceeds
+ * ~1.8e10 (18 seconds at 1 GHz), which is well beyond any per-call timing.
+ */
+static inline uint64_t c2py_ticks_to_ns(uint64_t ticks, uint64_t freq_hz) {
+    if (freq_hz == 0) return 0;
+    return ticks * 1000000000ULL / freq_hz;
+}
+
+/* Tick source frequency in Hz, detected once at runtime init.
+ * Default (clock_gettime): 1,000,000,000 (nanosecond ticks).
+ * With C2PY_USE_CYCLE_COUNTER: detected cycle counter frequency,
+ * or 0 if the platform cannot be probed.
+ */
+extern uint64_t c2py_tick_frequency_hz;
+
+/* Returns c2py_tick_frequency_hz. */
+static inline uint64_t c2py_tick_frequency(void) {
+    return c2py_tick_frequency_hz;
+}
 
 /* Update a perf record with one call's tick measurements.
  * t_enter:  wrapper entry
