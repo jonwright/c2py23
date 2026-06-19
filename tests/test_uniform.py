@@ -192,11 +192,17 @@ def test_docstring():
     result = docmod.inc(41)
     assert result == 42, "inc(41) = %d, expected 42" % result
 
-    # Check docstring
+    # Check docstring contains the user doc
     actual_doc = docmod.inc.__doc__
-    expected_doc = "Increment x by 1 and return the result"
-    assert actual_doc == expected_doc, \
-        "docstring: got '%s', expected '%s'" % (actual_doc, expected_doc)
+    assert "Increment x by 1 and return the result" in actual_doc, \
+        "docstring missing user doc: '%s'" % actual_doc
+    # Check __text_signature__ is parsed correctly (Python 3.3+)
+    if hasattr(docmod.inc, '__text_signature__'):
+        assert docmod.inc.__text_signature__ == "(x)", \
+            "__text_signature__: got %r" % docmod.inc.__text_signature__
+    # Check docstring contains auto-derived info
+    assert "Overloads" in actual_doc, "docstring missing Overloads section"
+    assert "add_one" in actual_doc, "docstring missing overload C function"
 
     print("PASS: docstring")
 

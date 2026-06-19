@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from c2py23.parser import load_c2py, _parse_c_sig, _FORMAT_TO_CTYPE, _C_TYPES_INT
 from c2py23.parser import ModuleDef, FuncDef, PyParam, CParam, COverload, parse_expr
-from c2py23.generator import generate
+from c2py23.generator import generate, _doc, _expr_to_source
 
 
 def test_passed():
@@ -434,6 +434,69 @@ def test_keyword_argument_rejection():
         "METH_VARARGS functions must not use METH_KEYWORDS")
     assert 'METH_VARARGS' in code, (
         "Function must use METH_VARARGS flag")
+    test_passed()
+
+
+def test_docstring_verification():
+    """Verify every .c2py YAML field appears in the generated docstring."""
+    import glob as glob_mod
+
+    cases_dir = os.path.join(os.path.dirname(__file__), 'cases')
+    c2py_files = glob_mod.glob(os.path.join(cases_dir, '*', '*.c2py'))
+    assert c2py_files, "No .c2py files found in cases/"
+
+    for c2py_path in sorted(c2py_files):
+        mod = load_c2py(c2py_path)
+        for func in mod.functions:
+            doc = _doc(func)
+
+            # Verify function name in docstring
+            assert func.name in doc, "%s: missing func name" % func.name
+
+            # Verify every param name in docstring
+            for p in func.py_params:
+                assert p.name in doc, "%s: missing param '%s'" % (func.name, p.name)
+
+            # Verify user doc string
+            if func.doc:
+                assert func.doc in doc, "%s: missing doc text" % func.name
+
+            # Verify params descriptions
+            if func.params:
+                for pname, pdesc in func.params.items():
+                    assert pdesc in doc, "%s: missing param desc for '%s'" % (func.name, pname)
+
+            # Verify every check expression in docstring
+            for chk in func.checks:
+                chk_str = _expr_to_source(chk)
+                assert chk_str in doc, "%s: missing check '%s'" % (func.name, chk_str)
+
+            # Verify GIL state
+            gil_state = "released" if func.gil_release else "held"
+            assert "GIL: " + gil_state in doc, "%s: wrong GIL state" % func.name
+
+            # Verify overloads
+            for ol in func.overloads:
+                if ol.sig_str:
+                    assert ol.sig_str in doc, "%s: missing flat overload sig" % func.name
+                if ol.when_expr:
+                    when_str = _expr_to_source(ol.when_expr)
+                    assert when_str in doc, "%s: missing overload when" % func.name
+                # Verify map expressions for this overload
+                for cp_name, expr in ol.map_exprs.items():
+                    expr_src = _expr_to_source(expr)
+                    assert expr_src in doc, "%s: missing map '%s'" % (func.name, expr_src)
+                if ol.variants:
+                    for v in ol.variants:
+                        assert v.sig_str in doc, "%s: missing variant sig" % func.name
+                        assert v.name in doc, "%s: missing variant name" % func.name
+                        if v.doc:
+                            assert v.doc in doc, "%s: missing variant doc" % func.name
+
+            # Verify default raise
+            if func.default_raise:
+                assert func.default_raise in doc, "%s: missing default_raise" % func.name
+
     test_passed()
 
 

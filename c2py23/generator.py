@@ -8,6 +8,7 @@ from __future__ import print_function
 from c2py23.parser import (
     Var, Attr, Subscript, IntLit, StrLit, Compare, BinOp, UnaryOp,
     PyParam, CParam, COverload, CVariant, FuncDef, ModuleDef,
+    _FORMAT_TO_CTYPE,
 )
 
 
@@ -1329,6 +1330,267 @@ def _expr_to_source(expr):
 
 
 # ---------------------------------------------------------------------------
+# Rich docstring generation
+# ---------------------------------------------------------------------------
+
+_FORMAT_CHAR_TO_NAME = {
+    'b': 'int8', 'B': 'uint8',
+    'h': 'int16', 'H': 'uint16',
+    'i': 'int32', 'I': 'uint32',
+    'q': 'int64', 'Q': 'uint64',
+    'l': 'int64 (platform)', 'L': 'uint64 (platform)',
+    'f': 'float32', 'd': 'float64',
+}
+
+def _extract_fmt_from_expr(expr, param_name, fmt_chars):
+    """Recursively extract format char comparisons from an expression tree."""
+    if isinstance(expr, Compare) and expr.op == '==':
+        for side, other in [(expr.left, expr.right), (expr.right, expr.left)]:
+            if (isinstance(side, Attr) and side.attr == 'format'
+                    and _expr_refers_to(side.obj, param_name)
+                    and isinstance(other, StrLit) and len(other.value) == 1):
+                fmt_chars.add(other.value)
+    elif isinstance(expr, BinOp):
+        _extract_fmt_from_expr(expr.left, param_name, fmt_chars)
+        _extract_fmt_from_expr(expr.right, param_name, fmt_chars)
+    elif isinstance(expr, UnaryOp):
+        _extract_fmt_from_expr(expr.operand, param_name, fmt_chars)
+
+
+def _derive_param_info(param_name, checks, overloads):
+    """Auto-derive parameter description info from checks and overloads.
+    Returns a list of description strings (one per line)."""
+    info = []
+
+    # Derive format types from function-level checks and overload when conditions
+    fmt_chars = set()
+    for chk in checks:
+        if isinstance(chk, Compare) and chk.op == '==':
+            for side, other in [(chk.left, chk.right), (chk.right, chk.left)]:
+                if (isinstance(side, Attr) and side.attr == 'format'
+                        and _expr_refers_to(side.obj, param_name)
+                        and isinstance(other, StrLit) and len(other.value) == 1):
+                    fmt_chars.add(other.value)
+    for ol in overloads:
+        if ol.when_expr:
+            _extract_fmt_from_expr(ol.when_expr, param_name, fmt_chars)
+        if ol.variants:
+            for v in ol.variants:
+                if v.when_expr:
+                    _extract_fmt_from_expr(v.when_expr, param_name, fmt_chars)
+
+    if fmt_chars:
+        fmt_names = []
+        for c in sorted(fmt_chars):
+            ctype = _FORMAT_CHAR_TO_NAME.get(c, "?")
+            fmt_names.append("{} (format '{}')".format(ctype, c))
+        info.append("Type: " + " or ".join(fmt_names))
+
+    # Derive writability from overload C params
+    writable = False
+    for ol in overloads:
+        if ol.variants:
+            for v in ol.variants:
+                for cp in v.params:
+                    if (cp.is_pointer and not cp.is_const
+                            and _expr_refers_to(ol.map_exprs.get(cp.name), param_name)):
+                        writable = True
+                        break
+        else:
+            for cp in ol.params:
+                if (cp.is_pointer and not cp.is_const
+                        and _expr_refers_to(ol.map_exprs.get(cp.name), param_name)):
+                    writable = True
+                    break
+
+    if writable:
+        info.append("Writable")
+
+    # Derive dimensionality and size relationships from checks
+    for chk in checks:
+        if isinstance(chk, Compare):
+            left, right, op = chk.left, chk.right, chk.op
+            if (isinstance(left, Attr) and left.attr == 'ndim'
+                    and _expr_refers_to(left.obj, param_name)
+                    and op == '==' and isinstance(right, IntLit)):
+                info.append("Shape: {}D".format(right.value))
+            elif (isinstance(left, Attr) and left.attr == 'n'
+                  and _expr_refers_to(left.obj, param_name)
+                  and op in ('==', '>=', '>', '<=', '<')
+                  and isinstance(right, Attr) and right.attr == 'n'):
+                other_name = _expr_to_source(right.obj)
+                if other_name:
+                    info.append("Size {} {}".format(
+                        "must equal" if op == '==' else op, other_name))
+            elif (isinstance(left, Subscript)
+                  and isinstance(left.obj, Attr) and left.obj.attr == 'shape'
+                  and _expr_refers_to(left.obj.obj, param_name)
+                  and isinstance(right, IntLit) and op == '=='):
+                info.append("Axis {}: {} elements".format(left.index, right.value))
+
+    return info
+
+
+def _overload_map_lines(ol, indent):
+    """Build Map: and Outputs: description lines for an overload or group.
+    Returns a list of strings."""
+    lines = []
+
+    # Determine the C params to show maps for
+    params = ol.params if ol.params else []
+    if not params and ol.variants and ol.variants[0].params:
+        params = ol.variants[0].params
+
+    map_items = []
+    for cp in params:
+        expr = ol.map_exprs.get(cp.name)
+        if expr is not None:
+            expr_src = _expr_to_source(expr)
+            if expr_src:
+                map_items.append("{} = {} ({})".format(cp.name, expr_src, cp.ctype))
+
+    if map_items:
+        lines.append(indent + "Map: " + map_items[0])
+        for m in map_items[1:]:
+            lines.append(indent + "     " + m)
+
+    outputs = getattr(ol, 'outputs', {}) or {}
+    if outputs:
+        out_strs = sorted("{} ({})".format(k, v) for k, v in outputs.items())
+        lines.append(indent + "Outputs: " + ", ".join(out_strs))
+
+    return lines
+
+
+def _mod_doc(mod):
+    """Build a module-level docstring.
+    Returns a string with module info, or empty string if no info."""
+    parts = []
+    parts.append("Module: {}".format(mod.name))
+    if mod.sources:
+        parts.append("Source: {}".format(str(mod.sources)))
+    if mod.headers:
+        parts.append("Headers: {}".format(str(mod.headers)))
+    if mod.constants:
+        const_strs = sorted("{}={}".format(k, v) for k, v in mod.constants.items())
+        parts.append("Constants: {}".format(", ".join(const_strs)))
+    if mod.timing:
+        parts.append("Timing: enabled")
+    else:
+        parts.append("Timing: no")
+    gil_funcs = [f.name for f in mod.functions if f.gil_release]
+    if gil_funcs:
+        parts.append("GIL release: {}".format(", ".join(gil_funcs)))
+    return "\n".join(parts)
+
+
+def _doc(func):
+    """Build a fully transparent docstring for a function.
+    Every piece of YAML info is surfaced: checks, maps, GIL, overloads, outputs.
+    Returns a Python string with real newlines (escaped at C embedding point)."""
+    lines = []
+
+    # 1a. Signature line (parseable by CPython for __text_signature__)
+    sig_args = ", ".join(p.name for p in func.py_params)
+    lines.append("{}({})".format(func.name, sig_args) if sig_args else func.name + "()")
+    lines.append("--")
+    lines.append("")
+
+    # 1b. Full annotated signature
+    py_args = []
+    for p in func.py_params:
+        arg = "{}: {}".format(p.name, p.pytype)
+        if p.default is not None:
+            arg += " = {}".format(p.default)
+        py_args.append(arg)
+    lines.append("{}({}) -> {}".format(func.name, ", ".join(py_args), func.return_type))
+
+    # 2. User doc
+    if func.doc:
+        lines.append("")
+        lines.append(func.doc)
+
+    # 3. Parameters section
+    if func.py_params:
+        lines.append("")
+        lines.append("Parameters")
+        lines.append("----------")
+        for p in func.py_params:
+            lines.append("{} : {}".format(p.name, p.pytype))
+            param_info = _derive_param_info(p.name, func.checks, func.overloads)
+            if param_info:
+                for info in param_info:
+                    lines.append("    " + info)
+            if func.params and p.name in func.params:
+                lines.append("    " + func.params[p.name])
+
+    # 4. Checks section
+    if func.checks:
+        lines.append("")
+        lines.append("Checks")
+        lines.append("------")
+        for chk in func.checks:
+            lines.append("  " + _expr_to_source(chk) + "  [ValueError]")
+
+    # 5. GIL state
+    if func.gil_release:
+        lines.append("")
+        lines.append("GIL: released")
+    else:
+        lines.append("")
+        lines.append("GIL: held")
+
+    # 6. Overloads section
+    has_overloads = func.overloads and any(
+        ol.sig_str or ol.variants for ol in func.overloads)
+    if has_overloads:
+        lines.append("")
+        lines.append("Overloads")
+        lines.append("---------")
+        for ol in func.overloads:
+            if ol.variants:
+                header = "Group"
+                if ol.group_name:
+                    header += " " + ol.group_name
+                if ol.when_expr:
+                    header += " (When: {})".format(_expr_to_source(ol.when_expr))
+                lines.append("  " + header)
+                if ol.doc:
+                    lines.append("    " + ol.doc)
+                # Map is shared by all variants in the group
+                lines.extend(_overload_map_lines(ol, "    "))
+                for v in ol.variants:
+                    lines.append("    {} -> {}".format(v.name, v.sig_str))
+                    if v.doc:
+                        lines.append("      " + v.doc)
+                    v_out = getattr(v, 'outputs', {}) or {}
+                    if v_out:
+                        out_strs = sorted("{} ({})".format(k, ctype)
+                                          for k, ctype in v_out.items())
+                        lines.append("      Outputs: " + ", ".join(out_strs))
+            else:
+                sig = ol.sig_str
+                if ol.when_expr:
+                    lines.append("  {} (When: {})".format(sig, _expr_to_source(ol.when_expr)))
+                else:
+                    lines.append("  " + sig)
+                if ol.doc:
+                    lines.append("    " + ol.doc)
+                lines.extend(_overload_map_lines(ol, "    "))
+
+    # 7. Default raise
+    if func.default_raise:
+        lines.append("")
+        if ":" in func.default_raise:
+            exc_type, msg = func.default_raise.split(":", 1)
+            lines.append("{}: {}".format(exc_type.strip(), msg.strip()))
+        else:
+            lines.append(func.default_raise)
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Module init
 # ---------------------------------------------------------------------------
 
@@ -1338,7 +1600,6 @@ def _emit_constants(out, mod):
     has_gil = any(f.gil_release for f in mod.functions)
     if not mod.constants and not mod.timing and not has_gil:
         return
-    out.append('    if (module != NULL) {')
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
             out.append('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
@@ -1368,7 +1629,6 @@ def _emit_constants(out, mod):
             if func.gil_release:
                 out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
                 out.append('            PyLong_FromVoidPtr(&_gil_release_{0}));'.format(func.name))
-    out.append('    }')
 
 
 def _emit_module_init(out, mod):
@@ -1382,28 +1642,11 @@ def _emit_module_init(out, mod):
     out.append('/* ' + '-' * 44 + ' */')
     out.append('')
 
-    # Helper to build doc string
-    def _doc(func):
-        py_args = []
-        for p in func.py_params:
-            py_args.append('{}: {}'.format(p.name, p.pytype))
-        default_doc = '{}({}) -> {}'.format(func.name, ', '.join(py_args), func.return_type)
-        doc = func.doc if func.doc is not None else default_doc
-        # Append variant info for grouped functions
-        groups = [ol for ol in func.overloads if ol.variants]
-        if groups:
-            vnames = []
-            for ol in groups:
-                for v in ol.variants:
-                    vnames.append(v.name)
-            doc += '\\nVariants: ' + ', '.join(vnames)
-        return doc
-
     # --- VARARGS method table (Python < 3.12) ---
     out.append('static PyMethodDef _methods_varargs[] = {')
     for func in mod.functions:
         out.append('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(
-            func.name, func.name, _doc(func)))
+            func.name, func.name, _escape_c_str(_doc(func))))
     if has_variants:
         for func in mod.functions:
             if any(ol.variants for ol in func.overloads):
@@ -1423,7 +1666,7 @@ def _emit_module_init(out, mod):
     out.append('static PyMethodDef _methods_fastcall[] = {')
     for func in mod.functions:
         out.append('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(
-            func.name, func.name, _doc(func)))
+            func.name, func.name, _escape_c_str(_doc(func))))
     if has_variants:
         for func in mod.functions:
             if any(ol.variants for ol in func.overloads):
@@ -1439,12 +1682,19 @@ def _emit_module_init(out, mod):
     out.append('};')
     out.append('')
 
+    # Module-level docstring
+    mod_doc = _mod_doc(mod)
+    mod_doc_c = _escape_c_str(mod_doc) if mod_doc else None
+
     # Module definition struct - methods pointer set at init time
     # GIL-enabled layout (standard CPython)
     out.append('static PyModuleDef _module_def = {')
     out.append('    PyModuleDef_HEAD_INIT,')
     out.append('    "{}",'.format(name))
-    out.append('    NULL,')
+    if mod_doc_c:
+        out.append('    "{}",'.format(mod_doc_c))
+    else:
+        out.append('    NULL,')
     out.append('    -1,')
     out.append('    NULL,  /* methods set at init */')
     out.append('    NULL, NULL, NULL, NULL')
@@ -1455,7 +1705,10 @@ def _emit_module_init(out, mod):
     out.append('static PyModuleDef_FT _module_def_ft = {')
     out.append('    PyModuleDef_HEAD_INIT_FT,')
     out.append('    "{}",'.format(name))
-    out.append('    NULL,')
+    if mod_doc_c:
+        out.append('    "{}",'.format(mod_doc_c))
+    else:
+        out.append('    NULL,')
     out.append('    -1,')
     out.append('    NULL,  /* methods set at init */')
     out.append('    NULL, NULL, NULL, NULL')
@@ -1475,61 +1728,51 @@ def _emit_module_init(out, mod):
     if resolve_calls:
         out.append(resolve_calls.rstrip('\n'))
     out.append('')
+    out.append('    PyObject *module = NULL;')
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('')
     out.append('    if (C2PY.is_free_threaded) {')
     out.append('        _module_def_ft.m_methods = methods;')
     if has_attrs:
-        out.append('        PyObject *module;')
         out.append('        if (C2PY.Module_Create2 != NULL) {')
         out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
-        out.append('        } else {')
-        out.append('            return NULL;')
         out.append('        }')
-        out.append('')
-        _emit_constants(out, mod)
-        out.append('')
-        out.append('        return module;')
     else:
         out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            return C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
+        out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
         out.append('        }')
-        out.append('        return NULL;')
     out.append('    } else {')
     out.append('        _module_def.m_methods = methods;')
-    out.append('')
     if has_attrs:
-        out.append('        PyObject *module;')
         out.append('        if (C2PY.Module_Create2 != NULL) {')
         out.append('            module = C2PY.Module_Create2(&_module_def, 1013);')
         out.append('        } else {')
         out.append('            /* Fallback for Python 2.7 where PyModuleDef is not supported */')
         out.append('            module = C2PY.InitModule_2_7("{}", methods);'.format(name))
         out.append('        }')
-        out.append('')
-        _emit_constants(out, mod)
-        out.append('')
-        out.append('        return module;')
     else:
         out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            return C2PY.Module_Create2(&_module_def, 1013);')
+        out.append('            module = C2PY.Module_Create2(&_module_def, 1013);')
+        out.append('        } else {')
+        out.append('            module = C2PY.InitModule_2_7("{}", methods);'.format(name))
         out.append('        }')
-        out.append('        /* Fallback for Python 2.7 where PyModuleDef is not supported */')
-        out.append('        return C2PY.InitModule_2_7("{}", methods);'.format(name))
     out.append('    }')
+    out.append('')
+    out.append('    if (module != NULL) {')
+    _emit_constants(out, mod)
+    out.append('    }')
+    out.append('    return module;')
     out.append('}')
     out.append('')
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
     out.append(resolve_calls)
-    if has_attrs:
-        out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
-        out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
-        _emit_constants(out, mod)
-    else:
-        out.append('    C2PY.InitModule_2_7("{}",'.format(name))
-        out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
+    out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
+    out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
+    out.append('    if (module != NULL) {')
+    _emit_constants(out, mod)
+    out.append('    }')
     out.append('}')
 
 

@@ -22,6 +22,23 @@ else:
     _STRING_TYPES = (str, unicode)  # noqa: F821
 
 # ---------------------------------------------------------------------------
+# 7-bit ASCII validation
+# ---------------------------------------------------------------------------
+
+def _check_ascii(value, label, path):
+    """Validate a string contains only 7-bit ASCII characters.
+    Raises ValueError if non-ASCII bytes are found.
+    value should be a str (on 2.x) or str (on 3.x) -- text type.
+    We encode to latin-1 to detect any byte > 127.
+    """
+    if isinstance(value, _STRING_TYPES):
+        for ch in value:
+            if ord(ch) > 127:
+                raise ValueError(
+                    "Non-ASCII character %r in %s at %s: %s" % (ch, label, path, value[:80]))
+    return value
+
+# ---------------------------------------------------------------------------
 # AST nodes for expressions in 'when' and 'map'
 # ---------------------------------------------------------------------------
 
@@ -79,13 +96,17 @@ class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'm
 
     outputs maps C parameter names to ctypes types (e.g. {'minval': 'double'}).
     Output params are auto-allocated as 1-element arrays and returned in the tuple.
+
+    doc is an optional per-overload or per-group description string.
     """
     def __new__(cls, sig_str, params, return_type, map_exprs, when_expr,
-                name=None, group_name=None, variants=None, outputs=None):
+                name=None, group_name=None, variants=None, outputs=None,
+                doc=None):
         self = super(COverload, cls).__new__(cls, sig_str, params, return_type,
                                               map_exprs, when_expr,
                                               name, group_name, variants)
         self.outputs = outputs or {}
+        self.doc = doc
         return self
 
 class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type', 'when_expr', 'outputs'])):
@@ -94,10 +115,29 @@ class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type
     name is required for rebind, docstring, and timing identification.
     when_expr is the static (CPU feature) dispatch condition, or None for default.
     outputs is an optional dict for scalar output parameters (same format as COverload).
+    doc is an optional per-variant description string.
     """
+    def __new__(cls, name, sig_str, params, return_type, when_expr,
+                outputs=None, doc=None):
+        self = super(CVariant, cls).__new__(cls, name, sig_str, params,
+                                             return_type, when_expr, outputs)
+        self.doc = doc
+        return self
 
 class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc', 'gil_release'])):
-    pass
+    """A wrapped Python function definition.
+
+    params is an optional dict mapping parameter names to human-readable
+    descriptions, parsed from the YAML block. Keys are validated against
+    py_sig parameter names.
+    """
+    def __new__(cls, name, py_params, return_type, checks, overloads,
+                default_raise, doc, gil_release, params=None):
+        self = super(FuncDef, cls).__new__(cls, name, py_params, return_type,
+                                            checks, overloads,
+                                            default_raise, doc, gil_release)
+        self.params = params or {}
+        return self
 
 class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants', 'timing'])):
     """constants is a dict of {name: int_value} for module-level integer constants.
@@ -676,10 +716,17 @@ def _parse_func(raw, path):
                 v_outputs = v.get('outputs', {})
                 if v_outputs and not isinstance(v_outputs, dict):
                     raise ValueError("'outputs' must be a dict in {}".format(path))
-                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs))
+                v_doc = v.get('doc')
+                if v_doc is not None:
+                    v_doc = _check_ascii(v_doc, 'variant.doc', path)
+                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs, doc=v_doc))
 
+            ol_doc = ol.get('doc')
+            if ol_doc is not None:
+                ol_doc = _check_ascii(ol_doc, 'overload.doc', path)
             overloads.append(COverload(None, None, None, group_map, group_when,
-                                       group_name=group_name, variants=variants))
+                                       group_name=group_name, variants=variants,
+                                       doc=ol_doc))
         else:
             # --- Flat overload (backward compatible) ---
             sig_str = _get_required(ol, 'sig', path)
@@ -699,14 +746,33 @@ def _parse_func(raw, path):
             oname = ol.get('name')
             if oname is not None and not isinstance(oname, _STRING_TYPES):
                 oname = str(oname)
+            ol_doc = ol.get('doc')
+            if ol_doc is not None:
+                ol_doc = _check_ascii(ol_doc, 'overload.doc', path)
             overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr,
-                                       name=oname, outputs=outputs))
+                                       name=oname, outputs=outputs, doc=ol_doc))
 
     default_raise = raw.get('default_raise')
     doc = raw.get('doc')
+    if doc is not None:
+        doc = _check_ascii(doc, 'doc', path)
     gil_release = bool(raw.get('gil_release', False))
 
-    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc, gil_release)
+    # Parse optional params: block (human-readable per-parameter descriptions)
+    params = raw.get('params', {})
+    if params:
+        if not isinstance(params, dict):
+            raise ValueError("'params' must be a dict in {}".format(path))
+        py_param_names = set(p.name for p in py_params)
+        for pname in params:
+            if pname not in py_param_names:
+                raise ValueError(
+                    "Unknown param '{}' in params block of '{}' -- "
+                    "not in py_sig signature".format(pname, name))
+            pdesc = str(params[pname])
+            params[pname] = _check_ascii(pdesc, 'params.{}'.format(pname), path)
+
+    return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc, gil_release, params=params)
 
 
 def _parse_check_value(val, path):

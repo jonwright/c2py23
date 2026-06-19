@@ -42,6 +42,8 @@ timing: true                          # optional: enable perf timing
 functions:                            # required: list of wrapped functions
   - py_sig: "name(arg: type, ...) -> return_type"
     doc: "Custom docstring"           # optional: override auto-generated doc
+    params:                           # optional: per-parameter descriptions
+      param_name: "Description text"  #   keys must match py_sig parameter names
     gil_release: true                 # optional: release the GIL during C calls
     expand:                           # optional: template expansion
       VAR1: [val_a, val_b, ...]       #   variable name -> list of values
@@ -53,6 +55,7 @@ functions:                            # required: list of wrapped functions
       # flat overload:
       - sig: "c_function(c_params...) -> c_return"
         name: "label"                 # optional: for timing/reference
+        doc: "Overload description"   # optional: per-overload notes in docstring
         map: {c_param: expression, ...}
         when: "condition"             # optional: dispatch condition
         outputs:                      # optional: return-by-pointer scalars
@@ -61,9 +64,11 @@ functions:                            # required: list of wrapped functions
       - map: {c_param: expression, ...}
         when: "condition"             # optional: per-call group condition
         group: "label"                # optional: group name
+        doc: "Group description"      # optional: group-level docstring notes
         variants:                     # required for grouped: list of variants
           - sig: "c_variant(c_params...) -> c_ret"
             name: "label"             # required: variant name for rebind/doc
+            doc: "Variant description" # optional: per-variant docstring notes
             when: "cpu_feature_check" # optional: static (init-time) dispatch
             outputs: {c_param: ctype}
       - ...
@@ -617,6 +622,28 @@ Takes `PyObject *self, *args, *kwargs` (standard CPython method). Structure:
 5. Cleanup -- release all acquired buffers
 6. Return result
 ```
+
+### Auto-Generated Docstrings and `__text_signature__`
+
+The generator produces a rich docstring (`ml_doc`) for each function with:
+
+- **First line**: a parseable signature line (names only, e.g., `fill(arr, value)`) that
+  CPython automatically converts to `__text_signature__`.
+- **Full annotated signature**: the c2py signature with types
+  (e.g., `fill(arr: buffer, value: float) -> void`).
+- **User doc**: the `doc:` field from the `.c2py` file.
+- **Parameters section**: For each parameter, the generator auto-derives type
+  information from `checks:` format comparisons (e.g., `arr.format == 'f'` -->
+  `float32`), writability from C pointer const-ness, and size/dimensionality
+  constraints from checks like `a.n == b.n` or `arr.ndim == 2`.
+  User-provided `params:` descriptions are appended after the auto-derived info.
+- **Overloads section**: Lists C function signatures and their dispatch
+  conditions. Grouped dispatch shows variant names and CPU feature conditions.
+- **Default error**: shows the `default_raise:` error message.
+
+The signature line uses the CPython clinic convention (`funcname(params)`
+followed by a `\n--\n\n` separator), which allows `inspect.signature()` and
+`help()` to render a proper structured signature.
 
 ### Module Init
 
