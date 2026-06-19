@@ -70,13 +70,6 @@ def test_B1_varargs_wrapper_no_kwargs():
     test_passed()
 
 
-# ... (rest of tests remain the same)
-
-
-def test_passed():
-    print("PASS: %s" % sys._getframe(1).f_code.co_name.replace('test_', ''))
-
-
 def test_B3_unmatched_paren_raises():
     """B3: Unmatched '(' in C signature must raise ValueError, not silently
     produce an empty param list."""

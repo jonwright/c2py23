@@ -12,7 +12,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <stdio.h>
-#include <sys/auxv.h>
+#include <sys/auxv.h> /* Linux-specific: getauxval for CPU feature detection on ARM64/POWER */
 #include <pthread.h>
 #include "c2py_runtime.h"
 

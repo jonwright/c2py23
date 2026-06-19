@@ -525,7 +525,6 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
     c_name = _extract_c_name(ol.sig_str)
     perf_name = '_perf_{0}__{1}'.format(func_name, c_name)
     outputs = getattr(ol, 'outputs', {}) or {}
-    indent = '        '
 
     # Declare output variables before call
     for p in ol.params:
@@ -578,7 +577,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                     c_str = '(' + p.ctype + ')' + c_str
                 elif p.is_pointer and p.base_type == 'void':
                     c_str = '(void *)(intptr_t)' + c_str
-                elif not p.is_pointer and p.base_type == 'int' and _expr_is_n_count(expr):
+                elif not p.is_pointer and p.base_type == 'int' and _expr_is_count_or_len(expr):
                     c_str = '(int)(' + c_str + ')'
                 elif not p.is_pointer and p.base_type == 'float':
                     c_str = '(float)(' + c_str + ')'
@@ -590,7 +589,7 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
     for i, p in enumerate(ol.params):
         if not p.is_pointer and p.base_type == 'int':
             expr = ol.map_exprs.get(p.name)
-            if expr and _expr_is_n_count(expr):
+            if expr and _expr_is_count_or_len(expr):
                 expr_c = _expr_to_c(expr, buf_params, scalar_params, ol)
                 out.append(indent + 'if (({0}) > (Py_ssize_t)INT_MAX) {{'.format(expr_c))
                 out.append(indent + '    PyErr_SetString(PyExc_ValueError,')
@@ -769,8 +768,8 @@ def _is_ptr_expr(expr):
     return False
 
 
-def _expr_is_n_count(expr):
-    """Check if expression computes element count (.n or .len/size)."""
+def _expr_is_count_or_len(expr):
+    """Check if expression is a buffer .n (element count) or .len (byte length)."""
     if isinstance(expr, Attr) and expr.attr in ('n', 'len'):
         return True
     return False

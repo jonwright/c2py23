@@ -30,7 +30,7 @@ test_workspace/
 # OS
 .DS_Store
 Thumbs.db
-/tests/test_venv_3.12/
+/tests/test_venv_*/
 /tests/test_results.log
 examples/simd_dispatch/*_wrapper.c
 examples/simd_dispatch/*.so

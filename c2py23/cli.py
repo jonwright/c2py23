@@ -37,8 +37,11 @@ def _generate_wrapper(c2py_path, output_path=None):
 
     print("Generating {}...".format(wrapper_path))
     c_code = generate(module_def)
-    with open(wrapper_path, 'w') as f:
-        f.write(c_code)
+    try:
+        with open(wrapper_path, 'w') as f:
+            f.write(c_code)
+    except IOError as e:
+        sys.exit("Error writing {}: {}".format(wrapper_path, e))
 
     return wrapper_path, module_def
 

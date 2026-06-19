@@ -1092,6 +1092,18 @@ The cycle counter has lower overhead but returns platform-dependent
 cycle counts (not nanoseconds).  Use `_c2py_tick_frequency()` and
 `_c2py_ticks_to_ns()` to convert.
 
+### Address Sanitizer (ASan)
+
+Pass `--asan` to `c2py23 build` or `c2py23 compile` to enable AddressSanitizer:
+
+```bash
+c2py23 build --asan module.c2py
+c2py23 compile --asan module_wrapper.c -s module.c -o module.so
+```
+
+This adds `-fsanitize=address` to the compile and link flags, enabling
+detection of buffer overflows and memory leaks during testing.
+
 ## SIMD Dispatch and Multi-Flag Compilation
 
 c2py23 provides CPU feature detection and two-level dispatch (buffer-type groups
