@@ -57,18 +57,45 @@ else
     pip install -e "$PROJECT_DIR" 2>&1 | tail -3
 fi
 
+# Helper: run c2py23 build with the right python for FT vs normal
+_c2py_build() {
+    local c2py_path="$1"
+    shift
+    if [ "$IS_FT" = "1" ]; then
+        "$PYTHON" -m c2py23.cli build "$c2py_path" "$@"
+    else
+        c2py23 build "$c2py_path" "$@"
+    fi
+}
+
 # Build all test modules
 echo ""
 echo "Building test modules..."
-BUILD_PY="${IS_FT:+$PYTHON -m}"
 for c2py_file in "$SCRIPT_DIR"/cases/*/*.c2py; do
     echo "  Building: $c2py_file"
-    if [ "$IS_FT" = "1" ]; then
-        "$PYTHON" -m c2py23.cli build "$c2py_file"
-    else
-        c2py23 build "$c2py_file"
-    fi
+    _c2py_build "$c2py_file"
 done
+
+# Build examples
+echo ""
+echo "Building examples..."
+
+echo "  Building: kissfft_wrap"
+_c2py_build "$PROJECT_DIR/examples/kissfft_wrap/kissfft.c2py"
+
+echo "  Building: lz4_wrap"
+_c2py_build "$PROJECT_DIR/examples/lz4_wrap/lz4.c2py"
+
+echo "  Building: simd_dispatch"
+cd "$PROJECT_DIR/examples/simd_dispatch"
+gcc -c -O3 -Wall -Werror -fPIC -ffast-math -mavx512f -DKERNEL_FN=poly_f32_avx512 poly_kernel.c -o poly_f32_avx512.o
+gcc -c -O3 -Wall -Werror -fPIC -ffast-math -mavx2 -DKERNEL_FN=poly_f32_avx2 poly_kernel.c -o poly_f32_avx2.o
+gcc -c -O3 -Wall -Werror -fPIC -ffast-math -DKERNEL_FN=poly_f32_scalar poly_kernel.c -o poly_f32_scalar.o
+_c2py_build polysimd.c2py -o polysimd.so
+cd "$PROJECT_DIR"
+
+echo "  Building: threading_bench"
+CFLAGS="-fopenmp" _c2py_build "$PROJECT_DIR/examples/threading_bench/mc_pi.c2py"
 
 # Run tests
 RUN_PY="python"
@@ -104,6 +131,19 @@ $RUN_PY test_error_paths.py
 echo ""
 echo "Running leak stress test..."
 $RUN_PY test_leaks.py
+
+# Run example tests
+echo ""
+echo "Running example tests..."
+cd "$PROJECT_DIR"
+echo "  Test: kissfft_wrap"
+$RUN_PY examples/kissfft_wrap/example.py
+echo "  Test: lz4_wrap"
+$RUN_PY examples/lz4_wrap/example.py
+echo "  Test: simd_dispatch"
+$RUN_PY examples/simd_dispatch/test_polysimd.py
+echo "  Test: threading_bench"
+$RUN_PY examples/threading_bench/bench_mc_pi.py
 
 echo ""
 echo "=== All tests complete ==="

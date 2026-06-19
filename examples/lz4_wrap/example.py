@@ -6,6 +6,8 @@ import ctypes
 import sys
 import os
 
+IS_PY2 = sys.version_info[0] < 3
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lz4mod
 
@@ -17,7 +19,11 @@ compressed_size = lz4mod.compress(src, dst)
 print("Compressed %d -> %d bytes" % (len(data), compressed_size))
 
 out = (ctypes.c_uint8 * len(data))()
-buf = (ctypes.c_uint8 * compressed_size)(*bytearray(bytes(dst[:compressed_size])))
+# ctypes array slice returns a list of ints on both Python 2 and 3
+buf = (ctypes.c_uint8 * compressed_size)(*dst[:compressed_size])
 decompressed_size = lz4mod.decompress(buf, out)
-result = bytes(bytearray(out[:decompressed_size]))
+if IS_PY2:
+    result = str(bytearray(out[:decompressed_size]))
+else:
+    result = bytes(out[:decompressed_size])
 print("Decompressed: %d bytes, match=%s" % (decompressed_size, result == data))
