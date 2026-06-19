@@ -58,7 +58,6 @@ add_custom_command(
 add_library(polysimd SHARED
   polysimd_wrapper.c
   ${C2PY_RUNTIME_DIR}/c2py_runtime.c
-  ${C2PY_RUNTIME_DIR}/c2py_amd64.h
 )
 target_include_directories(polysimd PRIVATE ${C2PY_RUNTIME_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(polysimd PRIVATE ${CMAKE_DL_LIBS} m)

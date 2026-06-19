@@ -145,15 +145,35 @@ Returns:
 - `int` -- the C function returns `int`, converted to Python `int`
 - `float` -- the C function returns `float` or `double`, converted to Python `float`
 
+### Opaque Pointers (`void*`)
+
+A C parameter with type `void*` maps from Python `int` (a pointer-width integer).
+The wrapper casts through `intptr_t` and never dereferences the pointer:
+
+```yaml
+c_overloads:
+  - sig: "gpu_kernel(void *gpu_buf, int n)"
+    map: {gpu_buf: gpu_addr, n: "data.n"}
+```
+
+```python
+addr = get_gpu_buffer_address()   # returns int
+mymod.gpu_kernel(addr, data)
+```
+
+The `void*` parameter is a pure address passthrough for user-managed memory
+(GPU buffers, custom allocators, etc.).  The C function is responsible for
+interpreting the pointer; the wrapper performs no reads or writes through it.
+
 ### C Function Signature
 
 ```
 c_sig ::= c_name "(" [c_param ("," c_param)*] ")" ["->" c_ret]
 c_param ::= ["const"] c_ctype ["*"] name
-c_ctype ::= "int" | "float" | "double" | "char"
+c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int8_t" | "uint8_t" | "int16_t" | "uint16_t"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
-c_ret ::= "int" | "float" | "double" | "void"
+c_ret ::= c_ctype
 ```
 
 If `-> c_ret` is omitted, the return type is `void`.
@@ -243,8 +263,9 @@ default_raise: "TypeError: expected float or double buffer"
 default_raise: "ValueError: expected [N,3] or [3,N] buffer"
 ```
 
-The format is `"ExceptionType: message"`. Only `TypeError` and `ValueError`
-are supported.
+The format is `"ExceptionType: message"`. The exception type is prefixed
+with `PyExc_` at code generation time; any `PyExc_*` constant available
+at build time is valid (typically `TypeError`, `ValueError`, `RuntimeError`).
 
 ## Worked Examples
 

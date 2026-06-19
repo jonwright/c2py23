@@ -567,6 +567,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                             args.append('(float)c_' + p.name)
                         elif p.base_type == 'double':
                             args.append('c_' + p.name)
+                        else:
+                            args.append('(' + p.ctype + ')c_' + p.name)
                         break
                 else:
                     args.append('/* unhandled: {} */'.format(p.name))
@@ -580,6 +582,8 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                     c_str = '(int)(' + c_str + ')'
                 elif not p.is_pointer and p.base_type == 'float':
                     c_str = '(float)(' + c_str + ')'
+                elif not p.is_pointer and p.base_type not in ('int', 'double', 'void', 'float'):
+                    c_str = '(' + p.ctype + ')(' + c_str + ')'
                 args.append(c_str)
 
     # Pre-call: int overflow checks for n/length-derived params

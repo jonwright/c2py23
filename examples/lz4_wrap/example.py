@@ -1,4 +1,5 @@
-"""Example: use the lz4mod wrapper from Python."""
+"""Example: use the lz4mod wrapper from Python.
+Build with: c2py23 build lz4.c2py"""
 from __future__ import print_function
 
 import ctypes

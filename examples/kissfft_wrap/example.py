@@ -1,4 +1,5 @@
-"""Example: use the kissfftmod wrapper from Python."""
+"""Example: use the kissfftmod wrapper from Python.
+Build with: c2py23 build kissfft.c2py"""
 from __future__ import print_function
 
 import ctypes
