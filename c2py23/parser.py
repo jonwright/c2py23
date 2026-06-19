@@ -171,6 +171,9 @@ def _parse_py_sig(sig_str, path):
     name = m.group('name')
     params_str = m.group('params')
     ret = m.group('ret') or 'void'
+    if ret not in ('void', 'int', 'float'):
+        raise ValueError("Invalid return type '{}' in signature '{}'; "
+                         "expected void, int, or float".format(ret, sig_str))
 
     params = []
     seen_optional = False

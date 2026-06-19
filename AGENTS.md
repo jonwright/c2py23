@@ -219,6 +219,18 @@ Key work items:
 3. ABI matrix: add a Windows column with LLP64 sizes
 4. Test: CI on Windows with native Python
 
+### P4: Binary Wheel Distribution
+
+**Severity: Low -- replaces --no-build-isolation workflow**
+
+**Status: Deferred -- design TBD, implement later.**
+
+Publish binary wheels to PyPI: one per platform (linux, windows, macos) and
+one per architecture (x86_64, aarch64). Python-version-independent (the .so
+works on 2.7-3.14 via nimpy trick). Similar to ctypes-style distribution --
+install via pip, import from any Python version. May need a wrapper import
+mechanism or `ctypes.CDLL` loader bootstrap.
+
 ## Recently Completed
 
 - P1: SIMD dispatch / CPU feature detection (CPUID x86_64, getauxval ARM64/POWER)

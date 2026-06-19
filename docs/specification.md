@@ -819,19 +819,21 @@ safety foolproof. It provides mechanisms, not policies:
 
 ### Global Toggle
 
-A module-level runtime flag `_c2py_gil_release_enabled` (exposed as a
-readable/writable `int` on the module, similar to the timing flag
-`_c2py_timing_enabled`) allows callers to globally enable or disable
-GIL release without recompilation:
+A module-level runtime flag `_c2py_gil_release_enabled` allows callers to
+globally enable or disable GIL release without recompilation.  The flag is
+exposed as a pointer to the C `int` (same scheme as `_c2py_timing_enabled`),
+so it must be accessed via `ctypes`:
 
 ```python
+import ctypes
 import mymod
-mymod._c2py_gil_release_enabled  # 1 = enabled, 0 = disabled
-mymod._c2py_gil_release_enabled = 0  # disable all GIL release
+
+ptr = mymod._c2py_gil_release_enabled
+# 1 = enabled, 0 = disabled (default: enabled)
+ctypes.c_int.from_address(ptr).value = 0  # disable all GIL release
 ```
 
-Per-function enable/disable uses the same ctypes pointer pattern as timing
-instrumentation (see `c2py23.perf.read_enabled` / `c2py23.perf.set_enabled`):
+Per-function enable/disable uses the same pattern:
 
 ```python
 import ctypes
@@ -1002,6 +1004,72 @@ storage) and are invisible to `sys.getrefcount()`. The c2py23 runtime uses
 `Py_IncRef`/`Py_DecRef` (CPython 3.12+ stable ABI) which correctly handle
 biased refcounting. The manual fallback (`_c2py_inc_ref_manual`) is not used
 on Python 3.14 because `Py_IncRef`/`Py_DecRef` are always available.
+
+## Performance Timing
+
+Set `timing: true` in the `.c2py` module to enable per-function performance
+timing.  Each wrapped function and variant gets a `c2py_perf_t` struct that
+records tick counts before and after the C call.
+
+### Module-Level Attributes
+
+Modules built with `timing: true` expose:
+
+- **`_c2py_timing_enabled`** -- pointer to an `int` flag (1 = enabled).
+  Toggle via `ctypes`:
+  ```python
+  import ctypes
+  ptr = mymod._c2py_timing_enabled
+  ctypes.c_int.from_address(ptr).value = 0  # disable
+  ```
+- **`_perf_<funcname>`** -- pointer to the perf struct for a function.
+  For variant groups also `_perf_<funcname>__<variant_c_name>`.
+- **`_c2py_tick_frequency()`** -- returns the tick source frequency in Hz.
+  `1000000000` for the default `clock_gettime` source (nanoseconds), or
+  the detected CPU cycle counter frequency when built with
+  `-DC2PY_USE_CYCLE_COUNTER` (0 if detection fails).
+- **`_c2py_ticks_to_ns(ticks, freq_hz)`** -- converts a tick count to
+  nanoseconds given the frequency.  Returns 0 if `freq_hz` is 0.
+
+### Decoding Performance Data
+
+The `c2py23.perf` module provides helpers to decode the raw perf structs:
+
+```python
+from c2py23.perf import read_perf, read_enabled, set_enabled
+
+import mymod
+stats = read_perf(mymod._perf_wsum)
+print(stats["c_dur_ns"])       # last call C duration (ns)
+print(stats["c_mean_ns"])      # mean C duration (ns)
+
+# With C2PY_USE_CYCLE_COUNTER, pass the frequency:
+stats = read_perf(mymod._perf_wsum,
+                  freq_hz=mymod._c2py_tick_frequency())
+print(stats["c_dur_ns"])       # converted to ns
+print(stats["c_dur_cycles"])   # raw ticks (only when freq_hz != 1e9)
+```
+
+`read_perf(ptr_int, freq_hz=None)` returns:
+- `call_count`, `t_enter`, `t_pre_c`, `t_post_c`, `t_exit`
+- `c_dur_ns`, `wrap_dur_ns`, `c_min_ns`, `c_max_ns`, `c_mean_ns`
+- `wrap_min_ns`, `wrap_max_ns`, `wrap_mean_ns`
+- When `freq_hz` is provided and `!= 1e9`: additional `_cycles` keys
+  with raw tick values.
+
+`read_enabled(ptr_int)` returns 0 or 1.  `set_enabled(ptr_int, value)`
+sets the flag.
+
+All tick calls are guarded by `_c2py_do_time` so there is zero overhead
+when timing is disabled or not compiled in.
+
+### Compile-Time Options
+
+Define `-DC2PY_USE_CYCLE_COUNTER` at build time to use `rdtsc` (x86),
+`CNTVCT_EL0` (ARM64), or `mftb` (POWER) instead of `clock_gettime`.
+The cycle counter has lower overhead but returns platform-dependent
+cycle counts (not nanoseconds).  Use `_c2py_tick_frequency()` and
+`_c2py_ticks_to_ns()` to convert.
 
 ## SIMD Dispatch and Multi-Flag Compilation
 

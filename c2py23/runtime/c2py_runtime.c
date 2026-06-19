@@ -248,8 +248,29 @@ static void _c2py_probe_cpu_features(void)
 #elif defined(__powerpc64__) || defined(__powerpc__)
     {
         /* On POWER the timebase frequency is typically 512 MHz but varies.
-         * Reading from /proc/device-tree/cpus/timebase-frequency is one
-         * option, but that path may not exist in containers.  Leave at 0. */
+         * Try /proc/device-tree/cpus/timebase-frequency first. */
+        FILE *f = fopen("/proc/device-tree/cpus/timebase-frequency", "r");
+        if (f) {
+            unsigned char buf[8] = {0};
+            size_t r = fread(buf, 1, 8, f);
+            fclose(f);
+            /* Big-endian 32-bit or 64-bit integer */
+            if (r == 4) {
+                c2py_tick_frequency_hz = ((uint64_t)buf[0] << 24) |
+                                         ((uint64_t)buf[1] << 16) |
+                                         ((uint64_t)buf[2] << 8)  |
+                                          (uint64_t)buf[3];
+            } else if (r >= 8) {
+                c2py_tick_frequency_hz = ((uint64_t)buf[0] << 56) |
+                                         ((uint64_t)buf[1] << 48) |
+                                         ((uint64_t)buf[2] << 40) |
+                                         ((uint64_t)buf[3] << 32) |
+                                         ((uint64_t)buf[4] << 24) |
+                                         ((uint64_t)buf[5] << 16) |
+                                         ((uint64_t)buf[6] << 8)  |
+                                          (uint64_t)buf[7];
+            }
+        }
     }
 #endif
     /* If detection failed, c2py_tick_frequency_hz remains 0. */

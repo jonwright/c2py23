@@ -143,7 +143,7 @@ Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, require
 
 ## Examples
 
-The `examples/` directory contains three worked examples:
+The `examples/` directory contains four worked examples:
 
 - **KissFFT** (`examples/kissfft_wrap/`) -- real and complex FFT over float buffers
 - **LZ4** (`examples/lz4_wrap/`) -- compress/decompress over byte buffers
@@ -193,7 +193,7 @@ c2py23/
     test_peer_review.py       # Alias + contiguity enforcement tests (10 tests, requires numpy)
     test_error_paths.py       # Refcount stability on error paths (5 tests)
     test_regression_fixes.py  # Parser/generator unit tests (14 tests)
-    test_interpreters.py      # Sub-interpreter support tests
+    test_interpreters.py      # Verify interpreters exist in container (3.14 + 3.14t)
     check_abi.c               # ABI introspection tool
     populate_abi_matrix.py    # Collect ABI data from all containers
     abi_matrix.json           # Py_buffer/PyObject layout across 11 versions

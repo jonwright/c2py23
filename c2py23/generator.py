@@ -535,8 +535,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
             if ctype in ('int', 'int8_t', 'int16_t', 'int32_t',
                          'uint8_t', 'uint16_t', 'uint32_t'):
                 out.append(indent + 'int {0} = 0;'.format(var_name))
-            elif ctype in ('int64_t', 'uint64_t'):
+            elif ctype == 'int64_t':
                 out.append(indent + 'int64_t {0} = 0;'.format(var_name))
+            elif ctype == 'uint64_t':
+                out.append(indent + 'uint64_t {0} = 0;'.format(var_name))
             elif ctype == 'float':
                 out.append(indent + 'float {0} = 0.0f;'.format(var_name))
             elif ctype == 'double':
@@ -710,8 +712,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
         if ctype in ('int', 'int8_t', 'int16_t', 'int32_t',
                      'uint8_t', 'uint16_t', 'uint32_t'):
             out.append(indent + 'return PyLong_FromLong((long){0});'.format(val))
-        elif ctype in ('int64_t', 'uint64_t'):
+        elif ctype == 'int64_t':
             out.append(indent + 'return PyLong_FromLongLong((long long){0});'.format(val))
+        elif ctype == 'uint64_t':
+            out.append(indent + 'return PyLong_FromUnsignedLongLong({0});'.format(val))
         elif ctype in ('float', 'double'):
             out.append(indent + 'return PyFloat_FromDouble((double){0});'.format(val))
         else:
@@ -728,8 +732,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                 out.append(indent + '    return NULL;')
                 out.append(indent + '}')
                 out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
-            elif ctype in ('int64_t', 'uint64_t'):
+            elif ctype == 'int64_t':
                 out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(i, val))
+            elif ctype == 'uint64_t':
+                out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});'.format(i, val))
                 out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
                 out.append(indent + '    Py_DECREF(_c2py_tup);')
                 out.append(indent + '    return NULL;')
@@ -1463,7 +1469,8 @@ def _emit_module_init(out, mod):
     # Python 3 init
     out.append('PyObject* PyInit_{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
-    out.append(resolve_calls)
+    if resolve_calls:
+        out.append(resolve_calls.rstrip('\n'))
     out.append('')
     out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
     out.append('')
@@ -1509,7 +1516,6 @@ def _emit_module_init(out, mod):
     out.append('    }')
     out.append('}')
     out.append('')
-
     # Python 2.7 init
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')

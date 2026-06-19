@@ -100,10 +100,10 @@ def read_perf(ptr_int, freq_hz=None):
         "wrap_dur_ns": _to_ns(wrap_dur, freq_hz),
         "c_min_ns":   _to_ns(p.t_c_min, freq_hz),
         "c_max_ns":   _to_ns(p.t_c_max, freq_hz),
-        "c_mean_ns":  _to_ns(p.t_c_total / n, freq_hz) if n else 0,
+        "c_mean_ns":  _to_ns(p.t_c_total / float(n), freq_hz) if n else 0,
         "wrap_min_ns":  _to_ns(p.t_wrap_min, freq_hz),
         "wrap_max_ns":  _to_ns(p.t_wrap_max, freq_hz),
-        "wrap_mean_ns": _to_ns(p.t_wrap_total / n, freq_hz) if n else 0,
+        "wrap_mean_ns": _to_ns(p.t_wrap_total / float(n), freq_hz) if n else 0,
         "variant":    p.variant,
         "group_idx":  p.group_idx,
         "variant_name": vname,
@@ -114,10 +114,10 @@ def read_perf(ptr_int, freq_hz=None):
         result["wrap_dur_cycles"] = wrap_dur
         result["c_min_cycles"]   = p.t_c_min
         result["c_max_cycles"]   = p.t_c_max
-        result["c_mean_cycles"]  = p.t_c_total / n if n else 0
+        result["c_mean_cycles"]  = p.t_c_total / float(n) if n else 0
         result["wrap_min_cycles"]  = p.t_wrap_min
         result["wrap_max_cycles"]  = p.t_wrap_max
-        result["wrap_mean_cycles"] = p.t_wrap_total / n if n else 0
+        result["wrap_mean_cycles"] = p.t_wrap_total / float(n) if n else 0
 
     return result
 
