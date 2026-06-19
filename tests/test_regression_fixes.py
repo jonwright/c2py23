@@ -471,9 +471,9 @@ def test_docstring_verification():
                 chk_str = _expr_to_source(chk)
                 assert chk_str in doc, "%s: missing check '%s'" % (func.name, chk_str)
 
-            # Verify GIL state
-            gil_state = "released" if func.gil_release else "held"
-            assert "GIL: " + gil_state in doc, "%s: wrong GIL state" % func.name
+            # Verify GIL state (only shown when released)
+            if func.gil_release:
+                assert "GIL: released" in doc, "%s: missing GIL released" % func.name
 
             # Verify overloads
             for ol in func.overloads:
@@ -490,6 +490,9 @@ def test_docstring_verification():
                     for v in ol.variants:
                         assert v.sig_str in doc, "%s: missing variant sig" % func.name
                         assert v.name in doc, "%s: missing variant name" % func.name
+                        if v.when_expr:
+                            when_str = _expr_to_source(v.when_expr)
+                            assert when_str in doc, "%s: missing variant when" % func.name
                         if v.doc:
                             assert v.doc in doc, "%s: missing variant doc" % func.name
 

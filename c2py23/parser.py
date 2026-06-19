@@ -27,15 +27,16 @@ else:
 
 def _check_ascii(value, label, path):
     """Validate a string contains only 7-bit ASCII characters.
-    Raises ValueError if non-ASCII bytes are found.
-    value should be a str (on 2.x) or str (on 3.x) -- text type.
-    We encode to latin-1 to detect any byte > 127.
+    Raises ValueError if non-ASCII bytes are found or if value is not a string.
     """
-    if isinstance(value, _STRING_TYPES):
-        for ch in value:
-            if ord(ch) > 127:
-                raise ValueError(
-                    "Non-ASCII character %r in %s at %s: %s" % (ch, label, path, value[:80]))
+    if not isinstance(value, _STRING_TYPES):
+        raise ValueError(
+            "Expected a string for '%s' in %s, got %s" % (
+                label, path, type(value).__name__))
+    for ch in value:
+        if ord(ch) > 127:
+            raise ValueError(
+                "Non-ASCII character %r in %s at %s: %s" % (ch, label, path, value[:80]))
     return value
 
 # ---------------------------------------------------------------------------
@@ -769,7 +770,7 @@ def _parse_func(raw, path):
                 raise ValueError(
                     "Unknown param '{}' in params block of '{}' -- "
                     "not in py_sig signature".format(pname, name))
-            pdesc = str(params[pname])
+            pdesc = str(params[pname]) if not isinstance(params[pname], _STRING_TYPES) else params[pname]
             params[pname] = _check_ascii(pdesc, 'params.{}'.format(pname), path)
 
     return FuncDef(name, py_params, ret_type, checks, overloads, default_raise, doc, gil_release, params=params)

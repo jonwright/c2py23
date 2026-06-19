@@ -1340,6 +1340,8 @@ _FORMAT_CHAR_TO_NAME = {
     'q': 'int64', 'Q': 'uint64',
     'l': 'int64 (platform)', 'L': 'uint64 (platform)',
     'f': 'float32', 'd': 'float64',
+    'c': 'char', '?': 'bool', 'e': 'half-float',
+    'Z': 'complex64', 'z': 'complex128',
 }
 
 def _extract_fmt_from_expr(expr, param_name, fmt_chars):
@@ -1532,13 +1534,10 @@ def _doc(func):
         for chk in func.checks:
             lines.append("  " + _expr_to_source(chk) + "  [ValueError]")
 
-    # 5. GIL state
+    # 5. GIL state (only show when released, to avoid noise)
     if func.gil_release:
         lines.append("")
         lines.append("GIL: released")
-    else:
-        lines.append("")
-        lines.append("GIL: held")
 
     # 6. Overloads section
     has_overloads = func.overloads and any(
@@ -1561,6 +1560,8 @@ def _doc(func):
                 lines.extend(_overload_map_lines(ol, "    "))
                 for v in ol.variants:
                     lines.append("    {} -> {}".format(v.name, v.sig_str))
+                    if v.when_expr:
+                        lines.append("      When: {}".format(_expr_to_source(v.when_expr)))
                     if v.doc:
                         lines.append("      " + v.doc)
                     v_out = getattr(v, 'outputs', {}) or {}
@@ -1733,14 +1734,9 @@ def _emit_module_init(out, mod):
     out.append('')
     out.append('    if (C2PY.is_free_threaded) {')
     out.append('        _module_def_ft.m_methods = methods;')
-    if has_attrs:
-        out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
-        out.append('        }')
-    else:
-        out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
-        out.append('        }')
+    out.append('        if (C2PY.Module_Create2 != NULL) {')
+    out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);')
+    out.append('        }')
     out.append('    } else {')
     out.append('        _module_def.m_methods = methods;')
     if has_attrs:
