@@ -57,12 +57,6 @@ Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
 `_gil_release_*`, variant `_var_*` globals for atomic safety under
 free-threading. Low priority since FT is opt-in.
 
-### P3: 32-bit Py_buffer layout (LOW, no CI target)
-
-32-bit `Py_buffer` sizes (52/44 bytes pre/post 3.12) are unverified. No 32-bit
-CI container exists. When a 32-bit target is added, the runtime struct layout
-and the ABI matrix must be verified.
-
 ---
 
 ## Completed
@@ -124,6 +118,7 @@ and the ABI matrix must be verified.
   - L: remove stale "does not yet expose" FT documentation sentence
   - M: document buffer writability per-function limitation (generator, AGENTS.md)
   - N: document `_c2py_dec_ref_manual` fallback limitation (runtime.h)
+  - P3: reject 32-bit builds at module import with clear diagnostic
   - V: update P4 wheel entry with concrete open design questions
 - **Lifecycle tests:** 10 new tests covering re-import cycles (3), concurrent imports (2),
   exception path stress (3), and subinterpreters (2, documenting known limitation).

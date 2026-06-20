@@ -286,6 +286,16 @@ static void _c2py_runtime_init_once(void)
     /* CPU feature probing runs first -- does not depend on Python */
     _c2py_probe_cpu_features();
 
+    /* --- Reject 32-bit builds --- */
+    if (sizeof(void*) != 8) {
+        fprintf(stderr, "c2py_runtime: 32-bit platforms are not supported. "
+                "Detected %d-bit pointer width. "
+                "c2py23 targets LP64 (64-bit) only; "
+                "32-bit Py_buffer layout is unverified.\n",
+                (int)(sizeof(void*) * 8));
+        return;
+    }
+
     C2PY.dl_handle = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);
     if (C2PY.dl_handle == NULL) {
         fprintf(stderr, "c2py_runtime: dlopen(NULL) failed: %s\n", dlerror());
