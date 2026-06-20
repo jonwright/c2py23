@@ -4,10 +4,13 @@
 
 ### P3: aarch64 / ppc64le support
 
-**Status: Not started.**  The runtime already has CPU feature detection for
-ARM64 (`getauxval`, `mrs`) and POWER (`getauxval`, `mftb`).  No CI yet.
-Approach: QEMU user-mode emulation inside Apptainer containers
-(similar to existing manylinux2014 strategy in snakepit).
+**Status: CPU detection implemented.  No CI/testing yet.**
+
+The runtime has full CPU feature detection for ARM64 (`getauxval`,
+`mrs`, `c2py_arm64.h`) and POWER (`getauxval`, `mftb`, `c2py_ppc64.h`).
+No testing on real hardware or CI.  Approach: QEMU user-mode emulation
+inside Apptainer containers (similar to existing manylinux2014 strategy
+in snakepit).
 
 ### P4: PyPI distribution
 
@@ -47,7 +50,7 @@ SIMD flags and compiler selection remain in the user's build system
 
 The generator emits C via hundreds of `out.append(...)` calls building a string
 list. This is prone to logical errors: a re-order can miss a cleanup, GIL
-save/restore, or null-check. The existing regression tests (21 tests in
+save/restore, or null-check. The existing regression tests (23 tests in
 `test_regression_fixes.py`) cover known bug patterns but do not verify
 invariant-level properties. A future improvement could add a structural
 invariant checker that walks the generated C and validates properties

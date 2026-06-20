@@ -245,10 +245,11 @@ Remaining Windows work:
 
 ### P3: aarch64 / ppc64le
 
-**Status: Not started.  Requires QEMU + Apptainer (snakepit).**
+**Status: CPU detection implemented.  No CI yet.  Requires QEMU + Apptainer.**
 
-These architectures are supported by the runtime (CPU feature detection
-is implemented) but have no CI.  Approach: QEMU user-mode emulation
+The runtime has full CPU feature detection for ARM64 (`getauxval`,
+`mrs`, `c2py_arm64.h`) and POWER (`getauxval`, `mftb`, `c2py_ppc64.h`).
+No testing on real hardware.  Approach: QEMU user-mode emulation
 inside an Apptainer container, similar to existing manylinux2014 strategy.
 
 ### P4: PyPI Distribution

@@ -102,7 +102,7 @@ The compiler is auto-detected in `c2py23 build`.  Output extension is
 | Return `float` | C `float` or `double` return |
 
 **C pointer element types**: `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`,
-`uint32_t`, `int64_t`, `uint64_t`, `int`, `float`, `double`, `char`, `void`
+`uint32_t`, `int64_t`, `uint64_t`, `intptr_t`, `size_t`, `int`, `float`, `double`, `char`, `void`
 
 The `void*` pointer type maps from Python `int` (pointer-width, casts via `intptr_t`).
 This is for opaque addresses the user manages (GPU memory, custom allocators, etc.).
@@ -157,7 +157,8 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 | 3.13.14 | 14/14 pass | 14/14 pass |
 | 3.14.6 | 14/14 pass | 14/14 pass |
 | 3.14.0t | 14/14 pass | -- (no FT builds on CI) |
-| 3.15.x | 14/14 pass | guarded: not yet supported |
+| 3.15.x | 14/14 pass (ubuntu26.04) | guarded (no binary wheels yet) |
+| 3.15.0t | -- | guarded (no binary wheels yet) |
 
 CI: Linux via Apptainer containers (snakepit), Windows via GitHub Actions
 (MSVC on `windows-latest`, Python 2.7/3.13/3.14).
@@ -165,7 +166,7 @@ CI: Linux via Apptainer containers (snakepit), Windows via GitHub Actions
 Python 3.15+ on Windows and 3.16+ on all platforms are **rejected** at
 module-load time with a diagnostic explaining how to add support.
 
-Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
+Additional tests in `test_peer_review.py` (alias + contiguity, 11 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
 `test_regression_fixes.py` (codegen validation, 23 tests).
 
@@ -237,6 +238,7 @@ Requires the snakepit SIF containers at `../snakepit/`.
 c2py23/
   c2py23/                     # Python package (parser, generator, CLI, perf, loader)
     c2py_loader.py              # Multi-platform .so loader (explicit-filename convention)
+    invariant_checker.py        # Validate generated C code structure
     runtime/                    # C runtime (nimpy loader, API table, CPU feature headers)
       c2py_runtime.h            # Core type definitions and API macros
       c2py_runtime.c            # Runtime loader (dlopen/dlsym)
@@ -260,11 +262,14 @@ c2py23/
     test_leaks.py               # Memory stress test (valgrind compatible)
     test_peer_review.py         # Alias + contiguity enforcement tests (10 tests, requires numpy)
     test_error_paths.py         # Refcount stability on error paths (5 tests)
-    test_regression_fixes.py    # Parser/generator unit tests (14 tests)
+    test_regression_fixes.py    # Parser/generator unit tests (23 tests)
     test_lifecycle.py           # Re-import, concurrent import, subinterpreter tests
-    check_abi.c                 # ABI introspection tool
+    check_abi.c                 # Linux ABI introspection tool
+    check_abi_win.c             # Windows ABI introspection tool
+    abi_diag.py                 # Python-side ABI diagnostic (ctypes format chars)
+    abi_check_win.py            # Windows C ABI checker (compile + run)
     populate_abi_matrix.py      # Collect ABI data from all containers
-    abi_matrix.json             # Py_buffer/PyObject layout across 11 versions
+    abi_matrix.json             # Py_buffer/PyObject layout across versions
   docs/                         # Specification, grammar, and user guide
     specification.md            # Full grammar, architecture, runtime internals
     user_guide.md               # Thread safety guide and best practices

@@ -4,7 +4,7 @@ c2py23 test suite across all Python versions via snakepit containers.
 
 Mirrors snakepit's test_images.py pattern:
 1. Copies c2py23 project + test cases into workspace
-2. For each Python version (2.7-3.14), runs run_tests.sh inside
+2. For each Python version (2.7-3.15), runs run_tests.sh inside
    the appropriate Apptainer container
 3. Collects pass/fail results
 """
@@ -36,6 +36,8 @@ PYTHON_VERSIONS = [
     ("3.13", "ubuntu24.04.sif"),
     ("3.14", "ubuntu24.04.sif"),
     ("3.14t", "ubuntu24.04.sif"),
+    ("3.15", "ubuntu26.04.sif"),
+    ("3.15t", "ubuntu26.04.sif"),
 ]
 
 _log_file = None
@@ -152,7 +154,11 @@ def test_python_version(python_version, sif_file):
     print_header("Testing Python " + python_version)
 
     system_py = "python" + python_version
-    test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py
+    # ubuntu26.04 has packages pre-installed at system level
+    if sif_file == "ubuntu26.04.sif":
+        test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py + " preinstalled"
+    else:
+        test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 

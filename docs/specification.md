@@ -179,6 +179,7 @@ c_param ::= ["const"] c_ctype ["*"] name
 c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int8_t" | "uint8_t" | "int16_t" | "uint16_t"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
+          | "intptr_t" | "size_t" | "_Bool"
 c_ret ::= c_ctype
 ```
 
@@ -1228,4 +1229,7 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **Windows port** -- platform `GetModuleHandle(NULL)` + `GetProcAddress()` equivalent of `dlopen`/`dlsym`; MSVC/clang-cl build path; LLP64 type handling
+- **aarch64 / ppc64le CI** -- QEMU user-mode Apptainer testing; CPU detection
+  already implemented (CPUID/getauxval/mrs/mftb)
+- **Windows free-threading** -- no x64 FT Python builds available on CI yet
+- **Binary wheel distribution** -- c2pypi packer for multi-arch PyPI publishing
