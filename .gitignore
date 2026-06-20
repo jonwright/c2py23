@@ -44,6 +44,5 @@ examples/threading_bench/*.so
 /tests/test_workspace/
 
 # Audit output (generated Markdown for LLM/human review)
-/audit/full_repo_audit.md
-/audit/wrappers_combined.md
+/audit/*.md
 /audit/wrappers/
