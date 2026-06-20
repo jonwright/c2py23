@@ -132,6 +132,11 @@ echo ""
 echo "Running leak stress test..."
 $RUN_PY test_leaks.py
 
+# Run lifecycle tests (re-import, concurrent import, subinterpreters)
+echo ""
+echo "Running lifecycle tests..."
+$RUN_PY test_lifecycle.py
+
 # Run example tests
 echo ""
 echo "Running example tests..."
