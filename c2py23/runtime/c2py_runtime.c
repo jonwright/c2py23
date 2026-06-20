@@ -484,10 +484,10 @@ static void _c2py_runtime_init_once(void)
     }
 
     /* --- Reject unsupported Python versions --- */
-    if (C2PY.version_major >= 3 && C2PY.version_minor > 15) {
+    if (C2PY.version_major >= 3 && C2PY.version_minor > 14) {
         fprintf(stderr,
                 "c2py_runtime: Python %d.%d is not supported.\n"
-                "Supported versions: 2.7, 3.6-3.15.\n"
+                "Supported versions: 2.7, 3.6-3.14.\n"
                 "To add support for a new Python version, audit the CPython\n"
                 "headers for ABI changes and update checks in c2py_runtime.c.\n",
                 C2PY.version_major, C2PY.version_minor);
