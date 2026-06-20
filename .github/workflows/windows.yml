@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 10
 
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         python-version: ["3.9", "3.13"]
 

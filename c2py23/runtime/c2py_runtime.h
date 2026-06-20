@@ -31,6 +31,12 @@
 extern "C" {
 #endif
 
+/* MSVC C mode does not recognise the inline keyword (C++ only).
+ * __inline is the MSVC equivalent (also recognised by MinGW). */
+#ifdef _MSC_VER
+#define inline __inline
+#endif
+
 /* ------------------------------------------------------------------ */
 /* Py_ssize_t - must be defined before any struct using it            */
 /* ------------------------------------------------------------------ */
@@ -311,9 +317,21 @@ extern c2py_api_t C2PY;
 
 #define PyObject_GetBuffer(o, b, f)    C2PY.GetBuffer((PyObject*)(o), (b), (f))
 #define PyBuffer_Release(b)            C2PY.ReleaseBuffer(b)
+
+/* MSVC traditional preprocessor auto-removes the comma before an empty
+ * __VA_ARGS__; GCC/Clang require the ## token-paste to do so. */
+#ifdef _MSC_VER
+#define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), __VA_ARGS__)
+#define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
+    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), __VA_ARGS__)
+#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), __VA_ARGS__)
+#else
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
 #define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
     C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
+#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
+#endif
+
 #define PyLong_FromLong(v)             C2PY.Long_FromLong(v)
 #define PyLong_FromLongLong(v)         C2PY.Long_FromLongLong(v)
 #define PyLong_FromUnsignedLongLong(v) C2PY.Long_FromUnsignedLongLong(v)
@@ -323,7 +341,6 @@ extern c2py_api_t C2PY;
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()
 #define PyErr_Occurred()               C2PY.Err_Occurred()
-#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #define Py_RETURN_NONE                 do { C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; } while(0)
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
