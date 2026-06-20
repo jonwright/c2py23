@@ -704,6 +704,56 @@ def test_I_unsupported_return_error_message():
     test_passed()
 
 
+def test_checker_catches_broken_int64():
+    """Verify the C invariant checker catches the original int64_t bug pattern."""
+    from c2py23.generator import _verify_c_invariants
+
+    # Simulate the broken pattern: missing NULL check + PyTuple_SetItem
+    bad_code = """
+static PyObject*
+_broken_impl(Py_buffer *buf)
+{
+    {
+        double _out_val = 42.0;
+        PyObject *_c2py_tup = PyTuple_New(1);
+        if (_c2py_tup == NULL) return NULL;
+        PyObject *_c2py_obj0 = PyLong_FromLongLong((long long)_out_val);
+        return _c2py_tup;
+    }
+}
+"""
+    try:
+        _verify_c_invariants(bad_code)
+        assert False, "Checker should have raised ValueError"
+    except ValueError as e:
+        assert '_c2py_obj0' in str(e), (
+            "Checker should mention the broken object, got: %s" % e)
+
+    # Verify correct pattern passes
+    good_code = """
+static PyObject*
+_good_impl(Py_buffer *buf)
+{
+    {
+        double _out_val = 42.0;
+        PyObject *_c2py_tup = PyTuple_New(1);
+        if (_c2py_tup == NULL) return NULL;
+        PyObject *_c2py_obj0 = PyLong_FromLongLong((long long)_out_val);
+        if (_c2py_obj0 == NULL) {
+            Py_DECREF(_c2py_tup);
+            return NULL;
+        }
+        PyTuple_SetItem(_c2py_tup, 0, _c2py_obj0);
+        return _c2py_tup;
+    }
+}
+"""
+    # Should not raise
+    _verify_c_invariants(good_code)
+
+    test_passed()
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):
