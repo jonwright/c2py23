@@ -910,6 +910,14 @@ def _emit_module_init_builder(b, module_def, has_free_threading,
     b.emit('};')
     b.emit('')
 
+    # Free-threading slots array (Py_mod_gil for Python 3.15t+)
+    if has_free_threading:
+        b.emit('static PyModuleDef_Slot _slots[] = {')
+        b.emit('    {Py_mod_gil, Py_MOD_GIL_NOT_USED},')
+        b.emit('    {0, NULL}')
+        b.emit('};')
+        b.emit('')
+
     b.emit('static PyModuleDef_FT _module_def_ft = {')
     b.emit('    PyModuleDef_HEAD_INIT_FT,')
     b.emit('    "{}",'.format(name))
@@ -919,7 +927,11 @@ def _emit_module_init_builder(b, module_def, has_free_threading,
         b.emit('    NULL,')
     b.emit('    -1,')
     b.emit('    NULL,  /* methods set at init */')
-    b.emit('    NULL, NULL, NULL, NULL')
+    if has_free_threading:
+        b.emit('    _slots,  /* m_slots */')
+    else:
+        b.emit('    NULL,  /* m_slots */')
+    b.emit('    NULL, NULL, NULL')
     b.emit('};')
     b.emit('')
 

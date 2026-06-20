@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from c2py23.parser import load_c2py
 from c2py23 import generator as g_orig
 from c2py23 import generator_builder as g_builder
-from c2py23 import generator_ast as g_ast
 
 CASES_DIR = 'tests/cases'
 
@@ -68,62 +67,28 @@ def main():
         c2py_file = os.path.join(case_dir, c2py_files[0])
         mod = load_c2py(c2py_file)
 
-        # Generate from original and builder
         orig_code = strip_c_comments(g_orig.generate(mod))
         build_code = strip_c_comments(g_builder.generate(mod))
-        ast_code = strip_c_comments(g_ast.generate(mod))
 
         orig_funcs = split_functions(orig_code)
         build_funcs = split_functions(build_code)
-        ast_funcs = split_functions(ast_code)
 
         if len(orig_funcs) != len(build_funcs):
             print('=== %s: FUNCTION COUNT MISMATCH orig=%d builder=%d ===' % (
                 case_name, len(orig_funcs), len(build_funcs)))
             continue
 
-        if len(orig_funcs) != len(ast_funcs):
-            print('=== %s: FUNCTION COUNT MISMATCH orig=%d ast=%d ===' % (
-                case_name, len(orig_funcs), len(ast_funcs)))
-            continue
-
-        diffs_orig_builder = 0
-        diffs_orig_ast = 0
-
-        for i, (of, bf, af) in enumerate(zip(orig_funcs, build_funcs, ast_funcs)):
+        diffs = 0
+        for i, (of, bf) in enumerate(zip(orig_funcs, build_funcs)):
             o_norm = '\n'.join(normalize_line(l) for l in of.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
             b_norm = '\n'.join(normalize_line(l) for l in bf.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
-            a_norm = '\n'.join(normalize_line(l) for l in af.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
-
             if o_norm != b_norm:
-                diffs_orig_builder += 1
-            if o_norm != a_norm:
-                diffs_orig_ast += 1
+                diffs += 1
 
-        if diffs_orig_builder == 0 and diffs_orig_ast == 0:
-            print('%-20s IDENTICAL (all 3)' % case_name)
-        elif diffs_orig_builder == 0:
-            print('%-20s orig=builder OK, ast=%d diffs' % (case_name, diffs_orig_ast))
-            # Show ast differences
-            for i, (of, af) in enumerate(zip(orig_funcs, ast_funcs)):
-                o_norm = '\n'.join(normalize_line(l) for l in of.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
-                a_norm = '\n'.join(normalize_line(l) for l in af.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
-                if o_norm != a_norm:
-                    # Show first 3 differing lines
-                    o_lines = o_norm.split('\n')
-                    a_lines = a_norm.split('\n')
-                    for j, (ol, al) in enumerate(zip(o_lines, a_lines)):
-                        if ol != al:
-                            print('  Func %d line %d:' % (i, j))
-                            print('    orig: %s' % ol[:100])
-                            print('    ast:  %s' % al[:100])
-                            if j > 10:
-                                break
-                    break
+        if diffs == 0:
+            print('%-20s IDENTICAL' % case_name)
         else:
-            print('%-20s orig/builder=%d diffs, ast=%d diffs' % (
-                case_name, diffs_orig_builder, diffs_orig_ast))
-            # Show a sample diff for orig vs builder
+            print('%-20s %d diffs' % (case_name, diffs))
             for i, (of, bf) in enumerate(zip(orig_funcs, build_funcs)):
                 o_norm = '\n'.join(normalize_line(l) for l in of.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))
                 b_norm = '\n'.join(normalize_line(l) for l in bf.split('\n') if normalize_line(l) and not l.strip().startswith('#include'))

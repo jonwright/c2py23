@@ -166,6 +166,16 @@ typedef struct PyModuleDef_FT {
     void *m_free;
 } PyModuleDef_FT;
 
+/* PyModuleDef_Slot: free-threading/extension slots (PEP 384, PEP 489) */
+typedef struct {
+    int slot;
+    void *value;
+} PyModuleDef_Slot;
+
+/* Slot IDs (stable across CPython versions) */
+#define Py_mod_gil  2
+#define Py_MOD_GIL_NOT_USED  ((void*)1)
+
 /* ------------------------------------------------------------------ */
 /* Constants                                                          */
 /* ------------------------------------------------------------------ */

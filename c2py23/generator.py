@@ -1721,6 +1721,14 @@ def _emit_module_init(out, mod, has_free_threading=False):
     out.append('};')
     out.append('')
 
+    # Free-threading slots array (Py_mod_gil for Python 3.15t+)
+    if has_free_threading:
+        out.append('static PyModuleDef_Slot _slots[] = {')
+        out.append('    {Py_mod_gil, Py_MOD_GIL_NOT_USED},')
+        out.append('    {0, NULL}')
+        out.append('};')
+        out.append('')
+
     # Free-threaded layout (PyModuleDef_FT, PyObject is 32 bytes)
     out.append('static PyModuleDef_FT _module_def_ft = {')
     out.append('    PyModuleDef_HEAD_INIT_FT,')
@@ -1731,7 +1739,11 @@ def _emit_module_init(out, mod, has_free_threading=False):
         out.append('    NULL,')
     out.append('    -1,')
     out.append('    NULL,  /* methods set at init */')
-    out.append('    NULL, NULL, NULL, NULL')
+    if has_free_threading:
+        out.append('    _slots,  /* m_slots */')
+    else:
+        out.append('    NULL,  /* m_slots */')
+    out.append('    NULL, NULL, NULL')
     out.append('};')
     out.append('')
 
