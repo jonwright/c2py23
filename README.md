@@ -154,12 +154,44 @@ Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, require
 
 ## Examples
 
-The `examples/` directory contains four worked examples:
+The `examples/` directory contains seven worked examples:
 
 - **KissFFT** (`examples/kissfft_wrap/`) -- real and complex FFT over float buffers
 - **LZ4** (`examples/lz4_wrap/`) -- compress/decompress over byte buffers
 - **SIMD Dispatch** (`examples/simd_dispatch/`) -- multi-flag compilation with CPU feature dispatch; includes meson.build, CMakeLists.txt, and setup.py build system integration demos
 - **Threading Benchmark** (`examples/threading_bench/`) -- Monte Carlo pi comparing serial, GIL release, free-threading (3.14t), and OpenMP parallelism
+- **Wheel Demo** (`examples/wheel_demo/`) -- packaging a c2py23 module as a `py3-none-any` wheel using the `c2py_loader` naming convention
+- **Meson Demo** (`examples/meson_demo/`) -- same module built with meson.build
+- **CMake Demo** (`examples/cmake_demo/`) -- same module built with CMakeLists.txt
+
+## Wheel Packaging
+
+c2py23 modules can be distributed as multi-platform `py3-none-any` wheels.
+The approach follows the ctypes peer model: ship platform-specific `.so` files,
+load by explicit filename.
+
+Filename convention: `_mymodule.c2py23-{os}_{arch}.so`
+
+```bash
+# Build inside manylinux2014 (glibc 2.17) for portable binaries
+c2py23 generate mymodule.c2py -o wrapper.c
+gcc -shared -fPIC wrapper.c mymodule.c c2py_runtime.c -ldl -lm \
+    -o mymodule/_mymodule.c2py23-linux_x86_64.so
+
+# Package as py3-none-any wheel (setuptools bdist_wheel.get_tag() override)
+python3 -m build
+```
+
+The `c2py_loader` module (`c2py23/c2py_loader.py`) loads the right `.so` at
+import time by explicit path via `ExtensionFileLoader` (3.x) or
+`imp.load_dynamic` (2.7).  No `EXTENSION_SUFFIXES` monkeypatching, no
+`sys.path` hacking.  Set `C2PY_TRACE=1` to see which file was loaded.
+
+Multiple platform-specific `.so` files can coexist in the same wheel.
+pip installs on any arch; the loader picks the right one.
+
+See `examples/wheel_demo/` for a complete working example and `docs/c2pypi-specification.md`
+for the full design.
 
 ## Testing
 
@@ -169,6 +201,9 @@ bash tests/run_tests.sh python3.12
 
 # Test across all versions via snakepit containers
 python3 tests/test_all.py
+
+# Test the manylinux2014 build-once cross-test strategy
+python3 tests/test_manylinux.py
 
 # Valgrind memory leak check
 valgrind --leak-check=full python3 tests/test_leaks.py
@@ -183,34 +218,40 @@ Requires the snakepit SIF containers at `../snakepit/`.
 
 ```
 c2py23/
-  c2py23/                     # Python package (parser, generator, CLI, perf)
-    runtime/                  # C runtime (nimpy loader, API table, CPU feature headers)
-      c2py_runtime.h          # Core type definitions and API macros
-      c2py_runtime.c          # Runtime loader (dlopen/dlsym)
-      c2py_amd64.h            # x86_64 CPU feature flags
-      c2py_arm64.h            # ARM64 CPU feature flags
-      c2py_ppc64.h            # POWER CPU feature flags
-  examples/                   # Worked examples with wrappers
-    kissfft_wrap/             # KissFFT wrapper (real + complex FFT)
-    lz4_wrap/                 # LZ4 compression wrapper
-    simd_dispatch/            # SIMD dispatch demo (Makefile/meson/cmake/setuptools)
-    threading_bench/          # Threading benchmark (GIL release, free-threading, OpenMP)
+  c2py23/                     # Python package (parser, generator, CLI, perf, loader)
+    c2py_loader.py              # Multi-platform .so loader (explicit-filename convention)
+    runtime/                    # C runtime (nimpy loader, API table, CPU feature headers)
+      c2py_runtime.h            # Core type definitions and API macros
+      c2py_runtime.c            # Runtime loader (dlopen/dlsym)
+      c2py_amd64.h              # x86_64 CPU feature flags
+      c2py_arm64.h              # ARM64 CPU feature flags
+      c2py_ppc64.h              # POWER CPU feature flags
+  examples/                     # Worked examples with wrappers
+    kissfft_wrap/               # KissFFT wrapper (real + complex FFT)
+    lz4_wrap/                   # LZ4 compression wrapper
+    simd_dispatch/              # SIMD dispatch demo (Makefile/meson/cmake/setuptools)
+    threading_bench/            # Threading benchmark (GIL release, free-threading, OpenMP)
+    wheel_demo/                 # Minimal py3-none-any wheel demo
+    meson_demo/                 # Wheel built with meson.build
+    cmake_demo/                 # Wheel built with CMakeLists.txt
   tests/
-    cases/                    # Test cases (C source + .c2py interface)
-    run_tests.sh              # Build + test for one Python version
-    test_uniform.py           # 2.7-3.14 compatible test runner (14 tests)
-    test_all.py               # Orchestrator across snakepit containers
-    test_leaks.py             # Memory stress test (valgrind compatible)
-    test_peer_review.py       # Alias + contiguity enforcement tests (10 tests, requires numpy)
-    test_error_paths.py       # Refcount stability on error paths (5 tests)
-    test_regression_fixes.py  # Parser/generator unit tests (14 tests)
-    test_interpreters.py      # Verify interpreters exist in container (3.14 + 3.14t)
-    check_abi.c               # ABI introspection tool
-    populate_abi_matrix.py    # Collect ABI data from all containers
-    abi_matrix.json           # Py_buffer/PyObject layout across 11 versions
-  docs/                       # Specification, grammar, and user guide
-    specification.md          # Full grammar, architecture, runtime internals
-    user_guide.md             # Thread safety guide and best practices
+    cases/                      # Test cases (C source + .c2py interface)
+    run_tests.sh                # Build + test for one Python version
+    test_uniform.py             # 2.7-3.14 compatible test runner (14 tests)
+    test_all.py                 # Orchestrator across snakepit containers
+    test_manylinux.py           # Build-once cross-test strategy (manylinux2014)
+    test_leaks.py               # Memory stress test (valgrind compatible)
+    test_peer_review.py         # Alias + contiguity enforcement tests (10 tests, requires numpy)
+    test_error_paths.py         # Refcount stability on error paths (5 tests)
+    test_regression_fixes.py    # Parser/generator unit tests (14 tests)
+    test_lifecycle.py           # Re-import, concurrent import, subinterpreter tests
+    check_abi.c                 # ABI introspection tool
+    populate_abi_matrix.py      # Collect ABI data from all containers
+    abi_matrix.json             # Py_buffer/PyObject layout across 11 versions
+  docs/                         # Specification, grammar, and user guide
+    specification.md            # Full grammar, architecture, runtime internals
+    user_guide.md               # Thread safety guide and best practices
+    c2pypi-specification.md     # Wheel distribution design (future c2pypi project)
   PLAN.md                     # Future work and roadmap
 ```
 
@@ -219,6 +260,7 @@ c2py23/
 - `AGENTS.md` -- guidelines for AI agents working on the codebase
 - `docs/specification.md` -- full grammar, worked examples, architecture
 - `docs/user_guide.md` -- thread safety guide and best practices
+- `docs/c2pypi-specification.md` -- wheel distribution design
 - `docs/referee_reports_2026-06-15.md` -- referee review reports with point-by-point response
 
 ## Limitations

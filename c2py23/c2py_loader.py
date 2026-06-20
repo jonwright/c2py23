@@ -39,13 +39,18 @@ import platform as _platform
 
 
 def _platform_key():
-    """Return 'linux_x86_64', 'linux_ppc64le', etc."""
+    """Return 'linux_x86_64', 'win_amd64', 'linux_ppc64le', etc."""
     _os = sys.platform
     if _os == 'linux2':
         _os = 'linux'
+    elif _os == 'win32':
+        _os = 'win'
     _arch = _platform.machine()
     if _arch == 'AMD64':
-        _arch = 'x86_64'
+        if _os == 'win':
+            _arch = 'amd64'
+        else:
+            _arch = 'x86_64'
     return '%s_%s' % (_os, _arch)
 
 

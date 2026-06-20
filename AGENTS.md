@@ -243,7 +243,7 @@ Key work items:
 
 ### P4: Binary Wheel Distribution
 
-**Status: Designed -- implementation in progress.**
+**Status: Designed -- loader and demos implemented, manylinux cross-testing complete.**
 
 The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
 convention that solves the multi-architecture wheel problem:

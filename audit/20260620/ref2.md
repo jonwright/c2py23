@@ -38,6 +38,16 @@ That's not false modesty — there are real open questions baked into the archit
 
 None of this means the design is wrong, just that "wheel building" is genuinely the next unsolved layer, not a packaging formality on top of a finished system. I'd treat it as its own design spike rather than assuming `setup.py bdist_wheel` will basically work.
 
+> **Resolution (2026-06-20):** All three concerns have since been addressed:
+> 1. **Wheel tagging**: `bdist_wheel.get_tag()` override returns `('py3', 'none', 'any')`.
+>    `twine check` passes.  Platform-specific `.so` files coexist in one wheel.
+> 2. **Symbol export**: documented as a known limitation in `docs/c2pypi-specification.md`.
+>    The loader (`c2py_loader.py`) catches import errors with a clear diagnostic.
+> 3. **Build-backend integration**: `examples/wheel_demo/`, `examples/meson_demo/`,
+>    `examples/cmake_demo/` demonstrate setuptools, meson, and cmake integration.
+>    Manylinux2014 cross-testing verifies the full build → wheel → test cycle across
+>    Python 2.7–3.14t on Debian 10, Ubuntu 20.04, and Ubuntu 24.04.
+
 ## A few smaller things
 
 - **`Unstable_Module_SetGIL` type mismatch**: the struct field is declared `void (*Unstable_Module_SetGIL)(PyObject*, int)`, but the real CPython function is `int PyUnstable_Module_SetGIL(PyObject*, void*)`. The call site passes `1` correctly meaning `Py_MOD_GIL_NOT_USED` (I checked — that constant really is `(void*)1`), so the *value* is right, but calling through a function pointer typed with a mismatched parameter (`int` vs `void*`) is technically UB in C even though it'll almost certainly work fine in practice on x86-64/AArch64 (a 32-bit immediate move zero-extends to the full register). Cheap fix: type it as `void*` and cast the call site.

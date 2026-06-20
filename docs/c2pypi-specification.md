@@ -25,6 +25,15 @@ c2pypi does NOT manage compilers.  It does not invoke `gcc`, `clang`, or
 belongs to the user's build system -- setuptools, meson, CMake, a Makefile,
 or `c2py23 build` itself.
 
+**What already exists in c2py23:** The `c2py_loader.py` module (`c2py23/c2py_loader.py`)
+implements the explicit-filename loading convention (`_module.c2py23-{os}_{arch}.so`)
+described in this spec.  It loads `.so` files by full path via `ExtensionFileLoader`
+(3.x) or `imp.load_dynamic` (2.7), with `C2PY_TRACE` instrumentation for debugging.
+The `examples/wheel_demo/`, `examples/meson_demo/`, and `examples/cmake_demo/`
+directories demonstrate the full build + wheel packaging flow using this convention.
+c2pypi (future project) would use the same loader internally and add packer /
+multi-multi-arch CI orchestration around it.
+
 ## Relationship to c2py23
 
 c2pypi and c2py23 are orthogonal.  c2py23 is a code generator (`c2py23
