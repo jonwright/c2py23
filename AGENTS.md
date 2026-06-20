@@ -40,7 +40,7 @@ EOF
 
 ## Python Compatibility Requirements
 
-All Python files MUST be compatible with Python 2.7 through 3.14.
+All Python files MUST be compatible with Python 2.7 through 3.15.
 
 ### Required
 - `from __future__ import print_function` as the first import in every `.py` file
@@ -122,6 +122,7 @@ python3 tests/populate_abi_matrix.py
 - **debian10.sif**: Python 3.6
 - **ubuntu20.04.sif**: Python 2.7, 3.8
 - **ubuntu24.04.sif**: Python 3.7, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
+- **ubuntu26.04.sif**: Python 3.14, 3.15
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 
@@ -139,7 +140,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
 2. `c2py23 build` generates a CPython C wrapper and compiles it with gcc into a `.so`
 3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
-4. One `.so` works on Python 2.7 through 3.14 (build on oldest target OS)
+4. One `.so` works on Python 2.7 through 3.15 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
 
 ### Interface File Format
@@ -227,7 +228,7 @@ Key work items:
 
 Publish binary wheels to PyPI: one per platform (linux, windows, macos) and
 one per architecture (x86_64, aarch64). Python-version-independent (the .so
-works on 2.7-3.14 via nimpy trick). Similar to ctypes-style distribution --
+works on 2.7-3.15 via nimpy trick). Similar to ctypes-style distribution --
 install via pip, import from any Python version. May need a wrapper import
 mechanism or `ctypes.CDLL` loader bootstrap.
 

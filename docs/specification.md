@@ -1087,7 +1087,7 @@ if (module != NULL && C2PY.Unstable_Module_SetGIL != NULL) {
 exported from the CPython shared library on `--disable-gil` builds
 (3.13+). On standard builds the symbol is not exported, dlsym returns
 NULL, and the call is skipped -- no effect, no error. The same `.so`
-works on Python 2.7 through 3.14t without recompilation.
+works on Python 2.7 through 3.15t without recompilation.
 
 **Option 3: Manual wrapper patch**
 

@@ -11,7 +11,7 @@
 **Open design questions (from referee review):**
 
 1. **Wheel tagging:** The c2py23 .so uses the nimpy trick -- one binary works
-   on CPython 2.7-3.14 without linking libpython. Standard wheel tags
+   on CPython 2.7-3.15 without linking libpython. Standard wheel tags
    (cp312-cp312-*, cp37-abi3-*, etc.) assume a specific CPython ABI. A
    bare `modulename.so` with no Python link dependency has no standard
    wheel tag. Need to investigate whether `py3-none` tag can be used.
@@ -97,7 +97,7 @@ free-threading. Low priority since FT is opt-in.
 - `__array_struct__` evaluated and removed
 - Buffer struct layout mismatch fixed
 - `-Wall -Werror` clean on all generated code
-- 11 Python versions in test matrix (2.7, 3.6-3.14, 3.14t)
+- 11 Python versions in test matrix (2.7, 3.6-3.14, 3.14t); 3.15 struct layouts verified identical
 - Contiguity check: rejects strided arrays, negative strides, accepts C/F-contiguous
 - Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)

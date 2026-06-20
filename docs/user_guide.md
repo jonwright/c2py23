@@ -3,7 +3,7 @@
 ## Introduction
 
 c2py23 wraps C99 functions as Python C extensions using the buffer protocol.
-One compiled `.so` works on Python 2.7 through 3.14 with no recompilation.
+One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
 
 ## Quick Reference
 
@@ -26,7 +26,7 @@ functions:
 
 ## Thread Safety Guide
 
-### Standard CPython (2.7 through 3.14)
+### Standard CPython (2.7 through 3.15)
 
 The GIL serializes all Python bytecode. When a C wrapper function is called,
 the GIL is held by default. Other Python threads cannot run until the call
