@@ -1,7 +1,7 @@
 # c2py23
 
 Wrap a strict subset of C99 code as Python C extensions via the buffer protocol.
-One compiled `.so` works on Python 2.7 through 3.14 with no recompilation.
+One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
 
 ## Install
 
@@ -100,7 +100,7 @@ The wrapper never dereferences `void*` -- it is a pure address passthrough.
 ## What It Doesn't Do
 
 - No structs, enums, nested pointers, or heap allocation -- all memory is flat and owned by Python
-- No `-lpython` link -- one `.so` works on Python 2.7 through 3.14 (nimpy-style `dlopen(NULL)` + `dlsym()` at load time)
+- No `-lpython` link -- one `.so` works on Python 2.7 through 3.15 (nimpy-style `dlopen(NULL)` + `dlsym()` at load time)
 - No copies or transpositions -- zero-copy, C functions operate on buffers in-place
 - No numpy required -- `ctypes` arrays, `memoryview`, `bytearray`, and anything supporting PEP 3118 works
 
@@ -142,6 +142,11 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 | 3.13.14 | ubuntu24.04 | 14/14 pass |
 | 3.14.6 | ubuntu24.04 | 14/14 pass (PEP 763 biased refcounting) |
 | 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded build; loading c2py23 re-enables GIL globally -- serialized like standard CPython; `PYTHON_GIL=0` for true free-threading) |
+| 3.15.x | ubuntu26.04 | Not yet tested in CI; struct layouts verified identical to 3.14 |
+
+Python 3.16+ is **not supported**. Module import on unsupported versions fails at runtime
+with a diagnostic instructing the user on how to add support (audit CPython headers against
+`tests/check_abi.c`, update version gates in `c2py_runtime.c`, run full test suite).
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and

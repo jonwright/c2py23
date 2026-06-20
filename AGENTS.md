@@ -309,6 +309,41 @@ Python caller passes a 100-element output buffer for a function expecting
 There is no runtime instrumentation to catch this; the ONLY defense is
 the `checks:` block.
 
+## Adding Support for a New Python Version
+
+When adding support for a new Python version (e.g., 3.16):
+
+1. **Get the container.** Add a snakepit image that ships the new version
+   (e.g., `ubuntu28.04.sif`). Add it to `tests/test_all.py`.
+
+2. **Audit the CPython headers.** Compile `tests/check_abi.c` against the new
+   version's headers inside the container and diff against the previous version:
+   ```bash
+   apptainer exec ../snakepit/ubuntu28.04.sif bash -c '
+     gcc tests/check_abi.c $(pythonX.Y-config --includes --ldflags) -o /tmp/check
+     /tmp/check
+   '
+   ```
+   Key things to check in the diff:
+   - `sizeof(PyObject)`, `sizeof(Py_buffer)`, `sizeof(PyModuleDef)` — must match
+   - `PyObject.ob_refcnt` and `ob_type` offsets — must match
+   - `PY_MOD_GIL` value — if changed, update `C2PY.py_mod_gil_slot` in `runtime.c`
+   - Symbol availability (any symbols removed?) — update `c2py_runtime.c`
+
+3. **Run the full test suite** across all containers:
+   ```bash
+   python3 tests/test_all.py
+   ```
+
+4. **Add a row** to the version table in `README.md`.
+
+5. **Bump the version ceiling** in `c2py_runtime.c`:
+   ```c
+   if (C2PY.version_major >= 3 && C2PY.version_minor > 16) { ...
+   ```
+
+6. **Commit** with a message documenting any ABI changes found.
+
 ## Keeping Documentation Current
 
 ### README.md
