@@ -12,6 +12,12 @@ void fill_u32(uint32_t *arr, int n, uint32_t value)
     for (i = 0; i < n; i++) arr[i] = value;
 }
 
+void fill_i32(int32_t *arr, int n, int32_t value)
+{
+    int i;
+    for (i = 0; i < n; i++) arr[i] = value;
+}
+
 void fill_i64(int64_t *arr, int n, int64_t value)
 {
     int i;

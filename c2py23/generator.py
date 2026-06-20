@@ -975,7 +975,7 @@ def _build_parse_format(py_params, func=None):
             fmt += 'O'
         elif p.pytype == 'int':
             if p.name in void_ptr_names:
-                fmt += 'l'
+                fmt += 'n'  # Py_ssize_t: pointer-width on all platforms
             else:
                 fmt += 'i'
         elif p.pytype == 'float':
@@ -1345,11 +1345,13 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
                 b.emit('    if (nargs > {0}) {{'.format(idx))
             else:
                 b.emit('    {')
-            b.emit('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
-            b.emit('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
             if p.name in void_ptr_names:
+                b.emit('        long long _c2py_tmp = PyLong_AsLongLong(args[{0}]);'.format(idx))
+                b.emit('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
                 b.emit('        c_{0} = (intptr_t)_c2py_tmp;'.format(p.name))
             else:
+                b.emit('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
+                b.emit('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
                 b.emit('        c_{0} = (int)_c2py_tmp;'.format(p.name))
             b.emit('    }')
         else:

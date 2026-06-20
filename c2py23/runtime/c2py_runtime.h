@@ -281,6 +281,7 @@ typedef struct {
 
     /* Scalar conversion from objects */
     long (*Long_AsLong)(PyObject*);
+    long long (*Long_AsLongLong)(PyObject*);
     double (*Float_AsDouble)(PyObject*);
 
     /* Exception objects (pointers to the actual exception types) */
@@ -346,6 +347,7 @@ extern c2py_api_t C2PY;
 #define PyLong_FromUnsignedLongLong(v) C2PY.Long_FromUnsignedLongLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
+#define PyLong_AsLongLong(o)           C2PY.Long_AsLongLong((PyObject*)(o))
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()

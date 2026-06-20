@@ -644,8 +644,10 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
+    RESOLVE_REQ(C2PY.Long_AsLongLong, "PyLong_AsLongLong");
     RESOLVE_REQ(C2PY.Float_AsDouble, "PyFloat_AsDouble");
-    if (C2PY.Long_AsLong == NULL || C2PY.Float_AsDouble == NULL) return;
+    if (C2PY.Long_AsLong == NULL || C2PY.Long_AsLongLong == NULL ||
+        C2PY.Float_AsDouble == NULL) return;
 
     /* --- Exception handling (required) --- */
     RESOLVE_REQ(C2PY.exc_TypeError, "PyExc_TypeError");
