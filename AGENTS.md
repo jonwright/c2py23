@@ -107,6 +107,21 @@ Test across all supported Python versions via snakepit containers:
 python3 tests/test_all.py
 ```
 
+Test the manylinux2014 build-once cross-test strategy:
+```bash
+python3 tests/test_manylinux.py
+```
+
+Build only (no tests) for one Python version on any container:
+```bash
+bash tests/build_all.sh python3.12
+```
+
+Run tests only (no rebuild) for one Python version:
+```bash
+bash tests/run_tests_only.sh python3.12
+```
+
 Valgrind leak check:
 ```bash
 valgrind --leak-check=full python3 tests/test_leaks.py
@@ -123,6 +138,7 @@ python3 tests/populate_abi_matrix.py
 - **ubuntu20.04.sif**: Python 2.7, 3.8
 - **ubuntu24.04.sif**: Python 3.7, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 - **ubuntu26.04.sif**: Python 3.14, 3.15
+- **manylinux2014.sif**: Python 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 

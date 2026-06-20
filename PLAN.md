@@ -30,8 +30,16 @@
 4. **Platform matrix:** Need verification on manylinux2014 x86_64 and
    aarch64, musllinux, macOS, and Windows before distribution.
 
+**Completed:**
+- Manylinux2014 build verification on all Python versions (3.9-3.14)
+- Build-once cross-test strategy `tests/test_manylinux.py`:
+  Phase 1: build on all manylinux2014 Python versions
+  Phase 2: master build with Python 3.12 on manylinux2014
+  Phase 3: cross-test the 3.12-built .so on all 11 other targets (2.7-3.14t)
+  across ubuntu20.04, ubuntu24.04, debian10 containers
+  Also includes `tests/build_all.sh` and `tests/run_tests_only.sh` helpers.
+
 **Next steps before implementation:**
-- Build and test on manylinux2014 containers (request snakepit addition)
 - Evaluate py3-none vs. platform-specific wheel tags
 - Evaluate setuptools vs. meson-python vs. scikit-build-core for build backend
 

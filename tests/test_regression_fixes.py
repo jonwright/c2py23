@@ -780,12 +780,20 @@ def test_all_cases_compile():
         tmpf = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
         tmpf.write(code.encode('ascii'))
         tmpf.close()
-        ret = subprocess.call(
-            ['gcc', '-Wall', '-Werror', '-c',
-             '-I', runtime_dir,
-             '-o', '/dev/null',
-             tmpf.name],
-            timeout=30)
+        try:
+            ret = subprocess.call(
+                ['gcc', '-Wall', '-Werror', '-c',
+                 '-I', runtime_dir,
+                 '-o', '/dev/null',
+                 tmpf.name],
+                timeout=30)
+        except TypeError:
+            # Python 2.7: subprocess.call does not support timeout=
+            ret = subprocess.call(
+                ['gcc', '-Wall', '-Werror', '-c',
+                 '-I', runtime_dir,
+                 '-o', '/dev/null',
+                 tmpf.name])
         os.unlink(tmpf.name)
 
         if ret != 0:
