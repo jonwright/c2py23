@@ -1,8 +1,9 @@
-"""C code generator for c2py23 using the CBuilder pattern.
+"""C code generator for c2py23.
 
-Reimplements generate() using a CBuilder that tracks emission state
-(buffer acquires, GIL saves) and enforces invariants at emit time
-rather than detecting violations post-hoc.
+Transpiles a parsed ModuleDef AST into a compilable CPython C extension.
+Uses the CBuilder class to enforce structural invariants at emit time:
+buffer acquires are paired with releases, GIL saves with restores,
+output scalars with NULL checks and PyTuple_SetItem.
 """
 from __future__ import print_function
 
@@ -250,7 +251,7 @@ class CBuilder:
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (imported from original generator for expression work)
+# Module-level helper
 # ---------------------------------------------------------------------------
 
 def _make_decl_string(ret, name, params):
@@ -301,9 +302,8 @@ def generate(module_def):
                     b.emit(_make_decl_string(ol.return_type, cn, ol.params))
     b.emit_blank()
 
-    # Timing declarations (use original for the helper functions)
+    # Timing declarations
     if module_def.timing:
-        from c2py23.generator import _emit_timing_decls
         _emit_timing_decls(b, module_def)
 
     # GIL release declarations
@@ -961,28 +961,10 @@ def _emit_module_init(b, module_def, has_free_threading,
 
 
 # ---------------------------------------------------------------------------
-# Functions copied from the original reference generator
+# Utility and emit functions
 # ---------------------------------------------------------------------------
 
 
-
-
-# ---- Expression transpilation ----
-def _expr_refers_to(expr, buf_name):
-    """Check if an expression refers to a specific buffer param."""
-    if isinstance(expr, Var):
-        return expr.name == buf_name
-    elif isinstance(expr, Attr):
-        return _expr_refers_to(expr.obj, buf_name)
-    elif isinstance(expr, Subscript):
-        return _expr_refers_to(expr.obj, buf_name)
-    elif isinstance(expr, Compare):
-        return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
-    elif isinstance(expr, BinOp):
-        return _expr_refers_to(expr.left, buf_name) or _expr_refers_to(expr.right, buf_name)
-    elif isinstance(expr, UnaryOp):
-        return _expr_refers_to(expr.operand, buf_name)
-    return False
 
 
 # ---- Expression helpers ----
