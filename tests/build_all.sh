@@ -15,14 +15,16 @@ export PYTHONPATH="$PROJECT_DIR:$PYTHONPATH"
 echo "=== c2py23 build-all ==="
 echo "Python: $($PYTHON --version 2>&1)"
 
-# Ensure PyYAML is available (needed by the parser).
-# Try --break-system-packages first (manylinux2014), fall back to regular install.
+# Ensure PyYAML is available.  Use a workspace-local target dir so we
+# never touch the system or .local site-packages.
+_PIP_TARGET="$SCRIPT_DIR/.test_pip_target"
 if "$PYTHON" -c "import yaml" 2>/dev/null; then
     echo "PyYAML already available"
 else
-    echo "Installing PyYAML..."
-    "$PYTHON" -m pip install --break-system-packages pyyaml 2>/dev/null || \
-    "$PYTHON" -m pip install pyyaml 2>&1 | tail -3
+    echo "Installing PyYAML (isolated)..."
+    rm -rf "$_PIP_TARGET"
+    "$PYTHON" -m pip install --target="$_PIP_TARGET" pyyaml 2>&1 | tail -1
+    export PYTHONPATH="$_PIP_TARGET:$PYTHONPATH"
 fi
 
 # Build all test case modules
