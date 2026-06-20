@@ -16,13 +16,8 @@ from c2py23.parser import load_c2py
 from c2py23.generator import generate
 
 
-def _generate_wrapper(c2py_path, output_path=None, generator='builder'):
+def _generate_wrapper(c2py_path, output_path=None):
     """Parse a .c2py file and generate the wrapper C file.
-
-    Args:
-        c2py_path: Path to .c2py interface file
-        output_path: Optional output wrapper .c path
-        generator: Generator to use ('original' or 'builder')
 
     Returns (wrapper_path, module_def).
     """
@@ -40,12 +35,7 @@ def _generate_wrapper(c2py_path, output_path=None, generator='builder'):
         wrapper_c = mod_name + '_wrapper.c'
         wrapper_path = os.path.join(os.path.dirname(c2py_path) or '.', wrapper_c)
 
-    if generator == 'reference':
-        print("Generating {} (reference)...".format(wrapper_path))
-        from c2py23.generator_reference import generate as _gen
-    else:
-        print("Generating {} (CBuilder)...".format(wrapper_path))
-        from c2py23.generator import generate as _gen
+    from c2py23.generator import generate as _gen
     c_code = _gen(module_def)
     try:
         with open(wrapper_path, 'w') as f:
@@ -142,11 +132,10 @@ def _determine_so_path(output_arg, default_name, base_dir):
 def cmd_build(args):
     """Parse a .c2py file and generate + compile a .so module."""
     c2py_path = args.file
-    generator = getattr(args, 'generator', 'original')
 
     # --generate-only: stop after writing wrapper .c
     if getattr(args, 'generate_only', False):
-        wrapper_path, _ = _generate_wrapper(c2py_path, args.output, generator)
+        wrapper_path, _ = _generate_wrapper(c2py_path, args.output)
         print("Wrapper written to: {}".format(wrapper_path))
         return
 
@@ -174,7 +163,7 @@ def cmd_build(args):
     # Normal build: parse + generate + compile
     base_dir = os.path.dirname(os.path.abspath(c2py_path))
 
-    wrapper_path, module_def = _generate_wrapper(c2py_path, generator=generator)
+    wrapper_path, module_def = _generate_wrapper(c2py_path)
 
     source_files = _collect_user_sources(base_dir, module_def)
     include_dirs = _collect_include_dirs(base_dir, module_def)
@@ -187,8 +176,7 @@ def cmd_build(args):
 
 def cmd_generate(args):
     """Generate C wrapper from a .c2py file without compiling."""
-    generator = getattr(args, 'generator', 'original')
-    wrapper_path, _ = _generate_wrapper(args.file, args.output, generator)
+    wrapper_path, _ = _generate_wrapper(args.file, args.output)
     print("Wrapper written to: {}".format(wrapper_path))
 
 
@@ -217,8 +205,7 @@ def _add_build_parser(sub):
     build_p = sub.add_parser('build', help='Build a .so from a .c2py file')
     build_p.add_argument('file', help='Path to .c2py interface file')
     build_p.add_argument('-o', '--output', help='Output .so path (or wrapper .c path with --generate-only)')
-    build_p.add_argument('--generator', choices=['builder', 'reference'], default='builder',
-                          help='Generator to use (default: builder)')
+
     build_p.add_argument('--asan', action='store_true',
                           help='Compile with -fsanitize=address for leak detection')
     build_p.add_argument('--generate-only', action='store_true',
@@ -236,8 +223,6 @@ def _add_generate_parser(sub):
     gen_p = sub.add_parser('generate', help='Generate wrapper .c from .c2py (no compilation)')
     gen_p.add_argument('file', help='Path to .c2py interface file')
     gen_p.add_argument('-o', '--output', help='Output wrapper .c path')
-    gen_p.add_argument('--generator', choices=['builder', 'reference'], default='builder',
-                          help='Generator to use (default: builder)')
     gen_p.set_defaults(func=cmd_generate)
 
 

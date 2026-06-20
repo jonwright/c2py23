@@ -754,11 +754,10 @@ _good_impl(Py_buffer *buf)
     test_passed()
 
 
-def test_two_generators_compile_all_cases():
-    """Verify both generators produce compilable C for every test case."""
+def test_all_cases_compile():
+    """Verify generator produces compilable C for every test case."""
     from c2py23.parser import load_c2py
-    from c2py23.generator_reference import generate as gen_ref
-    from c2py23.generator import generate as gen_builder
+    from c2py23.generator import generate
     import subprocess
     import tempfile
     import os
@@ -776,34 +775,21 @@ def test_two_generators_compile_all_cases():
         c2py_file = os.path.join(case_dir, c2py_files[0])
         mod = load_c2py(c2py_file)
 
-        for gen_name, gen_func in [('reference', gen_ref),
-                                    ('builder', gen_builder)]:
-            try:
-                code = gen_func(mod)
-            except Exception as e:
-                assert False, (
-                    "%s: %s generate() raised: %s" % (
-                        case_name, gen_name, e))
+        code = generate(mod)
 
-            # Compile
-            tmpf = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
-            tmpf.write(code.encode('ascii'))
-            tmpf.close()
-            try:
-                ret = subprocess.call(
-                    ['gcc', '-Wall', '-Werror', '-c',
-                     '-I', runtime_dir,
-                     '-o', '/dev/null',
-                     tmpf.name],
-                    timeout=30)
-            except Exception as e:
-                ret = -1
-            os.unlink(tmpf.name)
+        tmpf = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
+        tmpf.write(code.encode('ascii'))
+        tmpf.close()
+        ret = subprocess.call(
+            ['gcc', '-Wall', '-Werror', '-c',
+             '-I', runtime_dir,
+             '-o', '/dev/null',
+             tmpf.name],
+            timeout=30)
+        os.unlink(tmpf.name)
 
-            if ret != 0:
-                assert False, (
-                    "%s: %s generated code failed to compile" % (
-                        case_name, gen_name))
+        if ret != 0:
+            assert False, "generated code for %s failed to compile" % case_name
 
     test_passed()
 
