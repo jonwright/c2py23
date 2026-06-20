@@ -45,7 +45,7 @@ print("linking: {}".format(python_lib))
 cmd = [
     'cl', '/nologo', '/I' + inc,
     C_SRC,
-    '/link', python_lib,
+    '/link', '/LIBPATH:' + lib, python_lib,
     '/out:' + EXE
 ]
 print(' '.join(cmd))

@@ -19,10 +19,10 @@ functions:
         when: "arr.format == 'h'"
       - sig: "fill_u32(uint32_t *arr, intptr_t n, uint32_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'I'"
+        when: "arr.format == 'I' or arr.format == 'L'"
       - sig: "fill_i32(int32_t *arr, intptr_t n, int32_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'i'"
+        when: "arr.format == 'i' or arr.format == 'l'"
       - sig: "fill_u64(uint64_t *arr, intptr_t n, uint64_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
         when: "arr.format == 'Q'"
@@ -35,4 +35,4 @@ functions:
       - sig: "fill_f64(double *arr, intptr_t n, double value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
         when: "arr.format == 'd'"
-    default_raise: "TypeError: expected buffer of type B,b,H,h,I,i,Q,q,f,d"
+    default_raise: "TypeError: expected buffer of type B,b,H,h,I/i/L/l,Q,q,f,d"

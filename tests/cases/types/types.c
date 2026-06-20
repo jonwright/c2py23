@@ -8,7 +8,13 @@ void fill_u16(uint16_t *arr, intptr_t n, uint16_t value)
 
 void fill_u32(uint32_t *arr, intptr_t n, uint32_t value)
 {
-    int i;
+    intptr_t i;
+    for (i = 0; i < n; i++) arr[i] = value;
+}
+
+void fill_i32(int32_t *arr, intptr_t n, int32_t value)
+{
+    intptr_t i;
     for (i = 0; i < n; i++) arr[i] = value;
 }
 
