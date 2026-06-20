@@ -18,7 +18,14 @@
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -475,7 +482,11 @@ typedef struct {
  * when --timing is not enabled in the .c2py interface.
  */
 #if defined(C2PY_USE_CYCLE_COUNTER)
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+static inline uint64_t c2py_ticks(void) {
+    return __rdtsc();
+}
+#elif defined(__x86_64__) || defined(__i386__)
 static inline uint64_t c2py_ticks(void) {
     unsigned int lo, hi;
     __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
@@ -497,6 +508,13 @@ static inline uint64_t c2py_ticks(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 #endif
 }
+#elif defined(_WIN32)
+static inline uint64_t c2py_ticks(void) {
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
+}
 #else
 /* Unsupported arch: fall back to clock_gettime even with C2PY_USE_CYCLE_COUNTER */
 static inline uint64_t c2py_ticks(void) {
@@ -505,6 +523,14 @@ static inline uint64_t c2py_ticks(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 #endif
+#else /* !C2PY_USE_CYCLE_COUNTER */
+#ifdef _WIN32
+static inline uint64_t c2py_ticks(void) {
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
+}
 #else
 static inline uint64_t c2py_ticks(void) {
     struct timespec ts;
@@ -512,6 +538,7 @@ static inline uint64_t c2py_ticks(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 #endif
+#endif /* C2PY_USE_CYCLE_COUNTER */
 
 /* Convert cycle counter ticks to nanoseconds given the counter frequency
  * in Hz.  Returns ticks * 1e9 / freq_hz.
@@ -597,6 +624,19 @@ static inline void c2py_perf_record_call(c2py_perf_t *p,
 /* ------------------------------------------------------------------ */
 
 #ifdef __x86_64__
+#if defined(_MSC_VER)
+#include <intrin.h>
+static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
+    int info[4];
+    __cpuidex(info, leaf, subleaf);
+    switch (reg & 3) {
+    case 0: return (unsigned int)info[0];
+    case 1: return (unsigned int)info[1];
+    case 2: return (unsigned int)info[2];
+    default: return (unsigned int)info[3];
+    }
+}
+#else
 static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
     unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
     __asm__ __volatile__(
@@ -610,6 +650,7 @@ static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
     default: return edx;
     }
 }
+#endif
 
 static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
     return (c2py_cpuid_reg(leaf, subleaf, reg) >> bit) & 1;

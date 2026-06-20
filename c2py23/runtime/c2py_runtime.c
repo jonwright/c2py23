@@ -11,17 +11,42 @@
 
 #define _GNU_SOURCE
 #include <assert.h>
-#include <dlfcn.h>
 #include <stdio.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <dlfcn.h>
 #include <sys/auxv.h> /* Linux-specific: getauxval for CPU feature detection on ARM64/POWER */
 #include <pthread.h>
+#endif
+
 #include "c2py_runtime.h"
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
+/* Cross-platform symbol resolution */
+#ifdef _WIN32
+#define C2PY_RESOLVE(handle, name) GetProcAddress((HMODULE)(handle), (name))
+#else
+#define C2PY_RESOLVE(handle, name) dlsym((handle), (name))
+#endif
 
 /* Global API table */
 c2py_api_t C2PY = {0};
 static volatile int _c2py_runtime_initialized = 0;
 static int _c2py_init_result = 0;
+
+#ifndef _WIN32
 static pthread_once_t _c2py_init_once = PTHREAD_ONCE_INIT;
+#else
+static CRITICAL_SECTION _c2py_init_cs;
+static BOOL _c2py_init_cs_ready = FALSE;
+#endif
 
 /* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ---- */
 
@@ -71,7 +96,7 @@ uint64_t c2py_tick_frequency_hz = 0;
 
 static int _resolve(void **ptr, const char *name)
 {
-    *ptr = dlsym(C2PY.dl_handle, name);
+    *ptr = C2PY_RESOLVE(C2PY.dl_handle, name);
     if (*ptr == NULL) {
         /* Some symbols may legitimately not exist on old Python versions.
          * We only warn for critical ones. */
@@ -97,15 +122,15 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
     /* Try Py_InitModule4 first (Python 2.7 preferred) */
     typedef PyObject* (*init4_fn)(const char*, PyMethodDef*, const char*,
                                    PyObject*, int);
-    init4_fn fn4 = (init4_fn)dlsym(dl, "Py_InitModule4_64");
-    if (fn4 == NULL) fn4 = (init4_fn)dlsym(dl, "Py_InitModule4");
+    init4_fn fn4 = (init4_fn)C2PY_RESOLVE(dl, "Py_InitModule4_64");
+    if (fn4 == NULL) fn4 = (init4_fn)C2PY_RESOLVE(dl, "Py_InitModule4");
     if (fn4 != NULL) {
         return fn4(name, methods, NULL, NULL, 1013 /* PYTHON_API_VERSION */);
     }
 
     /* Fallback: Py_InitModule3 */
     typedef PyObject* (*init3_fn)(const char*, PyMethodDef*, const char*);
-    init3_fn fn3 = (init3_fn)dlsym(dl, "Py_InitModule3");
+    init3_fn fn3 = (init3_fn)C2PY_RESOLVE(dl, "Py_InitModule3");
     if (fn3 != NULL) {
         return fn3(name, methods, NULL);
     }
@@ -123,11 +148,56 @@ static void _c2py_probe_cpu_features(void)
     unsigned int eax1, ebx1, ecx1, edx1;
     unsigned int eax7, ebx7, ecx7, edx7;
     unsigned int eax81, ebx81, ecx81, edx81;
+    unsigned int max_std;
 
+#if defined(_MSC_VER)
+    {
+        int info[4];
+        __cpuidex(info, 0, 0);
+        max_std = (unsigned int)info[0];
+
+        if (max_std >= 1) {
+            __cpuidex(info, 1, 0);
+            eax1 = (unsigned int)info[0];
+            ebx1 = (unsigned int)info[1];
+            ecx1 = (unsigned int)info[2];
+            edx1 = (unsigned int)info[3];
+            c2py_amd64_mmx    = (edx1 >> 23) & 1;
+            c2py_amd64_sse    = (edx1 >> 25) & 1;
+            c2py_amd64_sse2   = (edx1 >> 26) & 1;
+            c2py_amd64_sse3   = (ecx1 >>  0) & 1;
+            c2py_amd64_ssse3  = (ecx1 >>  9) & 1;
+            c2py_amd64_sse4_1 = (ecx1 >> 19) & 1;
+            c2py_amd64_sse4_2 = (ecx1 >> 20) & 1;
+            c2py_amd64_avx    = (ecx1 >> 28) & 1;
+            c2py_amd64_fma    = (ecx1 >> 12) & 1;
+            c2py_amd64_popcnt = (ecx1 >> 23) & 1;
+        }
+        if (max_std >= 7) {
+            __cpuidex(info, 7, 0);
+            ebx7 = (unsigned int)info[1];
+            ecx7 = (unsigned int)info[2];
+            edx7 = (unsigned int)info[3];
+            c2py_amd64_bmi1    = (ebx7 >>  3) & 1;
+            c2py_amd64_avx2    = (ebx7 >>  5) & 1;
+            c2py_amd64_bmi2    = (ebx7 >>  8) & 1;
+            c2py_amd64_avx512f = (ebx7 >> 16) & 1;
+            c2py_amd64_avx512dq = (ebx7 >> 17) & 1;
+            c2py_amd64_avx512bw = (ebx7 >> 30) & 1;
+            c2py_amd64_avx512vl = (ebx7 >> 31) & 1;
+        }
+        __cpuidex(info, 0x80000000, 0);
+        if ((unsigned int)info[0] >= 0x80000001) {
+            __cpuidex(info, 0x80000001, 0);
+            ecx81 = (unsigned int)info[2];
+            c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
+        }
+    }
+#else
     /* Determine max standard leaf */
     __asm__ __volatile__("cpuid"
         : "=a"(eax1) : "a"(0) : "ebx", "ecx", "edx");
-    unsigned int max_std = eax1;
+    max_std = eax1;
 
     /* Leaf 1: baseline features */
     if (max_std >= 1) {
@@ -170,9 +240,10 @@ static void _c2py_probe_cpu_features(void)
             : "a"(0x80000001));
         c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
     }
+#endif /* _MSC_VER */
 #endif
 
-#if defined(__aarch64__) || defined(__arm64__)
+#if (defined(__aarch64__) || defined(__arm64__)) && !defined(_WIN32)
     {
         unsigned long hwcap = getauxval(AT_HWCAP);
         unsigned long hwcap2 = getauxval(AT_HWCAP2);
@@ -190,7 +261,7 @@ static void _c2py_probe_cpu_features(void)
     }
 #endif
 
-#if defined(__powerpc64__) || defined(__powerpc__)
+#if (defined(__powerpc64__) || defined(__powerpc__)) && !defined(_WIN32)
     {
         unsigned long hwcap = getauxval(AT_HWCAP);
         unsigned long hwcap2 = getauxval(AT_HWCAP2);
@@ -209,6 +280,29 @@ static void _c2py_probe_cpu_features(void)
     /* C2PY_USE_CYCLE_COUNTER: detect arch cycle counter frequency */
 #if defined(__x86_64__) || defined(__i386__)
     {
+#if defined(_MSC_VER)
+        int info[4];
+        int got_freq = 0;
+        __cpuidex(info, 0, 0);
+        if ((unsigned int)info[0] >= 0x15) {
+            __cpuidex(info, 0x15, 0);
+            unsigned int eax = (unsigned int)info[0];
+            unsigned int ebx = (unsigned int)info[1];
+            unsigned int ecx = (unsigned int)info[2];
+            if (ebx != 0 && eax != 0 && ecx != 0) {
+                c2py_tick_frequency_hz = (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
+                got_freq = 1;
+            }
+        }
+        /* No /proc/cpuinfo fallback on Windows;
+         * use QueryPerformanceFrequency if available. */
+        if (!got_freq) {
+            LARGE_INTEGER qpf;
+            if (QueryPerformanceFrequency(&qpf) && qpf.QuadPart > 0) {
+                c2py_tick_frequency_hz = (uint64_t)qpf.QuadPart;
+            }
+        }
+#else
         unsigned int eax, ebx, ecx, edx;
         unsigned int max_std;
         int got_freq = 0;
@@ -237,8 +331,9 @@ static void _c2py_probe_cpu_features(void)
                 fclose(f);
             }
         }
+#endif /* _MSC_VER */
     }
-#elif defined(__aarch64__) || defined(__arm64__)
+#elif (defined(__aarch64__) || defined(__arm64__)) && !defined(_MSC_VER)
     {
         uint64_t freq;
         __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
@@ -250,6 +345,9 @@ static void _c2py_probe_cpu_features(void)
     {
         /* On POWER the timebase frequency is typically 512 MHz but varies.
          * Try /proc/device-tree/cpus/timebase-frequency first. */
+#ifdef _WIN32
+        c2py_tick_frequency_hz = 0;
+#else
         FILE *f = fopen("/proc/device-tree/cpus/timebase-frequency", "r");
         if (f) {
             unsigned char buf[8] = {0};
@@ -272,6 +370,7 @@ static void _c2py_probe_cpu_features(void)
                                           (uint64_t)buf[7];
             }
         }
+#endif /* _WIN32 */
     }
 #endif
     /* If detection failed, c2py_tick_frequency_hz remains 0. */
@@ -296,6 +395,36 @@ static void _c2py_runtime_init_once(void)
         return;
     }
 
+#ifdef _WIN32
+    /* On Windows, python3.dll is the stable-ABI forwarder DLL (PEP 384).
+     * It is loaded as a dependency of python3XX.dll, which in turn
+     * loads this extension module.  python3.dll exports the limited
+     * API which covers all symbols c2py23 needs.
+     * Fall back to enumerating known versioned DLL names for Python
+     * installations that do not ship python3.dll (e.g. Python 2.7). */
+    {
+        static const char *candidates[] = {
+            "python3.dll",
+            "python315.dll", "python314.dll", "python313.dll",
+            "python312.dll", "python311.dll", "python310.dll",
+            "python39.dll", "python38.dll", "python37.dll",
+            "python36.dll", "python27.dll", NULL
+        };
+        int i;
+        for (i = 0; candidates[i]; i++) {
+            C2PY.dl_handle = (void*)GetModuleHandleA(candidates[i]);
+            if (C2PY.dl_handle) break;
+        }
+        if (C2PY.dl_handle == NULL) {
+            fprintf(stderr, "c2py_runtime: GetModuleHandle failed "
+                    "(python3.dll not found). "
+                    "GetLastError=%lu\n", GetLastError());
+            fprintf(stderr, "c2py_runtime: interpreter may be statically "
+                    "linked or embedded in an unusual host.\n");
+            return;
+        }
+    }
+#else
     C2PY.dl_handle = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);
     if (C2PY.dl_handle == NULL) {
         fprintf(stderr, "c2py_runtime: dlopen(NULL) failed: %s\n", dlerror());
@@ -303,20 +432,21 @@ static void _c2py_runtime_init_once(void)
                 "(requires --enable-shared or export-dynamic).\n");
         return;
     }
+#endif
 
     void *dl = C2PY.dl_handle;
 
     /* --- Detect Python version --- */
     {
         typedef const char* (*ver_fn)(void);
-        ver_fn getver = (ver_fn)dlsym(dl, "Py_GetVersion");
+        ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
         if (getver) {
             const char *v = getver();
             if (v) sscanf(v, "%d.%d", &C2PY.version_major, &C2PY.version_minor);
         }
         if (C2PY.version_major == 0) {
             /* Fallback: check for Py3-only symbol */
-            if (dlsym(dl, "PyModule_Create2")) {
+            if (C2PY_RESOLVE(dl, "PyModule_Create2")) {
                 C2PY.version_major = 3;
             } else {
                 C2PY.version_major = 2;
@@ -363,7 +493,7 @@ static void _c2py_runtime_init_once(void)
 
         /* Method 1: version string */
         typedef const char* (*ver_fn)(void);
-        ver_fn getver = (ver_fn)dlsym(dl, "Py_GetVersion");
+        ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
         const char *vstr = getver ? getver() : "";
         if (vstr && strstr(vstr, "free-threading") != NULL)
             found_ft = 1;
@@ -371,7 +501,7 @@ static void _c2py_runtime_init_once(void)
         /* Method 2: _Py_IsGILEnabled (CPython 3.13+) */
         if (!found_ft) {
             typedef int (*gil_check_fn)(void);
-            gil_check_fn gilchk = (gil_check_fn)dlsym(dl, "_Py_IsGILEnabled");
+            gil_check_fn gilchk = (gil_check_fn)C2PY_RESOLVE(dl, "_Py_IsGILEnabled");
             if (gilchk && gilchk() == 0)
                 found_ft = 1;
         }
@@ -416,10 +546,10 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Old buffer protocol (Python 2.x only) --- */
     C2PY.AsReadBuffer = (int (*)(PyObject*, const void**, Py_ssize_t*))
-        dlsym(dl, "PyObject_AsReadBuffer");
+        C2PY_RESOLVE(dl, "PyObject_AsReadBuffer");
     C2PY.AsWriteBuffer = (int (*)(PyObject*, void**, Py_ssize_t*))
-        dlsym(dl, "PyObject_AsWriteBuffer");
-    C2PY.Err_Clear = (void (*)(void))dlsym(dl, "PyErr_Clear");
+        C2PY_RESOLVE(dl, "PyObject_AsWriteBuffer");
+    C2PY.Err_Clear = (void (*)(void))C2PY_RESOLVE(dl, "PyErr_Clear");
     RESOLVE_REQ(C2PY.Err_Clear, "PyErr_Clear");
     if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
@@ -476,8 +606,8 @@ static void _c2py_runtime_init_once(void)
             /* DecRef: use direct dlsym (C2PY.DecRef not resolved yet) */
             {
                 typedef void (*dref_fn)(PyObject*);
-                dref_fn dref = (dref_fn)dlsym(dl, "Py_DecRef");
-                if (!dref) dref = (dref_fn)dlsym(dl, "_Py_DecRef");
+                dref_fn dref = (dref_fn)C2PY_RESOLVE(dl, "Py_DecRef");
+                if (!dref) dref = (dref_fn)C2PY_RESOLVE(dl, "_Py_DecRef");
                 if (dref) dref(tmp);
             }
         }
@@ -521,7 +651,7 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Module creation --- */
     {
-        void *mc = dlsym(dl, "PyModule_Create2");
+        void *mc = C2PY_RESOLVE(dl, "PyModule_Create2");
         C2PY.Module_Create2 = (PyObject* (*)(PyModuleDef*, int))mc;
     }
     C2PY.InitModule_2_7 = _init_module_2_7;
@@ -577,11 +707,11 @@ static void _c2py_runtime_init_once(void)
      * Py_None is immortal so INCREF/DECREF is unnecessary but harmless.
      */
     {
-        void *none = dlsym(dl, "_Py_NoneStruct");
+        void *none = C2PY_RESOLVE(dl, "_Py_NoneStruct");
         if (none == NULL) {
             /* On some platforms Py_None is a pointer variable pointing
              * to the struct. Try loading it and dereferencing. */
-            void **pnone = (void**)dlsym(dl, "Py_None");
+            void **pnone = (void**)C2PY_RESOLVE(dl, "Py_None");
             if (pnone) none = *pnone;
         }
         C2PY.none_obj = (PyObject*)none;
@@ -602,9 +732,9 @@ static void _c2py_runtime_init_once(void)
         unsigned char probe[96];
         Py_buffer *pb = (Py_buffer*)probe;
         typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
-        bytes_fn mkbytes = (bytes_fn)dlsym(dl, "PyBytes_FromStringAndSize");
+        bytes_fn mkbytes = (bytes_fn)C2PY_RESOLVE(dl, "PyBytes_FromStringAndSize");
         if (!mkbytes)
-            mkbytes = (bytes_fn)dlsym(dl, "PyString_FromStringAndSize");
+            mkbytes = (bytes_fn)C2PY_RESOLVE(dl, "PyString_FromStringAndSize");
         PyObject *by = mkbytes ? mkbytes("x", 1) : NULL;
         if (by) {
             memset(probe, 0xAA, sizeof(probe));
@@ -628,6 +758,21 @@ static void _c2py_runtime_init_once(void)
 
 int c2py_runtime_init(void)
 {
+#ifndef _WIN32
     pthread_once(&_c2py_init_once, _c2py_runtime_init_once);
     return _c2py_init_result;
+#else
+    if (!_c2py_runtime_initialized) {
+        if (!_c2py_init_cs_ready) {
+            InitializeCriticalSection(&_c2py_init_cs);
+            _c2py_init_cs_ready = TRUE;
+        }
+        EnterCriticalSection(&_c2py_init_cs);
+        if (!_c2py_runtime_initialized) {
+            _c2py_runtime_init_once();
+        }
+        LeaveCriticalSection(&_c2py_init_cs);
+    }
+    return _c2py_init_result;
+#endif
 }

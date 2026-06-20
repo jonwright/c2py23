@@ -83,7 +83,7 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
 
 
 def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False):
-    """Compile a wrapper .c file (plus runtime and user sources) to a .so."""
+    """Compile a wrapper .c file (plus runtime and user sources) to a .so/.pyd."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     runtime_dir = os.path.join(script_dir, 'runtime')
     runtime_c = os.path.join(runtime_dir, 'c2py_runtime.c')
@@ -95,24 +95,59 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
             sys.exit(1)
 
     all_includes = [runtime_dir] + list(include_dirs)
-    include_flags = []
-    for d in all_includes:
-        include_flags.extend(['-I', d])
 
-    cc = os.environ.get('CC', 'gcc')
-    cflags = os.environ.get('CFLAGS', '').split()
-    ldflags = os.environ.get('LDFLAGS', '').split()
+    is_win = sys.platform == 'win32'
+
+    if is_win:
+        cc = os.environ.get('CC', '')
+        if not cc:
+            cc = _find_msvc() or 'gcc'
+        if cc == 'cl' or cc.endswith('cl.exe') or cc.endswith('cl'):
+            is_msvc = True
+        else:
+            is_msvc = False
+    else:
+        cc = os.environ.get('CC', 'gcc')
+        is_msvc = False
+
+    cflags = [f for f in os.environ.get('CFLAGS', '').split() if f]
+    ldflags = [f for f in os.environ.get('LDFLAGS', '').split() if f]
 
     if asan:
-        cflags.append('-fsanitize=address')
-        ldflags.append('-fsanitize=address')
+        if is_msvc:
+            cflags.append('/fsanitize=address')
+        else:
+            cflags.append('-fsanitize=address')
+            ldflags.append('-fsanitize=address')
         print("  [ASan enabled]")
 
-    libs = os.environ.get('LIBS', '-ldl -lm').split()
+    if is_win:
+        default_libs = '-lkernel32' if not is_msvc else ''
+        libs = os.environ.get('LIBS', default_libs).split()
+        libs = [l for l in libs if l]
+    else:
+        libs = os.environ.get('LIBS', '-ldl -lm').split()
+
+    if is_msvc:
+        include_flags = []
+        for d in all_includes:
+            include_flags.extend(['/I', d])
+        cmd = [cc, '/nologo', '/LD'] + cflags + include_flags + all_sources
+        cmd += libs + ['/Fe' + output_so]
+    elif is_win:
+        include_flags = []
+        for d in all_includes:
+            include_flags.extend(['-I', d])
+        cmd = [cc, '-shared'] + include_flags + cflags + all_sources
+        cmd += ldflags + libs + ['-o', output_so]
+    else:
+        include_flags = []
+        for d in all_includes:
+            include_flags.extend(['-I', d])
+        cmd = ([cc, '-shared', '-fPIC'] + include_flags + cflags +
+               all_sources + ldflags + libs + ['-o', output_so])
 
     print("Compiling {}...".format(output_so))
-    cmd = ([cc, '-shared', '-fPIC'] + include_flags + cflags +
-           all_sources + ldflags + libs + ['-o', output_so])
     print("  " + ' '.join(cmd))
     ret = subprocess.call(cmd)
     if ret != 0:
@@ -122,11 +157,24 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
     print("Success: {}".format(output_so))
 
 
+def _find_msvc():
+    """Find MSVC cl.exe in PATH or standard VS install locations.
+    Returns path string or None."""
+    import platform as _plat
+    for candidate in ['cl', 'cl.exe']:
+        for path in os.environ.get('PATH', '').split(os.pathsep):
+            full = os.path.join(path, candidate)
+            if os.path.isfile(full):
+                return candidate
+    return None
+
+
 def _determine_so_path(output_arg, default_name, base_dir):
-    """Determine the .so output path."""
+    """Determine the .so/.pyd output path."""
     if output_arg:
         return output_arg
-    return os.path.join(base_dir, default_name + '.so')
+    ext = '.pyd' if sys.platform == 'win32' else '.so'
+    return os.path.join(base_dir, default_name + ext)
 
 
 def cmd_build(args):

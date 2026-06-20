@@ -1,0 +1,77 @@
+name: Windows CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install c2py23
+        run: |
+          pip install -e . --quiet
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build test modules
+        env:
+          CC: cl
+        run: |
+          $cases = @(
+            "tests/cases/arraysum/arraysum.c2py",
+            "tests/cases/fill/fill.c2py",
+            "tests/cases/dot/dot.c2py",
+            "tests/cases/types/types.c2py",
+            "tests/cases/optional/optional.c2py",
+            "tests/cases/docstring/docstring.c2py",
+            "tests/cases/timing/timing.c2py",
+            "tests/cases/scalar_output/stats.c2py",
+            "tests/cases/template/sum.c2py",
+            "tests/cases/typedispatch/typedispatch.c2py",
+            "tests/cases/transform/transform.c2py",
+            "tests/cases/constants/constants.c2py",
+            "tests/cases/address/address.c2py",
+            "tests/cases/gil_release/sleep_fill.c2py"
+          )
+          foreach ($c in $cases) {
+            Write-Host "  Building: $c"
+            python -m c2py23.cli build $c
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Build failed for $c"
+              exit 1
+            }
+          }
+
+      - name: Run uniform tests
+        run: python tests/test_uniform.py
+
+      - name: Run peer review tests
+        run: |
+          pip install numpy --quiet
+          python tests/test_peer_review.py
+
+      - name: Run regression tests
+        run: python tests/test_regression_fixes.py
+
+      - name: Run error path tests
+        run: python tests/test_error_paths.py
