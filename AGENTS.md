@@ -293,6 +293,14 @@ checks:
 - **Alias:** c2py23 checks writable buffer aliasing at runtime; add
   `default_raise:` for a clear error message
 
+### Buffer writability and overload dispatch
+
+When a function has multiple overloads, the wrapper acquires each buffer with
+`PyBUF_WRITABLE` if **any** overload writes to it. If you add a read-only
+overload alongside a writable overload for the same buffer parameter, callers
+will be forced to provide writable buffers for the read-only path. Keep this
+in mind when mixing read and write overloads.
+
 ### Remember:
 
 The C function receives raw pointers with no bounds information. If the

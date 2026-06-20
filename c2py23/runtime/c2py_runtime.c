@@ -10,6 +10,7 @@
  */
 
 #define _GNU_SOURCE
+#include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
 #include <sys/auxv.h> /* Linux-specific: getauxval for CPU feature detection on ARM64/POWER */
@@ -317,20 +318,32 @@ static void _c2py_runtime_init_once(void)
     /* --- Detect free-threaded build ---
      *
      * Detection priority (first successful method wins):
+     * 0. C2PY_FORCE_FT environment variable (1 = force FT, 0 = force standard).
      * 1. Py_GetVersion() string contains "free-threading" (CPython 3.13+).
      * 2. _Py_IsGILEnabled exists and returns 0 (CPython 3.13+ FT builds).
      *    This is an exported function: int _Py_IsGILEnabled(void).
      * 3. Py_GIL_DISABLED config var... but we cannot easily query that
-     *    without #include <Python.h> or cpython/initconfig.h.  On the
-     *    rare builds where neither 1 nor 2 works, the user should set
-     *    C2PY.is_free_threaded via a debug override at runtime.
+     *    without #include <Python.h> or cpython/initconfig.h.
+     *    On the rare builds where neither 1 nor 2 works, the user should
+     *    set C2PY_FORCE_FT=1 environment variable at load time.
      */
     {
+        int found_ft = 0;
+
+        /* Method 0: environment variable override */
+        const char *force_ft = getenv("C2PY_FORCE_FT");
+        if (force_ft != NULL) {
+            if (force_ft[0] == '1') {
+                found_ft = 1;
+            }
+            C2PY.is_free_threaded = found_ft;
+            goto ft_detection_done;
+        }
+
         /* Method 1: version string */
         typedef const char* (*ver_fn)(void);
         ver_fn getver = (ver_fn)dlsym(dl, "Py_GetVersion");
         const char *vstr = getver ? getver() : "";
-        int found_ft = 0;
         if (vstr && strstr(vstr, "free-threading") != NULL)
             found_ft = 1;
 
@@ -344,6 +357,8 @@ static void _c2py_runtime_init_once(void)
 
         C2PY.is_free_threaded = found_ft;
     }
+    ft_detection_done:
+        /* Nothing to do here; detection logic uses goto to skip above when C2PY_FORCE_FT is set */
 
     /* --- Set ABI layout (provisional; runtime probe refines below) --- */
     if (C2PY.is_free_threaded) {
@@ -359,6 +374,12 @@ static void _c2py_runtime_init_once(void)
         C2PY.ob_refcnt_offset = 0;   /* ob_refcnt */
     }
     C2PY.pyobject_size_ft = 32;
+
+    /* Sanity-check detected layout consistency */
+    assert(C2PY.pyobject_size > 0);
+    assert(C2PY.ob_refcnt_offset >= 0);
+
+    assert(C2PY.ob_refcnt_offset + (Py_ssize_t)sizeof(Py_ssize_t) <= C2PY.pyobject_size);
 
     /* pymoduledef_max_size: pad generously for both layouts */
     {

@@ -59,12 +59,12 @@ def _emit_forward_decls(out, mod):
         for ol in func.overloads:
             if ol.variants:
                 for v in ol.variants:
-                    c_name = _extract_c_name(v.sig_str)
+                    c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                     if c_name not in seen:
                         seen.add(c_name)
                         out.append(_c_decl_from_variant(v))
             else:
-                c_name = _extract_c_name(ol.sig_str)
+                c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                 if c_name not in seen:
                     seen.add(c_name)
                     out.append(_c_decl_from_overload(ol))
@@ -77,12 +77,8 @@ def _c_decl_from_variant(v):
     parts = []
     for p in v.params:
         parts.append(p.ctype + ' ' + p.name)
-    return 'extern {} {}({});'.format(ret, _extract_c_name(v.sig_str), ', '.join(parts))
-
-
-def _extract_c_name(sig_str):
-    """Extract the C function name from a sig string."""
-    return sig_str.split('(')[0].strip().split()[-1]
+    c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
+    return 'extern {} {}({});'.format(ret, c_name, ', '.join(parts))
 
 
 def _c_decl_from_overload(ol):
@@ -91,7 +87,8 @@ def _c_decl_from_overload(ol):
     parts = []
     for p in ol.params:
         parts.append(p.ctype + ' ' + p.name)
-    return 'extern {} {}({});'.format(ret, _extract_c_name(ol.sig_str), ', '.join(parts))
+    c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
+    return 'extern {} {}({});'.format(ret, c_name, ', '.join(parts))
 
 
 # ---------------------------------------------------------------------------
@@ -108,10 +105,10 @@ def _emit_timing_decls(out, mod):
         for ol in func.overloads:
             if ol.variants:
                 for v in ol.variants:
-                    c_name = _extract_c_name(v.sig_str)
+                    c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                     out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
             else:
-                c_name = _extract_c_name(ol.sig_str)
+                c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                 out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
     out.append('')
     out.append('/* Python-callable: return tick source frequency in Hz */')
@@ -339,7 +336,7 @@ def _emit_overload_dispatch(out, func, buf_params, scalar_params, timing, has_gi
                 # Create a synthetic COverload for _emit_c_call
                 syn_ol = COverload(v.sig_str, v.params, v.return_type,
                                    ol.map_exprs, v.when_expr,
-                                   name=v.name, outputs=v.outputs)
+                                   name=v.name, outputs=v.outputs, c_name=v.c_name)
                 out.append('        case {}: {{'.format(vi))
                 _emit_c_call(out, syn_ol, buf_params, scalar_params, timing, name,
                              has_gil_release and func.gil_release, indent='                ')
@@ -524,7 +521,10 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
     """
     if indent is None:
         indent = '        '
-    c_name = _extract_c_name(ol.sig_str)
+    c_name = ol.c_name
+    if c_name is None:
+        # Fallback for tests that construct COverload without c_name
+        c_name = ol.sig_str.split('(')[0].strip().split()[-1]
     perf_name = '_perf_{0}__{1}'.format(func_name, c_name)
     outputs = getattr(ol, 'outputs', {}) or {}
 
@@ -739,6 +739,11 @@ def _emit_c_call(out, ol, buf_params, scalar_params, timing, func_name, gil_rele
                 out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
             elif ctype == 'int64_t':
                 out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(i, val))
+                out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
+                out.append(indent + '    Py_DECREF(_c2py_tup);')
+                out.append(indent + '    return NULL;')
+                out.append(indent + '}')
+                out.append(indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
             elif ctype == 'uint64_t':
                 out.append(indent + 'PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});'.format(i, val))
                 out.append(indent + 'if (_c2py_obj{0} == NULL) {{'.format(i))
@@ -1052,7 +1057,12 @@ def _build_parse_format(py_params, func=None):
 def _get_buf_flags(buf_param, func):
     """Determine PyObject_GetBuffer flags for a buffer param.
 
-    Returns a string like "PyBUF_STRIDES | PyBUF_FORMAT" or 
+    NOTE: Buffer writability is determined per-function, not per-selected-overload.
+    If any overload (including variants) writes to a buffer, the buffer is acquired
+    as PyBUF_WRITABLE for ALL dispatch paths. Callers must provide writable buffers
+    even when the selected overload only reads.
+
+    Returns a string like "PyBUF_STRIDES | PyBUF_FORMAT" or
     "PyBUF_WRITABLE | PyBUF_STRIDES | PyBUF_FORMAT".
     """
     is_writable = False
@@ -1619,12 +1629,12 @@ def _emit_constants(out, mod):
             for ol in func.overloads:
                 if ol.variants:
                     for v in ol.variants:
-                        c_name = _extract_c_name(v.sig_str)
+                        c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                         perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
                         out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
                         out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                 else:
-                    c_name = _extract_c_name(ol.sig_str)
+                    c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                     perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
                     out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
                     out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
@@ -1763,7 +1773,7 @@ def _emit_module_init(out, mod, has_free_threading=False):
     _emit_constants(out, mod)
     if has_free_threading:
         out.append('        if (C2PY.Unstable_Module_SetGIL != NULL) {')
-        out.append('            C2PY.Unstable_Module_SetGIL(module, 1);'
+        out.append('            C2PY.Unstable_Module_SetGIL(module, (void*)1);'
                    '  /* Py_MOD_GIL_NOT_USED */')
         out.append('        }')
     out.append('    }')

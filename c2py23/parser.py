@@ -80,13 +80,14 @@ class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is
     """ctype is the full C type string, base_type is the element type"""
     pass
 
-class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr', 'name', 'group_name', 'variants'])):
+class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr', 'name', 'group_name', 'variants', 'c_name'])):
     """A C function overload alternative or a dispatch group.
 
     For flat overloads (backward compatible):
         sig_str, params, return_type, map_exprs, when_expr are populated.
         name is optional (required if when_expr is static for rebind support).
         variants is None.
+        c_name is the extracted C function name (no re-parsing needed).
 
     For grouped dispatch:
         variants is a non-empty list of CVariant.
@@ -94,6 +95,7 @@ class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'm
         map_exprs is the shared argument map for all variants in the group.
         when_expr is the per-call group condition (e.g. data.format == 'f').
         group_name is an optional label (for rebind qualifiers, docstrings).
+        c_name is None (variants carry their own c_name).
 
     outputs maps C parameter names to ctypes types (e.g. {'minval': 'double'}).
     Output params are auto-allocated as 1-element arrays and returned in the tuple.
@@ -102,26 +104,27 @@ class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'm
     """
     def __new__(cls, sig_str, params, return_type, map_exprs, when_expr,
                 name=None, group_name=None, variants=None, outputs=None,
-                doc=None):
+                doc=None, c_name=None):
         self = super(COverload, cls).__new__(cls, sig_str, params, return_type,
                                               map_exprs, when_expr,
-                                              name, group_name, variants)
+                                              name, group_name, variants, c_name)
         self.outputs = outputs or {}
         self.doc = doc
         return self
 
-class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type', 'when_expr', 'outputs'])):
+class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type', 'when_expr', 'outputs', 'c_name'])):
     """A variant within a dispatch group. Inherits map_exprs from the parent group.
 
     name is required for rebind, docstring, and timing identification.
     when_expr is the static (CPU feature) dispatch condition, or None for default.
     outputs is an optional dict for scalar output parameters (same format as COverload).
     doc is an optional per-variant description string.
+    c_name is the extracted C function name (no re-parsing needed).
     """
     def __new__(cls, name, sig_str, params, return_type, when_expr,
-                outputs=None, doc=None):
+                outputs=None, doc=None, c_name=None):
         self = super(CVariant, cls).__new__(cls, name, sig_str, params,
-                                             return_type, when_expr, outputs)
+                                             return_type, when_expr, outputs, c_name)
         self.doc = doc
         return self
 
@@ -278,7 +281,7 @@ _C_TYPES = set(_C_TYPES_INT)
 
 # Tokens in param lists: CONST, TYPE, STAR, NAME, COMMA, LPAREN, RPAREN
 _C_PARAM_RE = re.compile(
-    r'\s*(?:const\s+)?(' + '|'.join(_C_TYPES_INT) + r')\s*\*?\s*(\w+)\s*'
+    r'\s*(?:const\s+)?(' + '|'.join(_C_TYPES_INT) + r')\s*\*?\s*(\w+)\s*$'
 )
 
 def _parse_c_sig(sig_str, path):
@@ -330,8 +333,26 @@ def _parse_c_sig(sig_str, path):
         if return_type is None:
             return_type = before_parts[0]
         name = before_parts[1]
+    elif len(before_parts) == 2:
+        raise ValueError(
+            "Unsupported return type '{}' in '{}' in {}. "
+            "Supported: void, int, float, double.".format(
+                before_parts[0], sig_str, path))
+    elif len(before_parts) > 2:
+        raise ValueError(
+            "Unsupported multi-word return type in '{}' in {}. "
+            "Use a typedef or single-word type.".format(sig_str, path))
     else:
         raise ValueError("Cannot parse C signature '{}' in {}".format(sig_str, path))
+
+    # Validate return type: generator only supports void, int, float, double
+    _SUPPORTED_RETURN_TYPES = {'void', 'int', 'float', 'double'}
+    if return_type is not None and return_type not in _SUPPORTED_RETURN_TYPES:
+        raise ValueError(
+            "Unsupported return type '{}' in C signature '{}' in {}. "
+            "Supported return types: void, int, float, double. "
+            "Use outputs: for other types.".format(
+                return_type, sig_str, path))
 
     # Parse params
     params = _parse_c_params(params_str)
@@ -569,15 +590,36 @@ class _ExprParser(object):
     def _parse_string(self):
         quote = self.s[self.pos]
         self.pos += 1
-        start = self.pos
+        chars = []
         while self.pos < self.n and self.s[self.pos] != quote:
             if self.s[self.pos] == '\\':
-                self.pos += 2
+                self.pos += 1
+                if self.pos >= self.n:
+                    raise ValueError("Unterminated string escape")
+                esc = self.s[self.pos]
+                if esc == 'n':
+                    chars.append('\n')
+                elif esc == 't':
+                    chars.append('\t')
+                elif esc == 'r':
+                    chars.append('\r')
+                elif esc == '0':
+                    chars.append('\0')
+                elif esc == '\\':
+                    chars.append('\\')
+                elif esc == quote:
+                    chars.append(quote)
+                else:
+                    # Unknown escape: keep literal (\\ + char)
+                    chars.append('\\')
+                    chars.append(esc)
+                self.pos += 1
             else:
+                chars.append(self.s[self.pos])
                 self.pos += 1
         if self.pos >= self.n:
             raise ValueError("Unterminated string")
-        val = self.s[start:self.pos]
+        val = ''.join(chars)
         self.pos += 1
         return val
 
@@ -634,6 +676,11 @@ def _expand_func_template(raw_func, path):
         if not isinstance(vals, list):
             raise ValueError(
                 "expand value for '{}' must be a list in {}".format(var, path))
+        for v in vals:
+            if not isinstance(v, _STRING_TYPES):
+                raise ValueError(
+                    "expand value '{}' for '{}' must be a string, "
+                    "got {} in {}".format(v, var, type(v).__name__, path))
         lengths.add(len(vals))
 
     if len(lengths) != 1:
@@ -723,7 +770,7 @@ def _parse_func(raw, path):
                 v_doc = v.get('doc')
                 if v_doc is not None:
                     v_doc = _check_ascii(v_doc, 'variant.doc', path)
-                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs, doc=v_doc))
+                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs, doc=v_doc, c_name=v_c_name))
 
             ol_doc = ol.get('doc')
             if ol_doc is not None:
@@ -754,7 +801,7 @@ def _parse_func(raw, path):
             if ol_doc is not None:
                 ol_doc = _check_ascii(ol_doc, 'overload.doc', path)
             overloads.append(COverload(sig_str, c_params, c_ret, map_exprs, when_expr,
-                                       name=oname, outputs=outputs, doc=ol_doc))
+                                       name=oname, outputs=outputs, doc=ol_doc, c_name=c_name))
 
     default_raise = raw.get('default_raise')
     doc = raw.get('doc')
@@ -936,9 +983,9 @@ def _validate_module(mod, base_dir):
             targets = []
             if ol.variants:
                 for v in ol.variants:
-                    targets.append((_extract_c_name(v.sig_str), len(v.params), v))
+                    targets.append((v.c_name, len(v.params), v))
             else:
-                targets.append((_extract_c_name(ol.sig_str), len(ol.params), ol))
+                targets.append((ol.c_name, len(ol.params), ol))
 
             for c_name, c2py_count, entry in targets:
                 actual_count = c_funcs.get(c_name)
@@ -961,11 +1008,11 @@ def _validate_module(mod, base_dir):
             for ol in func.overloads:
                 # For grouped overloads, validate each variant
                 if ol.variants:
-                    check_entries = [(v.params, v.sig_str) for v in ol.variants]
+                    check_entries = [(v.params, v.sig_str, v.c_name) for v in ol.variants]
                 else:
-                    check_entries = [(ol.params, ol.sig_str)]
+                    check_entries = [(ol.params, ol.sig_str, ol.c_name)]
 
-                for use_params, use_sig_str in check_entries:
+                for use_params, use_sig_str, use_c_name in check_entries:
                     for cp in use_params:
                         if not cp.is_pointer:
                             continue
@@ -975,7 +1022,7 @@ def _validate_module(mod, base_dir):
                         if not _expr_refers_to(expr, buf_name):
                             continue
                         if cp.base_type != expected_ctype:
-                            c_name = _extract_c_name(use_sig_str)
+                            c_name = use_c_name
                             # LP64 compat: bare 'int' == 'int32_t'
                             if (cp.base_type, expected_ctype) not in (
                                     ('int', 'int32_t'), ('int32_t', 'int'),
@@ -985,11 +1032,6 @@ def _validate_module(mod, base_dir):
                                     "but overload '%s' uses %s* for param '%s' in %s" % (
                                         buf_name, fmt_char, expected_ctype,
                                         c_name, cp.base_type, cp.name, mod.name))
-
-
-def _extract_c_name(sig_str):
-    """Extract the C function name from a sig string."""
-    return sig_str.split('(')[0].strip().split()[-1]
 
 
 def _expr_refers_to(expr, buf_name):

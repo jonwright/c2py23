@@ -1051,8 +1051,9 @@ warnings.filterwarnings("ignore", message=".*GIL.*")
 
 #### Opting Into Free-Threading with Py_MOD_GIL_NOT_USED
 
-c2py23 does not yet expose a YAML option to add the `Py_mod_gil` slot.
-All generated modules omit `Py_MOD_GIL_NOT_USED` by design (safe default).
+c2py23 provides a `free_threading: true` YAML option to add the `Py_mod_gil`
+slot with `Py_MOD_GIL_NOT_USED` (see Option 2 below).
+All other modules omit `Py_MOD_GIL_NOT_USED` by design (safe default).
 To declare a module free-threading-safe, you have three options:
 
 **Option 1: PYTHON_GIL=0 (runtime, no code changes)**

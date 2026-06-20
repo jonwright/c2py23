@@ -272,7 +272,7 @@ typedef struct {
     void* (*SaveThread)(void);
     void (*RestoreThread)(void*);
     /* Free-threading: set Py_MOD_GIL_NOT_USED on module (optional, may be NULL) */
-    void (*Unstable_Module_SetGIL)(PyObject*, int);
+    void (*Unstable_Module_SetGIL)(PyObject*, void*);
 
 } c2py_api_t;
 
@@ -329,6 +329,18 @@ static inline void _c2py_inc_ref_manual(PyObject *op)
     ++(*refcnt);
 }
 
+/*
+ * _c2py_dec_ref_manual: Fallback dec-ref for pre-3.12 Python where
+ * Py_DecRef is not resolvable via dlsym. On those versions CPython uses
+ * shared refcounts where zero-is-special does not apply -- refcounts
+ * never reach zero through normal INCREF/DECREF alone.
+ *
+ * WARNING: This is a diagnostic-only fallback. When refcount hits zero
+ * it prints a warning but does NOT call tp_dealloc destructor.
+ * This is acceptable because the fallback is only active on Python < 3.12
+ * where the zero-refcount invariant holds. If porting to a platform where
+ * this invariant does not hold, implement proper deallocation.
+ */
 static inline void _c2py_dec_ref_manual(PyObject *op)
 {
     Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);

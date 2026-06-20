@@ -53,8 +53,6 @@ def _collect_user_sources(base_dir, module_def):
     """
     source_files = []
     for src in module_def.sources:
-        src_path = os.path.join(base_dir, os.path.dirname(
-            os.path.join(base_dir, src)), os.path.basename(src))
         # Normalise: join(base_dir, src) handles both absolute and relative
         src_path = os.path.normpath(os.path.join(base_dir, src))
         if not os.path.exists(src_path):

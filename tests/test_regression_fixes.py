@@ -511,6 +511,199 @@ def test_docstring_verification():
     test_passed()
 
 
+def test_A_int64_output_tuple():
+    """A: int64_t output must emit NULL check + PyTuple_SetItem in multi-output path."""
+    from c2py23.parser import parse_expr
+
+    # Use two outputs to trigger the multi-output tuple path (n > 1)
+    ol = COverload(
+        sig_str='int64_t compute(int64_t *val, double *avg)',
+        params=[CParam('val', 'int64_t *', 'int64_t', False, False),
+                CParam('avg', 'double *', 'double', False, False)],
+        return_type='int64_t',
+        map_exprs={},
+        when_expr=None,
+        outputs={'val': 'int64_t', 'avg': 'double'},
+    )
+    mod = ModuleDef(
+        name='int64out',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='compute',
+                py_params=[PyParam('x', 'buffer', None)],
+                return_type='void',
+                checks=[],
+                overloads=[ol],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    code = generate(mod)
+    assert 'PyLong_FromLongLong' in code, "int64_t must use FromLongLong"
+    # Multi-output path (single output still uses tuple for outputs:)
+    assert 'PyTuple_SetItem(_c2py_tup, 0, _c2py_obj0)' in code, (
+        "int64_t output must have PyTuple_SetItem")
+    assert 'if (_c2py_obj0 == NULL)' in code, (
+        "int64_t output must have NULL check")
+    assert 'Py_DECREF(_c2py_tup)' in code, (
+        "int64_t output must have error cleanup")
+    test_passed()
+
+
+def test_D_anchored_c_param_re():
+    """D: _C_PARAM_RE must reject trailing junk after param name."""
+    from c2py23.parser import _parse_c_params
+
+    # Valid params must still work
+    params = _parse_c_params("int x, double *y")
+    assert len(params) == 2
+    assert params[0].name == 'x'
+    assert params[1].name == 'y'
+
+    # Trailing junk must raise ValueError
+    try:
+        _parse_c_params("int x garbage")
+        assert False, "Expected ValueError for trailing junk"
+    except ValueError:
+        pass
+
+    # Array-like suffix must raise ValueError
+    try:
+        _parse_c_params("double *ptr[]")
+        assert False, "Expected ValueError for array suffix"
+    except ValueError:
+        pass
+
+    test_passed()
+
+
+def test_E_unsupported_return_type():
+    """E: Parser must reject return types the generator cannot emit."""
+    from c2py23.parser import _parse_c_sig
+
+    # Supported types still work
+    name, params, ret = _parse_c_sig("double norm(const double *a, int n)", "test")
+    assert ret == 'double'
+
+    # Unsupported types raise ValueError
+    for sig in [
+        "uint32_t crc32(const uint8_t *data)",
+        "char get_char(void)",
+        "int64_t compute(void)",
+    ]:
+        try:
+            _parse_c_sig(sig, "test")
+            assert False, "Expected ValueError for '%s'" % sig
+        except ValueError as e:
+            assert 'Unsupported return type' in str(e) or 'unsupported' in str(e).lower(), (
+                "Error should mention unsupported type, got: %s" % e)
+
+    test_passed()
+
+
+def test_G_expression_escape_handling():
+    """G: Expression parser must handle backslash escapes in strings."""
+    from c2py23.parser import parse_expr, StrLit
+
+    # Newline escape in a simple string expression (a == b is Compare, not String)
+    # Test a standalone string expression
+    expr = parse_expr('"hello\\nworld"')
+    assert expr is not None
+    assert isinstance(expr, StrLit), "String expression should produce StrLit node"
+    # The string value should contain actual newline, not literal \n
+    assert expr.value == 'hello\nworld', (
+        "Backslash-n should decode to \\n, got: %r" % expr.value)
+
+    # Tab escape
+    expr = parse_expr('"col1\\tcol2"')
+    assert isinstance(expr, StrLit)
+    assert expr.value == 'col1\tcol2', (
+        "Backslash-t should decode to tab, got: %r" % expr.value)
+
+    # Literal backslash
+    expr = parse_expr('"path\\\\to\\\\file"')
+    assert isinstance(expr, StrLit)
+    assert expr.value == 'path\\to\\file', (
+        "Double backslash should decode to one backslash, got: %r" % expr.value)
+
+    # Embedded quote
+    expr = parse_expr('"hello\\"world\\""')
+    assert isinstance(expr, StrLit)
+    assert expr.value == 'hello"world"', (
+        'Backslash-quote should decode to quote, got: %r' % expr.value)
+
+    test_passed()
+
+
+def test_H_template_expand_non_string():
+    """H: Template expansion must reject non-string values."""
+    from c2py23.parser import load_c2py
+    import tempfile
+    import os
+
+    # Create a minimal .c2py file with non-string template expansion
+    # 42 loaded as YAML int, not a string
+    content = (
+        "module: testmod\n"
+        "source: [test.c]\n"
+        "functions:\n"
+        "  - expand:\n"
+        "      VAL:\n"
+        "        - 42\n"
+        '    py_sig: "fill(arr: buffer) -> void"\n'
+        '    c_overloads:\n'
+        '      - sig: "fill_${VAL}(float *arr, int n, float value)"\n'
+        '        map: {arr: "arr.ptr", n: "arr.n"}\n'
+    )
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c2py', delete=False) as f:
+        fname = f.name
+        f.write(content)
+    try:
+        load_c2py(fname)
+        assert False, "Expected ValueError for non-string expansion value"
+    except ValueError as e:
+        assert 'string' in str(e).lower(), (
+            "Error must mention 'string', got: %s" % e)
+    except TypeError as e:
+        assert False, "Expected ValueError, got TypeError: %s" % e
+    finally:
+        os.unlink(fname)
+
+    test_passed()
+
+
+def test_I_unsupported_return_error_message():
+    """I: Parser should give specific error for unsupported return types."""
+    from c2py23.parser import _parse_c_sig
+
+    # Multi-word types
+    try:
+        _parse_c_sig("unsigned int func(void)", "test")
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        msg = str(e)
+        assert 'unsigned int' in msg or 'multi-word' in msg, (
+            "Error should mention the type, got: %s" % msg)
+
+    # Unknown types
+    try:
+        _parse_c_sig("size_t func(void)", "test")
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        msg = str(e)
+        assert 'size_t' in msg or 'Unsupported' in msg, (
+            "Error should mention the type, got: %s" % msg)
+
+    test_passed()
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):

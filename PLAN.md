@@ -6,13 +6,34 @@
 
 **Severity: Low** -- replaces --no-build-isolation workflow
 
-Publish binary wheels to PyPI: one per platform (linux, windows, macos) and
-one per architecture (x86_64, aarch64). Python-version-independent (the .so
-works on 2.7-3.14 via nimpy trick). Similar to ctypes-style distribution --
-install via pip, import from any Python version. May need a wrapper import
-mechanism or `ctypes.CDLL` loader bootstrap.
-
 **Status: DEFERRED** -- design TBD, implement later.
+
+**Open design questions (from referee review):**
+
+1. **Wheel tagging:** The c2py23 .so uses the nimpy trick -- one binary works
+   on CPython 2.7-3.14 without linking libpython. Standard wheel tags
+   (cp312-cp312-*, cp37-abi3-*, etc.) assume a specific CPython ABI. A
+   bare `modulename.so` with no Python link dependency has no standard
+   wheel tag. Need to investigate whether `py3-none` tag can be used.
+
+2. **Symbol export dependency:** c2py_runtime_init() does dlopen(NULL,
+   RTLD_GLOBAL) and expects CPython API symbols already loaded. This
+   depends on the interpreter being built with --enable-shared. Not
+   guaranteed for: musllinux/Alpine, some conda builds, embedded/frozen
+   Python, PyPy.
+
+3. **Build-backend integration:** Current cli.py shells out to gcc
+   directly. No setuptools build_ext / meson-python / scikit-build-core
+   hookup for pip wheel . or cibuildwheel. This integration layer must
+   be built from scratch.
+
+4. **Platform matrix:** Need verification on manylinux2014 x86_64 and
+   aarch64, musllinux, macOS, and Windows before distribution.
+
+**Next steps before implementation:**
+- Build and test on manylinux2014 containers (request snakepit addition)
+- Evaluate py3-none vs. platform-specific wheel tags
+- Evaluate setuptools vs. meson-python vs. scikit-build-core for build backend
 
 ---
 
