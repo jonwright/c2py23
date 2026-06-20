@@ -110,7 +110,11 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         cc = os.environ.get('CC', 'gcc')
         is_msvc = False
 
-    cflags = [f for f in os.environ.get('CFLAGS', '').split() if f]
+    if is_msvc:
+        _default_cflags = '/W4'
+    else:
+        _default_cflags = '-Wall -Werror -Wpointer-arith'
+    cflags = [f for f in os.environ.get('CFLAGS', _default_cflags).split() if f]
     ldflags = [f for f in os.environ.get('LDFLAGS', '').split() if f]
 
     if asan:

@@ -1,16 +1,29 @@
 #include <stdint.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
+
+static void c2py_sleep_us(int us)
+{
+#ifdef _WIN32
+    Sleep((us + 999) / 1000);
+#else
+    usleep(us);
+#endif
+}
 
 void sleep_fill_f32(float *arr, int n, float value, int us)
 {
-    usleep(us);
+    c2py_sleep_us(us);
     int i;
     for (i = 0; i < n; i++) arr[i] = value;
 }
 
 void sleep_fill_f64(double *arr, int n, double value, int us)
 {
-    usleep(us);
+    c2py_sleep_us(us);
     int i;
     for (i = 0; i < n; i++) arr[i] = value;
 }
