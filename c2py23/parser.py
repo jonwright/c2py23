@@ -275,7 +275,8 @@ def _parse_py_sig(sig_str, path):
 _C_TYPES_INT = (
     'int8_t', 'uint8_t', 'int16_t', 'uint16_t',
     'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
-    'int', 'float', 'double', 'char', 'void'
+    'int', 'float', 'double', 'char', 'void',
+    '_Bool',
 )
 _C_TYPES = set(_C_TYPES_INT)
 
@@ -854,6 +855,18 @@ _FORMAT_TO_CTYPE = {
     'Q': 'uint64_t',
     'f': 'float',
     'd': 'double',
+    '?': 'uint8_t',
+}
+
+_FORMAT_CHAR_TO_NAME = {
+    'b': 'int8', 'B': 'uint8',
+    'h': 'int16', 'H': 'uint16',
+    'i': 'int32', 'I': 'uint32',
+    'q': 'int64', 'Q': 'uint64',
+    'l': 'int64 (platform)', 'L': 'uint64 (platform)',
+    'f': 'float32', 'd': 'float64',
+    'c': 'char', '?': 'bool', 'e': 'half-float',
+    'Z': 'complex64', 'z': 'complex128',
 }
 
 _FUNC_DECL_RE = re.compile(
@@ -1049,3 +1062,222 @@ def _expr_refers_to(expr, buf_name):
     elif isinstance(expr, UnaryOp):
         return _expr_refers_to(expr.operand, buf_name)
     return False
+
+
+def _escape_c_str(s):
+    """Escape a string for use in a C string literal."""
+    s = s.replace('\\', '\\\\')
+    s = s.replace('"', '\\"')
+    s = s.replace('\n', '\\n')
+    s = s.replace('\r', '\\r')
+    s = s.replace('\t', '\\t')
+    return s
+
+
+# ---- String and numeric formatting ----
+
+
+def _is_ptr_expr(expr):
+    """Check if expression is a .ptr access."""
+    if isinstance(expr, Attr) and expr.attr == 'ptr':
+        return True
+    return False
+
+
+# ---- Expression transpilation ----
+
+
+def _expr_is_count_or_len(expr):
+    """Check if expression is a buffer .n (element count) or .len (byte length)."""
+    if isinstance(expr, Attr) and expr.attr in ('n', 'len'):
+        return True
+    return False
+
+
+# ---- String and numeric formatting ----
+
+
+def _is_simple_expr(expr):
+    """Check if an expression is simple enough to inline in a format string."""
+    if isinstance(expr, (Var, IntLit)):
+        return True
+    if isinstance(expr, Attr) and isinstance(expr.obj, Var):
+        return True  # a.n, a.len, a.ndim etc.
+    if isinstance(expr, UnaryOp):
+        return False
+    if isinstance(expr, BinOp):
+        if expr.op in ('and', 'or'):
+            return _is_simple_expr(expr.left) and _is_simple_expr(expr.right)
+        return False  # arithmetic is never simple
+    return False
+
+
+# ---- Check emission and diagnostics ----
+
+
+def _expr_to_source(expr):
+    """Convert an AST node back to its source form (for comments/error messages)."""
+    if isinstance(expr, Var):
+        return expr.name
+    elif isinstance(expr, Attr):
+        return _expr_to_source(expr.obj) + '.' + expr.attr
+    elif isinstance(expr, Subscript):
+        return _expr_to_source(expr.obj) + '[' + str(expr.index) + ']'
+    elif isinstance(expr, IntLit):
+        return str(expr.value)
+    elif isinstance(expr, StrLit):
+        return "'" + expr.value + "'"
+    elif isinstance(expr, Compare):
+        return '{} {} {}'.format(
+            _expr_to_source(expr.left), expr.op, _expr_to_source(expr.right))
+    elif isinstance(expr, BinOp):
+        return '({} {} {})'.format(
+            _expr_to_source(expr.left), expr.op, _expr_to_source(expr.right))
+    elif isinstance(expr, UnaryOp):
+        return '{}({})'.format(expr.op, _expr_to_source(expr.operand))
+    else:
+        return str(expr)
+
+
+# ---------------------------------------------------------------------------
+# Rich docstring generation
+# ---------------------------------------------------------------------------
+
+
+
+
+# ---- Expression transpilation ----
+
+
+def _expr_to_c(expr, buf_params, scalar_params, current_ol):
+    """Transpile an expression AST node to a C expression string."""
+    if expr is None:
+        return '1'  # No condition = always true
+
+    if isinstance(expr, Var):
+        name = expr.name
+        # Is it a buffer param?
+        for p in buf_params:
+            if p.name == name:
+                return 'buf_' + name
+        # Is it a scalar param?
+        for p in scalar_params:
+            if p.name == name:
+                return 'c_' + name
+        return name
+
+    elif isinstance(expr, Attr):
+        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
+        attr = expr.attr
+        if attr == 'format':
+            return obj + '->format'
+        elif attr == 'ndim':
+            return obj + '->ndim'
+        elif attr == 'itemsize':
+            return obj + '->itemsize'
+        elif attr == 'len':
+            return obj + '->len'
+        elif attr == 'n':
+            return '(' + obj + '->len / ' + obj + '->itemsize)'
+        elif attr == 'ptr':
+            return obj + '->buf'
+        elif attr == 'shape':
+            return obj + '->shape'
+        elif attr == 'strides':
+            return obj + '->strides'
+        else:
+            return obj + '->' + attr
+
+    elif isinstance(expr, Subscript):
+        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
+        idx = expr.index
+        return '{}[{}]'.format(obj, idx)
+
+    elif isinstance(expr, IntLit):
+        return str(expr.value)
+
+    elif isinstance(expr, StrLit):
+        return '"' + _escape_c_str(expr.value) + '"'
+
+    elif isinstance(expr, Compare):
+        left = _expr_to_c(expr.left, buf_params, scalar_params, current_ol)
+        right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
+        op = expr.op
+
+        # String comparison with format char: use last-char match for
+        # PEP 3118 format strings (handles "d", "<d", "=d", etc.)
+        # On old buffers (format == NULL), treat as matching (we can't check)
+        if isinstance(expr.left, StrLit) or isinstance(expr.right, StrLit):
+            str_lit = expr.left if isinstance(expr.left, StrLit) else expr.right
+            fmt_expr = right if isinstance(expr.left, StrLit) else left
+            if len(str_lit.value) == 1:
+                ch = str_lit.value
+                if op == '==':
+                    return '(!{0} || {0}[strlen({0}) - 1] == \'{1}\')'.format(fmt_expr, ch)
+                elif op == '!=':
+                    return '({0} && {0}[strlen({0}) - 1] != \'{1}\')'.format(fmt_expr, ch)
+            if op == '==':
+                return 'strcmp({}, {}) == 0'.format(left, right)
+            elif op == '!=':
+                return 'strcmp({}, {}) != 0'.format(left, right)
+            else:
+                raise ValueError("Unsupported comparison op '{}' for strings".format(op))
+        else:
+            return '({}) {} ({})'.format(left, op, right)
+
+    elif isinstance(expr, BinOp):
+        left = _expr_to_c(expr.left, buf_params, scalar_params, current_ol)
+        right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
+        if expr.op == 'and':
+            return '({}) && ({})'.format(left, right)
+        elif expr.op == 'or':
+            return '({}) || ({})'.format(left, right)
+        elif expr.op in ('+', '-', '*', '/', '%'):
+            return '({} {} {})'.format(left, expr.op, right)
+        else:
+            raise ValueError("Unknown binop: {}".format(expr.op))
+
+    elif isinstance(expr, UnaryOp):
+        operand = _expr_to_c(expr.operand, buf_params, scalar_params, current_ol)
+        if expr.op == 'not':
+            return '!({})'.format(operand)
+        elif expr.op == '-':
+            return '-({})'.format(operand)
+        elif expr.op == '+':
+            return '+({})'.format(operand)
+        else:
+            raise ValueError("Unknown unary op: {}".format(expr.op))
+
+    else:
+        raise ValueError("Unknown expression type: {}".format(type(expr)))
+
+
+# ---- Expression transpilation ----
+
+
+def _extract_fmt_from_expr(expr, param_name, fmt_chars):
+    """Recursively extract format char comparisons from an expression tree."""
+    if isinstance(expr, Compare) and expr.op == '==':
+        for side, other in [(expr.left, expr.right), (expr.right, expr.left)]:
+            if (isinstance(side, Attr) and side.attr == 'format'
+                    and _expr_refers_to(side.obj, param_name)
+                    and isinstance(other, StrLit) and len(other.value) == 1):
+                fmt_chars.add(other.value)
+    elif isinstance(expr, BinOp):
+        _extract_fmt_from_expr(expr.left, param_name, fmt_chars)
+        _extract_fmt_from_expr(expr.right, param_name, fmt_chars)
+    elif isinstance(expr, UnaryOp):
+        _extract_fmt_from_expr(expr.operand, param_name, fmt_chars)
+
+
+# ---- Buffer and wrapper helpers ----
+
+
+
+def _float_literal(value):
+    """Convert a Python float to a C double literal string.
+    Handles whole-number floats (3.0 -> 3.0) and fractions."""
+    s = "%.15g" % value
+    if '.' not in s and 'e' not in s and 'E' not in s:
+        s += ".0"
+    return s

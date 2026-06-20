@@ -11,8 +11,13 @@ import re
 from c2py23.parser import (
     Var, Attr, Subscript, IntLit, StrLit, Compare, BinOp, UnaryOp,
     PyParam, CParam, COverload, CVariant, FuncDef, ModuleDef,
-    _FORMAT_TO_CTYPE,
+    _FORMAT_TO_CTYPE, _FORMAT_CHAR_TO_NAME,
+    _escape_c_str, _float_literal,
+    _is_ptr_expr, _expr_is_count_or_len, _is_simple_expr,
+    _expr_refers_to, _expr_to_c, _expr_to_source,
+    _extract_fmt_from_expr,
 )
+from c2py23.invariant_checker import verify_c_invariants
 
 
 
@@ -95,16 +100,16 @@ class CBuilder:
 
     # -- GIL management --
 
-    def gil_save(self, cond_var, thread_state_var):
+    def gil_save(self, cond_var, thread_state_var, indent='    '):
         self._gil_depth += 1
-        self.emit('    if ({0}) {1} = PyEval_SaveThread();'.format(
+        self.emit(indent + 'if ({0}) {1} = PyEval_SaveThread();'.format(
             cond_var, thread_state_var))
 
-    def gil_restore(self, cond_var, thread_state_var):
+    def gil_restore(self, cond_var, thread_state_var, indent='    '):
         if self._gil_depth <= 0:
             raise ValueError("gil_restore without matching gil_save")
         self._gil_depth -= 1
-        self.emit('    if ({0}) PyEval_RestoreThread({1});'.format(
+        self.emit(indent + 'if ({0}) PyEval_RestoreThread({1});'.format(
             cond_var, thread_state_var))
 
     def assert_gil_balanced(self, name):
@@ -115,39 +120,39 @@ class CBuilder:
 
     # -- Output scalar construction --
 
-    def _check_output_obj(self, obj_var):
+    def _check_output_obj(self, obj_var, indent='    '):
         """Emit NULL check + Py_DECREF cleanup for an output object."""
-        self.emit('    if ({0} == NULL) {{'.format(obj_var))
-        self.emit('        Py_DECREF(_c2py_tup);')
-        self.emit('        return NULL;')
-        self.emit('    }')
+        self.emit(indent + 'if ({0} == NULL) {{'.format(obj_var))
+        self.emit(indent + '    Py_DECREF(_c2py_tup);')
+        self.emit(indent + '    return NULL;')
+        self.emit(indent + '}')
 
-    def emit_tuple_new(self, n):
-        self.emit('    PyObject *_c2py_tup = PyTuple_New({0});'.format(n))
-        self.emit('    if (_c2py_tup == NULL) return NULL;')
+    def emit_tuple_new(self, n, indent='    '):
+        self.emit(indent + 'PyObject *_c2py_tup = PyTuple_New({0});'.format(n))
+        self.emit(indent + 'if (_c2py_tup == NULL) return NULL;')
 
-    def emit_output_long(self, index, val, ctype='int'):
+    def emit_output_long(self, index, val, ctype='int', indent='    '):
         if ctype in ('int64_t',):
             self.emit(
-                '    PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(
+                indent + 'PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(
                     index, val))
         elif ctype in ('uint64_t',):
             self.emit(
-                '    PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});'.format(
+                indent + 'PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});'.format(
                     index, val))
         else:
             self.emit(
-                '    PyObject *_c2py_obj{0} = PyLong_FromLong((long){1});'.format(
+                indent + 'PyObject *_c2py_obj{0} = PyLong_FromLong((long){1});'.format(
                     index, val))
-        self._check_output_obj('_c2py_obj{0}'.format(index))
+        self._check_output_obj('_c2py_obj{0}'.format(index), indent)
         self.emit(
-            '    PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(index))
+            indent + 'PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(index))
 
-    def emit_output_double(self, index, val):
+    def emit_output_double(self, index, val, indent='    '):
         self.emit(
-            '    PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(
+            indent + 'PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(
                 index, val))
-        self._check_output_obj('_c2py_obj{0}'.format(index))
+        self._check_output_obj('_c2py_obj{0}'.format(index), indent)
         self.emit(
             '    PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(index))
 
@@ -229,7 +234,7 @@ def generate(module_def):
                               has_gil_release)
 
     code = b.get_code()
-    _verify_c_invariants(code)
+    verify_c_invariants(code)
     return code
 
 
@@ -573,7 +578,7 @@ def _emit_c_call(b, ol, buf_params, scalar_params,
 
     # GIL release: save before C call
     if gil_release_call:
-        emitl('if (_c2py_do_gil) _c2py_thread_state = PyEval_SaveThread();')
+        b.gil_save('_c2py_do_gil', '_c2py_thread_state', indent)
 
     # Timing: start
     if timing:
@@ -594,7 +599,7 @@ def _emit_c_call(b, ol, buf_params, scalar_params,
 
         # GIL restore (for no-outputs path, before PyObject creation)
         if gil_release_call:
-            emitl('if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
+            b.gil_restore('_c2py_do_gil', '_c2py_thread_state', indent)
 
         if timing:
             emitl('if (_c2py_do_time) {')
@@ -634,7 +639,7 @@ def _emit_c_call(b, ol, buf_params, scalar_params,
 
     # GIL restore before Python object construction
     if gil_release_call:
-        emitl('if (_c2py_do_gil) PyEval_RestoreThread(_c2py_thread_state);')
+        b.gil_restore('_c2py_do_gil', '_c2py_thread_state', indent)
 
     if timing:
         emitl('if (_c2py_do_time) {')
@@ -664,25 +669,19 @@ def _emit_c_call(b, ol, buf_params, scalar_params,
         else:
             emitl('return PyFloat_FromDouble((double){0});'.format(val))
     else:
-        emitl('PyObject *_c2py_tup = PyTuple_New({0});'.format(n))
-        emitl('if (_c2py_tup == NULL) return NULL;')
+        b.emit_tuple_new(n, indent)
         for i, (name, ctype, val) in enumerate(out_items):
             if ctype in ('int', 'int8_t', 'int16_t', 'int32_t',
                          'uint8_t', 'uint16_t', 'uint32_t'):
-                emitl('PyObject *_c2py_obj{0} = PyLong_FromLong((long){1});'.format(i, val))
+                b.emit_output_long(i, val, 'int', indent)
             elif ctype == 'int64_t':
-                emitl('PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});'.format(i, val))
+                b.emit_output_long(i, val, 'int64_t', indent)
             elif ctype == 'uint64_t':
-                emitl('PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});'.format(i, val))
+                b.emit_output_long(i, val, 'uint64_t', indent)
             elif ctype in ('float', 'double'):
-                emitl('PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(i, val))
+                b.emit_output_double(i, val, indent)
             else:
-                emitl('PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});'.format(i, val))
-            emitl('if (_c2py_obj{0} == NULL) {{'.format(i))
-            emitl('    Py_DECREF(_c2py_tup);')
-            emitl('    return NULL;')
-            emitl('}')
-            emitl('PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(i))
+                b.emit_output_double(i, val, indent)
         emitl('return _c2py_tup;')
 
 
@@ -872,59 +871,8 @@ def _emit_module_init(b, module_def, has_free_threading,
 # ---------------------------------------------------------------------------
 # Functions copied from the original reference generator
 # ---------------------------------------------------------------------------
-_FORMAT_CHAR_TO_NAME = {
-    'b': 'int8', 'B': 'uint8',
-    'h': 'int16', 'H': 'uint16',
-    'i': 'int32', 'I': 'uint32',
-    'q': 'int64', 'Q': 'uint64',
-    'l': 'int64 (platform)', 'L': 'uint64 (platform)',
-    'f': 'float32', 'd': 'float64',
-    'c': 'char', '?': 'bool', 'e': 'half-float',
-    'Z': 'complex64', 'z': 'complex128',
-}
 
 
-
-# ---- Expression transpilation ----
-def _is_ptr_expr(expr):
-    """Check if expression is a .ptr access."""
-    if isinstance(expr, Attr) and expr.attr == 'ptr':
-        return True
-    return False
-
-
-# ---- Expression transpilation ----
-def _expr_is_count_or_len(expr):
-    """Check if expression is a buffer .n (element count) or .len (byte length)."""
-    if isinstance(expr, Attr) and expr.attr in ('n', 'len'):
-        return True
-    return False
-
-
-# ---- String and numeric formatting ----
-def _escape_c_str(s):
-    """Escape a string for use in a C string literal."""
-    s = s.replace('\\', '\\\\')
-    s = s.replace('"', '\\"')
-    s = s.replace('\n', '\\n')
-    s = s.replace('\r', '\\r')
-    s = s.replace('\t', '\\t')
-    return s
-
-
-# ---- String and numeric formatting ----
-def _float_literal(value):
-    """Convert a Python float to a C double literal string.
-    Handles whole-number floats (3.0 -> 3.0) and fractions."""
-    s = "%.15g" % value
-    if '.' not in s and 'e' not in s and 'E' not in s:
-        s += ".0"
-    return s
-
-
-# ---------------------------------------------------------------------------
-# Generated C invariant checker
-# ---------------------------------------------------------------------------
 
 
 # ---- Expression transpilation ----
@@ -973,167 +921,6 @@ def _build_parse_format(py_params, func=None):
 
 
 # ---- Expression transpilation ----
-def _expr_to_c(expr, buf_params, scalar_params, current_ol):
-    """Transpile an expression AST node to a C expression string."""
-    if expr is None:
-        return '1'  # No condition = always true
-
-    if isinstance(expr, Var):
-        name = expr.name
-        # Is it a buffer param?
-        for p in buf_params:
-            if p.name == name:
-                return 'buf_' + name
-        # Is it a scalar param?
-        for p in scalar_params:
-            if p.name == name:
-                return 'c_' + name
-        return name
-
-    elif isinstance(expr, Attr):
-        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
-        attr = expr.attr
-        if attr == 'format':
-            return obj + '->format'
-        elif attr == 'ndim':
-            return obj + '->ndim'
-        elif attr == 'itemsize':
-            return obj + '->itemsize'
-        elif attr == 'len':
-            return obj + '->len'
-        elif attr == 'n':
-            return '(' + obj + '->len / ' + obj + '->itemsize)'
-        elif attr == 'ptr':
-            return obj + '->buf'
-        elif attr == 'shape':
-            return obj + '->shape'
-        elif attr == 'strides':
-            return obj + '->strides'
-        else:
-            return obj + '->' + attr
-
-    elif isinstance(expr, Subscript):
-        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
-        idx = expr.index
-        return '{}[{}]'.format(obj, idx)
-
-    elif isinstance(expr, IntLit):
-        return str(expr.value)
-
-    elif isinstance(expr, StrLit):
-        return '"' + _escape_c_str(expr.value) + '"'
-
-    elif isinstance(expr, Compare):
-        left = _expr_to_c(expr.left, buf_params, scalar_params, current_ol)
-        right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
-        op = expr.op
-
-        # String comparison with format char: use last-char match for
-        # PEP 3118 format strings (handles "d", "<d", "=d", etc.)
-        # On old buffers (format == NULL), treat as matching (we can't check)
-        if isinstance(expr.left, StrLit) or isinstance(expr.right, StrLit):
-            str_lit = expr.left if isinstance(expr.left, StrLit) else expr.right
-            fmt_expr = right if isinstance(expr.left, StrLit) else left
-            if len(str_lit.value) == 1:
-                ch = str_lit.value
-                if op == '==':
-                    return '(!{0} || {0}[strlen({0}) - 1] == \'{1}\')'.format(fmt_expr, ch)
-                elif op == '!=':
-                    return '({0} && {0}[strlen({0}) - 1] != \'{1}\')'.format(fmt_expr, ch)
-            if op == '==':
-                return 'strcmp({}, {}) == 0'.format(left, right)
-            elif op == '!=':
-                return 'strcmp({}, {}) != 0'.format(left, right)
-            else:
-                raise ValueError("Unsupported comparison op '{}' for strings".format(op))
-        else:
-            return '({}) {} ({})'.format(left, op, right)
-
-    elif isinstance(expr, BinOp):
-        left = _expr_to_c(expr.left, buf_params, scalar_params, current_ol)
-        right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
-        if expr.op == 'and':
-            return '({}) && ({})'.format(left, right)
-        elif expr.op == 'or':
-            return '({}) || ({})'.format(left, right)
-        elif expr.op in ('+', '-', '*', '/', '%'):
-            return '({} {} {})'.format(left, expr.op, right)
-        else:
-            raise ValueError("Unknown binop: {}".format(expr.op))
-
-    elif isinstance(expr, UnaryOp):
-        operand = _expr_to_c(expr.operand, buf_params, scalar_params, current_ol)
-        if expr.op == 'not':
-            return '!({})'.format(operand)
-        elif expr.op == '-':
-            return '-({})'.format(operand)
-        elif expr.op == '+':
-            return '+({})'.format(operand)
-        else:
-            raise ValueError("Unknown unary op: {}".format(expr.op))
-
-    else:
-        raise ValueError("Unknown expression type: {}".format(type(expr)))
-
-
-# ---- Expression transpilation ----
-def _expr_to_source(expr):
-    """Convert an AST node back to its source form (for comments/error messages)."""
-    if isinstance(expr, Var):
-        return expr.name
-    elif isinstance(expr, Attr):
-        return _expr_to_source(expr.obj) + '.' + expr.attr
-    elif isinstance(expr, Subscript):
-        return _expr_to_source(expr.obj) + '[' + str(expr.index) + ']'
-    elif isinstance(expr, IntLit):
-        return str(expr.value)
-    elif isinstance(expr, StrLit):
-        return "'" + expr.value + "'"
-    elif isinstance(expr, Compare):
-        return '{} {} {}'.format(
-            _expr_to_source(expr.left), expr.op, _expr_to_source(expr.right))
-    elif isinstance(expr, BinOp):
-        return '({} {} {})'.format(
-            _expr_to_source(expr.left), expr.op, _expr_to_source(expr.right))
-    elif isinstance(expr, UnaryOp):
-        return '{}({})'.format(expr.op, _expr_to_source(expr.operand))
-    else:
-        return str(expr)
-
-
-# ---------------------------------------------------------------------------
-# Rich docstring generation
-# ---------------------------------------------------------------------------
-
-_FORMAT_CHAR_TO_NAME = {
-    'b': 'int8', 'B': 'uint8',
-    'h': 'int16', 'H': 'uint16',
-    'i': 'int32', 'I': 'uint32',
-    'q': 'int64', 'Q': 'uint64',
-    'l': 'int64 (platform)', 'L': 'uint64 (platform)',
-    'f': 'float32', 'd': 'float64',
-    'c': 'char', '?': 'bool', 'e': 'half-float',
-    'Z': 'complex64', 'z': 'complex128',
-}
-
-
-# ---- Expression transpilation ----
-def _extract_fmt_from_expr(expr, param_name, fmt_chars):
-    """Recursively extract format char comparisons from an expression tree."""
-    if isinstance(expr, Compare) and expr.op == '==':
-        for side, other in [(expr.left, expr.right), (expr.right, expr.left)]:
-            if (isinstance(side, Attr) and side.attr == 'format'
-                    and _expr_refers_to(side.obj, param_name)
-                    and isinstance(other, StrLit) and len(other.value) == 1):
-                fmt_chars.add(other.value)
-    elif isinstance(expr, BinOp):
-        _extract_fmt_from_expr(expr.left, param_name, fmt_chars)
-        _extract_fmt_from_expr(expr.right, param_name, fmt_chars)
-    elif isinstance(expr, UnaryOp):
-        _extract_fmt_from_expr(expr.operand, param_name, fmt_chars)
-
-
-# ---- Buffer and wrapper helpers ----
 def _get_buf_flags(buf_param, func):
     """Determine PyObject_GetBuffer flags for a buffer param.
 
@@ -1174,22 +961,6 @@ def _get_buf_flags(buf_param, func):
 
 
 # ---- Expression helpers ----
-def _is_simple_expr(expr):
-    """Check if an expression is simple enough to inline in a format string."""
-    if isinstance(expr, (Var, IntLit)):
-        return True
-    if isinstance(expr, Attr) and isinstance(expr.obj, Var):
-        return True  # a.n, a.len, a.ndim etc.
-    if isinstance(expr, UnaryOp):
-        return False
-    if isinstance(expr, BinOp):
-        if expr.op in ('and', 'or'):
-            return _is_simple_expr(expr.left) and _is_simple_expr(expr.right)
-        return False  # arithmetic is never simple
-    return False
-
-
-# ---- Check emission and diagnostics ----
 def _make_compare_diag(compare, buf_params, scalar_params):
     """Generate diagnostic C code for a Compare expression."""
     left = compare.left
@@ -1971,324 +1742,3 @@ def _doc(func):
 # ---------------------------------------------------------------------------
 # Module init
 # ---------------------------------------------------------------------------
-
-
-# ---- Module support ----
-def _verify_c_invariants(code):
-    """Check generated C for structural errors before returning.
-
-    Scans the generated C and verifies:
-      - Buffer acquire/release pairs in wrapper functions
-      - GIL save/restore pairs in impl functions
-      - Output scalar NULL checks + PyTuple_SetItem
-      - Balanced braces
-
-    Raises ValueError with line number on first violation.
-    """
-    lines = code.split('\n')
-    _check_balanced_braces(lines)
-    _check_buffer_invariants(lines)
-    _check_output_scalar_invariants(lines)
-
-
-# ---- Invariant checker ----
-def _check_balanced_braces(lines):
-    """Verify brace depth returns to zero after each function."""
-    depth = 0
-    in_function = False
-    for lineno, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith('static PyObject*'):
-            if depth != 0:
-                raise ValueError(
-                    "Line %d: unbalanced braces before function start "
-                    "(depth=%d)" % (lineno, depth))
-            in_function = True
-        if not stripped or stripped.startswith('/*') or stripped.startswith('*'):
-            continue
-        if stripped.startswith('#'):
-            continue
-        depth += stripped.count('{') - stripped.count('}')
-        if depth < 0:
-            raise ValueError(
-                "Line %d: unmatched closing brace" % lineno)
-    if depth != 0:
-        raise ValueError(
-            "End of file: unbalanced braces (depth=%d)" % depth)
-
-
-# ---- Invariant checker ----
-def _check_buffer_invariants(lines):
-    """Check buffer acquire/release pairs in every wrapper function.
-
-    For each function containing c2py_acquire_buffer:
-      - Every acquire must have a matching acq_X = 1 on the next line.
-      - The first acquire may return NULL on failure (no cleanup needed).
-      - Subsequent acquires must goto cleanup on failure.
-      - Cleanup must release every acquired buffer in reverse order.
-    """
-    lineno = 0
-    while lineno < len(lines):
-        line = lines[lineno]
-        stripped = line.strip()
-
-        if stripped.startswith('static PyObject*'):
-            _check_one_wrapper(lines, lineno)
-            # Find next function (skip past current line first)
-            lineno += 1
-            while lineno < len(lines) and 'static PyObject*' not in lines[lineno]:
-                lineno += 1
-        else:
-            lineno += 1
-
-
-# ---- Invariant checker ----
-def _check_one_wrapper(lines, start_lineno):
-    """Check buffer / GIL invariants for a single wrapper function.
-
-    We scan from start_lineno until the matching closing brace at depth 0
-    to locate the function body, then verify structured properties.
-    """
-    first_brace = None
-    depth = 0
-    end_lineno = None
-    for i in range(start_lineno, len(lines)):
-        stripped = lines[i].strip()
-        depth += stripped.count('{') - stripped.count('}')
-        if '{' in stripped and first_brace is None:
-            first_brace = i
-        if depth == 0 and first_brace is not None:
-            end_lineno = i
-            break
-
-    if end_lineno is None or first_brace is None:
-        return  # malformed function, leave to brace checker
-
-    # -- Scan body for invariants --
-    body_start = first_brace
-
-    # Collect buffer variable names and acq flag names
-    buf_names = []  # in order of Py_buffer decl
-    acq_names = set()  # from int acq_X = 0;
-    pending_acquires = []  # buffers seen in acquire but not yet flagged with acq_X=1
-    acquired = []  # ordered list of buffer names acquired (from acq_X = 1;)
-    released = []  # ordered list of buffer names released in cleanup
-    acquire_count = 0
-    in_cleanup = False
-    gil_save_count = 0
-    gil_restore_count = 0
-
-    for lineno in range(body_start, end_lineno + 1):
-        line = lines[lineno]
-        stripped = line.strip()
-
-        # Skip comments and preprocessor directives
-        if not stripped or stripped.startswith('/*') or stripped.startswith('*'):
-            continue
-        if stripped.startswith('#'):
-            continue
-
-        # Collect buffer declarations
-        m = re.match(r'\s*Py_buffer\s+(buf_\w+);', line)
-        if m:
-            buf_names.append(m.group(1))
-            continue
-
-        # Collect acq flag declarations
-        m = re.match(r'\s*int\s+(acq_\w+)\s*=\s*0;', line)
-        if m:
-            acq_names.add(m.group(1))
-            continue
-
-        # Detect cleanup label
-        if stripped == 'cleanup:':
-            in_cleanup = True
-            continue
-
-        # Track acquire calls
-        m = re.match(r'.*if\s*\(\s*c2py_acquire_buffer\(([^,]+),\s*&(buf_\w+),', line)
-        if m:
-            buf_name = m.group(2)
-            acquire_count += 1
-            pending_acquires.append(buf_name)
-
-            # Check the next non-blank line for return/goto
-            next_line = None
-            for j in range(lineno + 1, min(lineno + 5, end_lineno + 1)):
-                nl = lines[j].strip()
-                if nl and not nl.startswith('/*') and not nl.startswith('*'):
-                    next_line = nl
-                    break
-
-            if acquire_count == 1:
-                if next_line and 'return NULL' not in next_line:
-                    raise ValueError(
-                        "Line %d: first buffer acquire must return NULL "
-                        "on failure, got: %s" % (lineno + 1, next_line))
-            else:
-                if next_line and 'goto cleanup' not in next_line:
-                    raise ValueError(
-                        "Line %d: subsequent buffer acquire must goto cleanup "
-                        "on failure, got: %s" % (lineno + 1, next_line))
-            continue
-
-        # Track acq_X = 1
-        m = re.match(r'\s*(acq_\w+)\s*=\s*1;', line)
-        if m:
-            flag_name = m.group(1)
-            # Map acq_a -> buf_a (same suffix)
-            exp_buf = re.sub(r'^acq_', 'buf_', flag_name)
-            if exp_buf not in buf_names:
-                raise ValueError(
-                    "Line %d: acq flag '%s' has no matching buf variable "
-                    "'%s'" % (lineno + 1, flag_name, exp_buf))
-            if flag_name not in acq_names:
-                raise ValueError(
-                    "Line %d: acq flag '%s' was not declared" % (
-                        lineno + 1, flag_name))
-            if not pending_acquires or pending_acquires[0] != exp_buf:
-                raise ValueError(
-                    "Line %d: acq flag '%s' set but no pending acquire "
-                    "for '%s'" % (lineno + 1, flag_name, exp_buf))
-            pending_acquires.pop(0)
-            acquired.append(exp_buf)
-            continue
-
-        # Both return/goto are expected intermediate lines between acquire and acq flag
-        if pending_acquires and (stripped.startswith('return')
-                                  or stripped.startswith('goto')
-                                  or stripped.startswith('if')
-                                  or stripped.startswith('{')
-                                  or stripped.startswith('}')):
-            continue
-
-        # Track releases in cleanup
-        if in_cleanup:
-            m = re.match(r'\s*if\s*\(\s*(acq_\w+)\s*\)\s*c2py_release_buffer\(&(buf_\w+)\);', line)
-            if m:
-                released.append(m.group(2))
-                continue
-
-        # Track GIL save/restore
-        if 'PyEval_SaveThread' in stripped:
-            gil_save_count += 1
-        if 'PyEval_RestoreThread' in stripped:
-            gil_restore_count += 1
-
-    # -- Post-function checks --
-
-    # Check that all acquires were resolved with acq_X = 1
-    if pending_acquires:
-        raise ValueError(
-            "Function starting at line %d: buffer(s) '%s' acquired but "
-            "never flagged with acq_X = 1" % (
-                start_lineno + 1, ', '.join(pending_acquires)))
-
-    # Check that every acquired buffer has a matching release in cleanup
-    for buf in acquired:
-        if buf not in released:
-            raise ValueError(
-                "Function starting at line %d: buffer '%s' acquired but "
-                "not released in cleanup" % (start_lineno + 1, buf))
-
-    # Check that all releases are of previously acquired buffers
-    for buf in reversed(released):
-        if buf not in acquired:
-            raise ValueError(
-                "Function starting at line %d: buffer '%s' released but "
-                "never acquired" % (start_lineno + 1, buf))
-
-    # Check release order: must be reverse of acquisition
-    expected_reverse = list(reversed(acquired))
-    if released and released != expected_reverse:
-        raise ValueError(
-            "Function starting at line %d: release order mismatch. "
-            "Expected reverse of acquire: %s, got: %s" % (
-                start_lineno + 1, expected_reverse, released))
-
-    # Check GIL save/restore balance
-    if gil_save_count != gil_restore_count:
-        raise ValueError(
-            "Function starting at line %d: unbalanced GIL save/restore "
-            "(%d save vs %d restore)" % (
-                start_lineno + 1, gil_save_count, gil_restore_count))
-
-
-# ---- Invariant checker ----
-def _check_output_scalar_invariants(lines):
-    """Check that every output PyObject has NULL check + PyTuple_SetItem.
-
-    Scan for patterns like:
-        PyObject *_c2py_objN = PyLong_From*(...)
-      which must be followed by:
-        if (_c2py_objN == NULL) { ... }
-        PyTuple_SetItem(_c2py_tup, N, _c2py_objN);
-
-    Also check that PyTuple_New is NULL-checked.
-    """
-    for lineno, line in enumerate(lines, 1):
-        stripped = line.strip()
-
-        # Check PyTuple_New has NULL check
-        m = re.match(r'PyObject\s*\*\s*_c2py_tup\s*=\s*PyTuple_New\(', stripped)
-        if m:
-            next_line = None
-            for j in range(lineno, min(lineno + 3, len(lines) + 1)):
-                nl = lines[j - 1].strip()
-                if nl and not nl.startswith('/*') and not nl.startswith('*') and 'PyTuple_New' not in nl:
-                    next_line = nl
-                    break
-            if next_line and '_c2py_tup == NULL' not in next_line:
-                raise ValueError(
-                    "Line %d: PyTuple_New missing NULL check, got: %s" % (
-                        lineno, next_line))
-
-        # Check PyObject creation followed by NULL check + Tuple_SetItem
-        m = re.match(
-            r'PyObject\s*\*\s*(_c2py_obj\d+)\s*='
-            r'\s*(PyLong_FromLong|PyLong_FromLongLong|'
-            r'PyLong_FromUnsignedLongLong|PyFloat_FromDouble)',
-            stripped)
-        if m:
-            obj_name = m.group(1)
-            # Check subsequent lines for:
-            #   if (_c2py_objN == NULL) {
-            #       Py_DECREF(_c2py_tup);
-            #       return NULL;
-            #   }
-            #   PyTuple_SetItem(_c2py_tup, N, _c2py_objN);
-            has_null_check = False
-            has_decref = False
-            has_setitem = False
-            in_null_block = False
-
-            for j in range(lineno, min(lineno + 10, len(lines) + 1)):
-                nl = lines[j - 1].strip()
-                if not nl or nl.startswith('/*') or nl.startswith('*'):
-                    continue
-                if 'if (%s == NULL)' % obj_name in nl:
-                    in_null_block = True
-                    has_null_check = True
-                    continue
-                if in_null_block:
-                    if 'Py_DECREF(_c2py_tup)' in nl:
-                        has_decref = True
-                    if 'return NULL' in nl:
-                        pass  # expected after Py_DECREF
-                    if '}' == nl:
-                        in_null_block = False
-                        continue
-                if 'PyTuple_SetItem(_c2py_tup,' in nl and obj_name in nl:
-                    has_setitem = True
-
-            if not has_null_check:
-                raise ValueError(
-                    "Line %d: '%s' missing NULL check" % (lineno, obj_name))
-            if not has_decref:
-                raise ValueError(
-                    "Line %d: '%s' missing Py_DECREF in NULL check" % (
-                        lineno, obj_name))
-            if not has_setitem:
-                raise ValueError(
-                    "Line %d: '%s' missing PyTuple_SetItem" % (lineno, obj_name))
-

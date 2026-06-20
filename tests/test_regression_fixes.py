@@ -706,7 +706,7 @@ def test_I_unsupported_return_error_message():
 
 def test_checker_catches_broken_int64():
     """Verify the C invariant checker catches the original int64_t bug pattern."""
-    from c2py23.generator import _verify_c_invariants
+    from c2py23.invariant_checker import verify_c_invariants as _verify_c_invariants
 
     # Simulate the broken pattern: missing NULL check + PyTuple_SetItem
     bad_code = """
