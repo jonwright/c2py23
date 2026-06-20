@@ -12,10 +12,8 @@ from c2py23.parser import (
     _FORMAT_TO_CTYPE,
 )
 from c2py23.generator import (
-    _FORMAT_CHAR_TO_NAME,
     _expr_to_c, _expr_to_source, _expr_refers_to,
     _expr_is_count_or_len,
-    _extract_fmt_from_expr,
     _escape_c_str, _float_literal,
     _get_buf_flags,
     _emit_check,
@@ -23,8 +21,6 @@ from c2py23.generator import (
     _emit_restrict_checks,
     _emit_contiguity_checks as _emit_contiguity_checks_orig,
     _doc, _mod_doc,
-    _build_parse_format,
-    _collect_void_ptr_names,
     _is_ptr_expr,
 )
 

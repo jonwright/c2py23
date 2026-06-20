@@ -14,7 +14,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from c2py23.parser import load_c2py
 from c2py23 import generator as g_orig
 from c2py23 import generator_builder as g_builder
-from c2py23 import generator_ast as g_ast
 
 RUNTIME_DIR = 'c2py23/runtime'
 CASES_DIR = 'tests/cases'
@@ -22,7 +21,6 @@ CASES_DIR = 'tests/cases'
 GENERATORS = [
     ('original', g_orig),
     ('builder', g_builder),
-    ('ast', g_ast),
 ]
 
 def strip_c_comments(code):
@@ -100,54 +98,36 @@ def main():
 
         results[case_name] = hashes
 
-        # Check which match
         o = hashes.get('original')
         b = hashes.get('builder')
-        a = hashes.get('ast')
 
-        if o is None or b is None or a is None:
-            print('  FAIL/ERROR on %s: o=%s b=%s a=%s' % (
-                case_name, hashes.get('original'), hashes.get('builder'), hashes.get('ast')))
+        if o is None or b is None:
+            print('  FAIL on %s: orig=%s builder=%s' % (
+                case_name, o, b))
             continue
 
-        match_str = ''
-        if o == b:
-            match_str += ' orig=builder'
-        if o == a:
-            match_str += ' orig=ast'
-        if b == a:
-            match_str += ' builder=ast'
-        if not match_str:
-            match_str = ' ALL DIFFER'
+        match_str = 'MATCH' if o == b else 'DIFFER'
 
-        o_str = hashes.get('original', '')[0:12] if hashes.get('original') else 'FAIL'
-    b_str = hashes.get('builder', '')[0:12] if hashes.get('builder') else 'FAIL'
-    a_str = hashes.get('ast', '')[0:12] if hashes.get('ast') else 'FAIL'
-    print('%-20s original=%-14s builder=%-14s ast=%-14s [%s]' % (
-        case_name, o_str, b_str, a_str, match_str))
+        o_str = o[:12]
+        b_str = b[:12]
+        print('%-20s original=%-14s builder=%-14s [%s]' % (
+            case_name, o_str, b_str, match_str))
 
     # Summary
     print()
-    totals = {'original': 0, 'builder': 0, 'ast': 0}
-    matches = {'orig_builder': 0, 'orig_ast': 0, 'builder_ast': 0}
+    compiled = {'original': 0, 'builder': 0}
     for case_name, hs in results.items():
-        for k in totals:
+        for k in compiled:
             if hs.get(k) is not None:
-                totals[k] += 1
-        if hs.get('original') is not None and hs.get('builder') is not None \
-           and hs['original'] == hs['builder']:
-            matches['orig_builder'] += 1
-        if hs.get('original') is not None and hs.get('ast') is not None \
-           and hs['original'] == hs['ast']:
-            matches['orig_ast'] += 1
-        if hs.get('builder') is not None and hs.get('ast') is not None \
-           and hs['builder'] == hs['ast']:
-            matches['builder_ast'] += 1
-
-    print('Cases compiled: original=%d builder=%d ast=%d' % (
-        totals['original'], totals['builder'], totals['ast']))
-    print('Object file matches: orig=builder=%d  orig=ast=%d  builder=ast=%d' % (
-        matches['orig_builder'], matches['orig_ast'], matches['builder_ast']))
+                compiled[k] += 1
+    matches = sum(1 for hs in results.values()
+                  if hs.get('original') is not None
+                  and hs.get('builder') is not None
+                  and hs['original'] == hs['builder'])
+    total = len(results)
+    print('Cases compiled: original=%d builder=%d' % (
+        compiled['original'], compiled['builder']))
+    print('Object file matches: %d/%d' % (matches, total))
 
 
 if __name__ == '__main__':

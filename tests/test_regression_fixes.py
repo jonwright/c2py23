@@ -754,11 +754,10 @@ _good_impl(Py_buffer *buf)
     test_passed()
 
 
-def test_three_generators_compile_all_cases():
-    """Verify all 3 generators produce compilable C for every test case."""
-    from c2py23.parser import load_c2py, _parse_c_sig
+def test_two_generators_compile_all_cases():
+    """Verify both generators produce compilable C for every test case."""
+    from c2py23.parser import load_c2py
     from c2py23.generator_builder import generate as gen_builder
-    from c2py23.generator_ast import generate as gen_ast
     from c2py23.generator import generate as gen_orig
     import subprocess
     import tempfile
@@ -778,8 +777,7 @@ def test_three_generators_compile_all_cases():
         mod = load_c2py(c2py_file)
 
         for gen_name, gen_func in [('original', gen_orig),
-                                    ('builder', gen_builder),
-                                    ('ast', gen_ast)]:
+                                    ('builder', gen_builder)]:
             try:
                 code = gen_func(mod)
             except Exception as e:

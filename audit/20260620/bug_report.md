@@ -1,47 +1,69 @@
-# Bug: PyModule_Create2 ABI version is wrong (1013 vs 3)
+# Bug: Python 3.15t refuses non-FT PyModuleDef (m_slots missing Py_mod_gil)
 
 ## Root cause
 
-c2py23's generator emits `PyModule_Create2((PyModuleDef*)&_module_def_ft, 1013)`.
+Python 3.14t silently auto-enables the GIL for modules whose `PyModuleDef` does
+not declare free-threading support.  Python 3.15t hard-rejects them at
+`PyModule_Create2` time.
 
-`1013` is `PYTHON_API_VERSION` (from `patchlevel.h`).  `PyModule_Create2` takes
-`PYTHON_ABI_VERSION` which is `3` across all CPython versions (>= 3.10
-confirmed; defined in `modsupport.h`, value unchanged since PEP 384).
+The c2py23 generated FT module def sets `m_slots = NULL`:
 
-On Python 3.14t the wrong value is silently tolerated.  On Python 3.15t it
-triggers:
-
+```c
+static PyModuleDef_FT _module_def_ft = {
+    PyModuleDef_HEAD_INIT_FT,
+    "_cImageD11",
+    "...",
+    -1,
+    NULL,        /* methods set at init */
+    NULL, NULL, NULL, NULL   /* m_slots = NULL  <--- PROBLEM */
+};
 ```
-SystemError: invalid PyModuleDef, extension possibly compiled for
-non-free-threaded Python
-```
+
+The post-creation `PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED)` call
+(line 48627 in the wrapper) runs AFTER `PyModule_Create2`, by which point 3.15t
+has already rejected the module.
+
+## Additional bug (also fixed)
+
+The `PyModule_Create2` ABI version was `1013` (`PYTHON_API_VERSION`) instead of
+`3` (`PYTHON_ABI_VERSION`).  Fixed in generator.py (commit on branch).  This
+was not the root cause on 3.15t (3.14t tolerated the wrong value).
 
 ## Where
 
-Generated code line (wrapper):
+- `c2py23/generator.py`: generates `_module_def_ft` with `m_slots = NULL` and
+  calls `PyUnstable_Module_SetGIL` after module creation.
+- `c2py23/runtime/c2py_runtime.h`: `m_slots` typed as `void*`, no `Py_mod_gil`
+  or `PyModuleDef_Slot` defined.
 
-```c
-module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);
-```
+## Fix required
 
-Generator (`c2py23/generator.py` lines 1757, 1763, 1770): hardcoded literal `1013` passed to `Module_Create2`.
+When `free_threading: true`:
 
-## Fix
+1. Define `PyModuleDef_Slot` struct and `Py_mod_gil`/`Py_MOD_GIL_NOT_USED`
+   constants in c2py_runtime.h:
+   ```c
+   typedef struct { int slot; void *value; } PyModuleDef_Slot;
+   #define Py_mod_gil 2
+   #define Py_MOD_GIL_NOT_USED ((void*)1)
+   ```
 
-Change `1013` to `3` in the generator.  `PYTHON_ABI_VERSION` is stable since
-PEP 384 (Python 3.2+) and is `3` on all interpreters.
+2. In the generator, emit a static slots array and point `m_slots` at it:
+   ```c
+   static PyModuleDef_Slot _slots[] = {
+       {Py_mod_gil, Py_MOD_GIL_NOT_USED},
+       {0, NULL}
+   };
+   ```
+   and set `_module_def_ft.m_slots = _slots`.
+
+3. The post-creation `PyUnstable_Module_SetGIL` call is redundant once m_slots
+   declares FT support (can be kept as fallback for 3.14t).
 
 ## Verification
 
-- Python 3.15t: currently fails with `SystemError` (above)
-- Python 3.14t: works despite wrong value (lenient check)
-- All GIL-enabled pythons: works (use `PyModule_Create2` via dlsym, not
-  necessarily guarded strictly)
-
-## Reproducer
-
-```c
-// Compile against any Python 3.15+ headers, run on 3.15t:
-PyObject *m = PyModule_Create2(&moddef, PYTHON_ABI_VERSION);  // OK
-PyObject *m = PyModule_Create2(&moddef, 1013);                // FAILS
-```
+- Python 3.15t: `PyModule_Create2` rejects module with `m_slots = NULL`
+- Python 3.14t: tolerated `m_slots = NULL` (auto-enables GIL)
+- Minimal reproducer with `#include <Python.h>` and `m_slots` pointing to
+  `(PyModuleDef_Slot[]){{Py_mod_gil, Py_MOD_GIL_NOT_USED}, {0, NULL}}` imports
+  successfully on 3.15t (confirmed).
