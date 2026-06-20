@@ -744,3 +744,18 @@ For each task, produce a short report with this structure:
 
 **Verification:** <test results, e.g. "All 14 test_uniform tests pass", "Regression test added and passes">
 ```
+
+### Task O (golden-file tests) — DEFERRED
+
+The long-string-append pattern in `generator.py` (hundreds of `out.append(...)` calls)
+is prone to logical errors: re-ordering the list can forget a cleanup, grab/release
+the GIL at the wrong moment, or subtly break the generated C invariants. A golden-file
+approach is too brittle. The better path is to add an invariant-checking pass that
+walks the generated AST and verifies structural properties (every error path releases
+all buffers, GIL restore always precedes Python object construction, etc.) without
+comparing against a snapshot.
+
+### Task T (FT globals audit) — DEFERRED
+
+Low risk since FT is opt-in. Review when FT usage increases.
+```
