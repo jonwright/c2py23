@@ -26,15 +26,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: ABI diagnostic
+      - name: ABI diagnostic (Python)
         run: python tests/abi_diag.py
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: ABI diagnostic (C compile)
+        run: python tests/abi_check_win.py
 
       - name: Install c2py23
         run: |
           pip install -e . --quiet
-
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build test modules
         env:
