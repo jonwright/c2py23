@@ -86,6 +86,13 @@ int main(void) {
                (char*)&b.internal - (char*)&b);
     }
 
+    /* --- Free-threading slot number --- */
+#ifdef Py_mod_gil
+    printf("PY_MOD_GIL            %d\n", Py_mod_gil);
+#else
+    printf("PY_MOD_GIL            N/A\n");
+#endif
+
     /* --- PyMethodDef flags --- */
     printf("FLAG METH_VARARGS    0x%04x\n", METH_VARARGS);
     printf("FLAG METH_KEYWORDS   0x%04x\n", METH_KEYWORDS);

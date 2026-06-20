@@ -172,8 +172,10 @@ typedef struct {
     void *value;
 } PyModuleDef_Slot;
 
-/* Slot IDs (stable across CPython versions) */
-#define Py_mod_gil  2
+/* Py_MOD_GIL_NOT_USED: signal that this module supports free-threading.
+ * Value is (void*)1 = Py_MOD_GIL_NOT_USED (stable across CPython 3.13+).
+ * The slot NUMBER (Py_mod_gil) changed from 4 (3.13-3.14) to 87 (3.15+).
+ * That value is determined at runtime via C2PY.py_mod_gil_slot. */
 #define Py_MOD_GIL_NOT_USED  ((void*)1)
 
 /* ------------------------------------------------------------------ */
@@ -223,6 +225,7 @@ typedef struct {
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
     ptrdiff_t ob_refcnt_offset;    /* offset of ob_refcnt (or ob_ref_shared on FT) in PyObject */
+    int py_mod_gil_slot;           /* Py_mod_gil slot number (4 for 3.13-3.14, 87 for 3.15+) */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
