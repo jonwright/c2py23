@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 from c2py23.parser import load_c2py
 from c2py23 import generator as g_orig
-from c2py23 import generator_builder as g_builder
+from c2py23 import generator as g_builder
 
 RUNTIME_DIR = 'c2py23/runtime'
 CASES_DIR = 'tests/cases'

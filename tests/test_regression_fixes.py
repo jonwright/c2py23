@@ -757,8 +757,8 @@ _good_impl(Py_buffer *buf)
 def test_two_generators_compile_all_cases():
     """Verify both generators produce compilable C for every test case."""
     from c2py23.parser import load_c2py
-    from c2py23.generator_builder import generate as gen_builder
-    from c2py23.generator import generate as gen_orig
+    from c2py23.generator_reference import generate as gen_ref
+    from c2py23.generator import generate as gen_builder
     import subprocess
     import tempfile
     import os
@@ -776,7 +776,7 @@ def test_two_generators_compile_all_cases():
         c2py_file = os.path.join(case_dir, c2py_files[0])
         mod = load_c2py(c2py_file)
 
-        for gen_name, gen_func in [('original', gen_orig),
+        for gen_name, gen_func in [('reference', gen_ref),
                                     ('builder', gen_builder)]:
             try:
                 code = gen_func(mod)
