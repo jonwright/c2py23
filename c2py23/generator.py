@@ -157,6 +157,98 @@ class CBuilder:
             '    PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});'.format(index))
 
 
+    # -- Restrict and contiguity checks --
+
+    def emit_restrict_checks(self, buf_params, func):
+        """Emit restrict alias checks between writable buffers."""
+        writable = set()
+        const_set = set()
+        for p in buf_params:
+            for ol in func.overloads:
+                if ol.variants:
+                    all_params = []
+                    for v in ol.variants:
+                        all_params.extend(v.params)
+                    for cp in all_params:
+                        if cp.is_pointer:
+                            expr = ol.map_exprs.get(cp.name)
+                            if expr is not None and _expr_refers_to(expr, p.name):
+                                if cp.is_const:
+                                    const_set.add(p.name)
+                                else:
+                                    writable.add(p.name)
+                else:
+                    for cp in ol.params:
+                        if cp.is_pointer:
+                            expr = ol.map_exprs.get(cp.name)
+                            if expr is not None and _expr_refers_to(expr, p.name):
+                                if cp.is_const:
+                                    const_set.add(p.name)
+                                else:
+                                    writable.add(p.name)
+
+        checked = set()
+        for wn in writable:
+            for other in list(writable | const_set):
+                if other == wn:
+                    continue
+                pair = tuple(sorted([wn, other]))
+                if pair in checked:
+                    continue
+                checked.add(pair)
+                self.emit('    /* restrict check: {} vs {} */'.format(wn, other))
+                self.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(wn, other))
+                self.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(wn, other))
+                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
+                self.emit('        goto cleanup;')
+                self.emit('    }')
+                self.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(other, wn))
+                self.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(other, wn))
+                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
+                self.emit('        goto cleanup;')
+                self.emit('    }')
+                self.emit('')
+
+    def emit_contiguity_checks(self, buf_params):
+        """Emit contiguity validation for each buffer."""
+        if not buf_params:
+            return
+
+        for p in buf_params:
+            name = p.name
+            fmt = lambda s: s.format(name)
+            self.emit('    /* contiguity check: {0} */'.format(name))
+            self.emit('    do {')
+            self.emit('        int _ok = 1;')
+            self.emit('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
+            self.emit(fmt('        if (buf_{0}.ndim >= 1) {{'))
+            self.emit(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
+            self.emit('            int _d;')
+            self.emit('            /* check F-contiguous (column-major): first dim varies fastest */')
+            self.emit(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
+            self.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+            self.emit('            }')
+            self.emit('            if (_ok) break;')
+            self.emit('            /* check C-contiguous (row-major): last dim varies fastest */')
+            self.emit('            _ok = 1;')
+            self.emit(fmt('            _expected = buf_{0}.itemsize;'))
+            self.emit(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
+            self.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+            self.emit('            }')
+            self.emit('        }')
+            self.emit('        if (!_ok) {')
+            self.emit('            PyErr_SetString(PyExc_ValueError,')
+            self.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
+            self.emit('            goto cleanup;')
+            self.emit('        }')
+            self.emit('    } while(0);')
+            self.emit('')
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers (imported from original generator for expression work)
 # ---------------------------------------------------------------------------
@@ -1136,8 +1228,7 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
                 b.emit('    double c_%s = %s;' % (p.name, _float_literal(default_val)))
 
     for p in buf_params:
-        b.emit('    Py_buffer buf_{0};'.format(p.name))
-        b.emit('    int acq_{0} = 0;'.format(p.name))
+        b.declare_buffer('buf_' + p.name)
 
     b.emit('    PyObject *ret = NULL;')
 
@@ -1147,108 +1238,6 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
         b.emit('    if (_c2py_do_time) _c2py_t0 = c2py_ticks();')
 
     b.emit('')
-
-
-# ---- Buffer and wrapper helpers ----
-def _emit_restrict_checks(b, buf_params, func):
-    """Emit restrict alias checks between buffers.
-
-    Any non-const pointer must not alias with any other pointer.
-    """
-    writable = set()
-    const_set = set()
-    for p in buf_params:
-        for ol in func.overloads:
-            if ol.variants:
-                all_params = []
-                for v in ol.variants:
-                    all_params.extend(v.params)
-                for cp in all_params:
-                    if cp.is_pointer:
-                        expr = ol.map_exprs.get(cp.name)
-                        if expr is not None and _expr_refers_to(expr, p.name):
-                            if cp.is_const:
-                                const_set.add(p.name)
-                            else:
-                                writable.add(p.name)
-            else:
-                for cp in ol.params:
-                    if cp.is_pointer:
-                        expr = ol.map_exprs.get(cp.name)
-                        if expr is not None and _expr_refers_to(expr, p.name):
-                            if cp.is_const:
-                                const_set.add(p.name)
-                            else:
-                                writable.add(p.name)
-
-    # Check writable vs writable, and writable vs const
-    checked = set()
-    for wn in writable:
-        for other in list(writable | const_set):
-            if other == wn:
-                continue
-            pair = tuple(sorted([wn, other]))
-            if pair in checked:
-                continue
-            checked.add(pair)
-            b.emit('    /* restrict check: {} vs {} */'.format(wn, other))
-            b.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(wn, other))
-            b.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(wn, other))
-            b.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-            b.emit('        goto cleanup;')
-            b.emit('    }')
-            b.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(other, wn))
-            b.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(other, wn))
-            b.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-            b.emit('        goto cleanup;')
-            b.emit('    }')
-            b.emit('')
-
-
-# ---- Buffer and wrapper helpers ----
-def _emit_contiguity_checks(b, buf_params):
-    """Emit contiguity validation for each buffer.
-
-    Accepts C-contiguous and Fortran-contiguous layouts.
-    Rejects strided arrays, negative strides, indirect buffers.
-    """
-    if not buf_params:
-        return
-
-    for p in buf_params:
-        name = p.name
-        fmt = lambda s: s.format(name)
-        b.emit('    /* contiguity check: {0} */'.format(name))
-        b.emit('    do {')
-        b.emit('        int _ok = 1;')
-        b.emit('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
-        b.emit(fmt('        if (buf_{0}.ndim >= 1) {{'))
-        b.emit(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
-        b.emit('            int _d;')
-        b.emit('            /* check F-contiguous (column-major): first dim varies fastest */')
-        b.emit(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
-        b.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-        b.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-        b.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
-        b.emit('            }')
-        b.emit('            if (_ok) break;')
-        b.emit('            /* check C-contiguous (row-major): last dim varies fastest */')
-        b.emit('            _ok = 1;')
-        b.emit(fmt('            _expected = buf_{0}.itemsize;'))
-        b.emit(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
-        b.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-        b.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-        b.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
-        b.emit('            }')
-        b.emit('        }')
-        b.emit('        if (!_ok) {')
-        b.emit('            PyErr_SetString(PyExc_ValueError,')
-        b.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
-        b.emit('            goto cleanup;')
-        b.emit('        }')
-        b.emit('    } while(0);')
-        b.emit('')
-
 
 # ---------------------------------------------------------------------------
 # Expression transpiler: AST -> C code string
@@ -1265,24 +1254,19 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         b.emit('    memset(&buf_{0}, 0, C2PY.pybuffer_size);'.format(p.name))
     b.emit('')
 
-    # Acquire buffers
+    # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)
     for i, p in enumerate(buf_params):
         flags = _get_buf_flags(p, func)
         want_write = 'PyBUF_WRITABLE' in flags
         write_val = 'C2PY_BUF_WRITE' if want_write else 'C2PY_BUF_READ'
-        b.emit('    if (c2py_acquire_buffer(py_{0}, &buf_{0}, {1}) == -1)'.format(p.name, write_val))
-        if i == 0:
-            b.emit('        return NULL;')
-        else:
-            b.emit('        goto cleanup;')
-        b.emit('    acq_{0} = 1;'.format(p.name))
+        b.acquire_buffer('buf_' + p.name, 'py_' + p.name, write_val)
         b.emit('')
 
     # Restrict checks
-    _emit_restrict_checks(b, buf_params, func)
+    b.emit_restrict_checks(buf_params, func)
 
     # Contiguity checks
-    _emit_contiguity_checks(b, buf_params)
+    b.emit_contiguity_checks(buf_params)
 
     # Call impl (with timing ticks around it)
     impl_args = []
@@ -1299,10 +1283,7 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     b.emit('')
 
     # Cleanup
-    if len(buf_params) >= 1:
-        b.emit('cleanup:')
-    for p in reversed(buf_params):
-        b.emit('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
+    b.enter_cleanup()
 
     if timing:
         b.emit('')
