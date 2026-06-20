@@ -423,12 +423,16 @@ static void _c2py_runtime_init_once(void)
      * Fall back to enumerating known versioned DLL names for Python
      * installations that do not ship python3.dll (e.g. Python 2.7). */
     {
+        /* Prefer versioned DLLs: python3.dll is the stable-ABI
+         * forwarder which may not export all symbols (e.g. Python 3.9
+         * does not export PyObject_GetBuffer from python3.dll). */
         static const char *candidates[] = {
-            "python3.dll",
             "python315.dll", "python314.dll", "python313.dll",
             "python312.dll", "python311.dll", "python310.dll",
             "python39.dll", "python38.dll", "python37.dll",
-            "python36.dll", "python27.dll", NULL
+            "python36.dll", "python27.dll",
+            "python3.dll",
+            NULL
         };
         int i;
         for (i = 0; candidates[i]; i++) {
