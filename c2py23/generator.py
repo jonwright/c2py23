@@ -860,11 +860,6 @@ def _emit_module_init(b, module_def, has_free_threading,
     b.emit('};')
     b.emit('')
 
-    # Free-threading slot table (Py_mod_gil populated at init, not compile time)
-    if has_free_threading:
-        b.emit('static PyModuleDef_Slot _slots[2];')
-        b.emit('')
-
     b.emit('static PyModuleDef_FT _module_def_ft = {')
     b.emit('    PyModuleDef_HEAD_INIT_FT,')
     b.emit('    "{}",'.format(name))
@@ -874,10 +869,7 @@ def _emit_module_init(b, module_def, has_free_threading,
         b.emit('    NULL,')
     b.emit('    -1,')
     b.emit('    NULL,  /* methods set at init */')
-    if has_free_threading:
-        b.emit('    _slots,  /* m_slots */')
-    else:
-        b.emit('    NULL,  /* m_slots */')
+    b.emit('    NULL,  /* m_slots = NULL (single-phase init; PyUnstable_Module_SetGIL handles FT) */')
     b.emit('    NULL, NULL, NULL')
     b.emit('};')
     b.emit('')
@@ -902,12 +894,6 @@ def _emit_module_init(b, module_def, has_free_threading,
     b.emit('')
     b.emit('    if (C2PY.is_free_threaded) {')
     b.emit('        _module_def_ft.m_methods = methods;')
-    if has_free_threading:
-        b.emit('        _slots[0].slot = C2PY.py_mod_gil_slot;')
-        b.emit('        _slots[0].value = Py_MOD_GIL_NOT_USED;')
-        b.emit('        _slots[1].slot = 0;')
-        b.emit('        _slots[1].value = NULL;')
-        b.emit('        _module_def_ft.m_slots = _slots;')
     b.emit('        if (C2PY.Module_Create2 != NULL) {')
     b.emit(
         '            module = C2PY.Module_Create2('

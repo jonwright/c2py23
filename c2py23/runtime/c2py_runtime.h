@@ -203,11 +203,18 @@ typedef struct {
 #define PyModuleDef_HEAD_INIT { {1, NULL}, NULL, 0, NULL }
 
 /* Module init macro for free-threaded builds (PyObject is 32 bytes).
- * ob_ref_shared = 1, ob_type = NULL, m_init = NULL, m_index = 0, m_copy = NULL.
+ * ob_type = NULL, m_init = NULL, m_index = 0, m_copy = NULL.
  * ob_mutex is zeroed via {0} (PyMutex is struct { uint8_t _bits; }).
- * Other PyObject fields (ob_tid, ob_flags, ob_gc_bits, ob_ref_local) are zeroed. */
+ * ob_flags = _Py_STATICALLY_ALLOCATED_FLAG (4), ob_ref_local =
+ * _Py_IMMORTAL_REFCNT_LOCAL (UINT32_MAX), ob_ref_shared = 0.
+ * These match the actual CPython 3.14t/3.15t PyModuleDef_HEAD_INIT(NULL)
+ * expansion.  Earlier versions used 0/0/1 which 3.14t tolerated but 3.15t
+ * hard-rejects. */
+#define _Py_STATICALLY_ALLOCATED_FLAG (1 << 2)
+#define _Py_IMMORTAL_REFCNT_LOCAL     0xFFFFFFFFU
 #define PyModuleDef_HEAD_INIT_FT \
-    { {0, 0, {0}, 0, 0, 1, NULL}, NULL, 0, NULL}
+    { {0, _Py_STATICALLY_ALLOCATED_FLAG, {0}, 0, \
+       _Py_IMMORTAL_REFCNT_LOCAL, 0, NULL}, NULL, 0, NULL}
 
 /* ------------------------------------------------------------------ */
 /* Function pointer table - populated by c2py_runtime_init()          */
@@ -225,7 +232,6 @@ typedef struct {
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
     ptrdiff_t ob_refcnt_offset;    /* offset of ob_refcnt (or ob_ref_shared on FT) in PyObject */
-    int py_mod_gil_slot;           /* Py_mod_gil slot number (4 for 3.13-3.14, 87 for 3.15+) */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);

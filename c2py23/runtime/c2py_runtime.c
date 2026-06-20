@@ -435,12 +435,6 @@ static void _c2py_runtime_init_once(void)
     /* --- Fastcall support (METH_FASTCALL stable ABI since 3.12) --- */
     C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
 
-    /* --- Free-threading slot value (Py_mod_gil) ---
-     * The slot number changed from 4 (3.13-3.14) to 87 (3.15+).
-     * This is a #define in CPython headers, not a dlsym-able symbol,
-     * so we detect it at runtime via version number. */
-    C2PY.py_mod_gil_slot = (C2PY.version_major >= 3 && C2PY.version_minor >= 15) ? 87 : 4;
-
     /* --- Argument parsing (required) --- */
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
     RESOLVE(C2PY.ParseTupleAndKeywords, "PyArg_ParseTupleAndKeywords");
