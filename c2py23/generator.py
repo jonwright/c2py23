@@ -207,7 +207,7 @@ def generate(module_def):
     # Timing declarations (use original for the helper functions)
     if module_def.timing:
         from c2py23.generator import _emit_timing_decls
-        _emit_timing_decls(b.lines, module_def)
+        _emit_timing_decls(b, module_def)
 
     # GIL release declarations
     if has_gil_release:
@@ -221,11 +221,11 @@ def generate(module_def):
 
     # Per-function emission
     for func in module_def.functions:
-        _emit_function_builder(b, func, module_def.name,
+        _emit_function(b, func, module_def.name,
                                module_def.timing, has_gil_release)
 
     # Module init
-    _emit_module_init_builder(b, module_def, has_free_threading,
+    _emit_module_init(b, module_def, has_free_threading,
                               has_gil_release)
 
     code = b.get_code()
@@ -237,7 +237,7 @@ def generate(module_def):
 # Function-level emission (CBuilder pattern)
 # ---------------------------------------------------------------------------
 
-def _emit_function_builder(b, func, module_name, timing, has_gil_release):
+def _emit_function(b, func, module_name, timing, has_gil_release):
     name = func.name
     buf_params = [p for p in func.py_params if p.pytype == 'buffer']
     scalar_params = [p for p in func.py_params if p.pytype != 'buffer']
@@ -249,14 +249,14 @@ def _emit_function_builder(b, func, module_name, timing, has_gil_release):
 
     has_groups = any(ol.variants for ol in func.overloads)
     if has_groups:
-        _emit_static_dispatch_builder(b, func, buf_params, scalar_params)
+        _emit_static_dispatch(b, func, buf_params, scalar_params)
 
-    _emit_impl_func_builder(b, func, buf_params, scalar_params,
+    _emit_impl_func(b, func, buf_params, scalar_params,
                             timing, has_gil_release)
 
     # Wrapper functions (VARARGS + FASTCALL)
-    _emit_varargs_wrapper(b.lines, func, buf_params, scalar_params, timing)
-    _emit_fastcall_wrapper(b.lines, func, buf_params, scalar_params, timing)
+    _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing)
+    _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing)
 
     b.assert_gil_balanced(name)
 
@@ -265,7 +265,7 @@ def _emit_function_builder(b, func, module_name, timing, has_gil_release):
 # Static dispatch (grouped overloads)
 # ---------------------------------------------------------------------------
 
-def _emit_static_dispatch_builder(b, func, buf_params, scalar_params):
+def _emit_static_dispatch(b, func, buf_params, scalar_params):
     name = func.name
     groups = [(i, ol) for i, ol in enumerate(func.overloads) if ol.variants]
 
@@ -339,7 +339,7 @@ def _emit_static_dispatch_builder(b, func, buf_params, scalar_params):
 # Impl function
 # ---------------------------------------------------------------------------
 
-def _emit_impl_func_builder(b, func, buf_params, scalar_params,
+def _emit_impl_func(b, func, buf_params, scalar_params,
                             timing, has_gil_release):
     name = func.name
     void_ptr_names = _collect_void_ptr_names(func)
@@ -376,10 +376,10 @@ def _emit_impl_func_builder(b, func, buf_params, scalar_params,
     # Checks
     for check in func.checks:
         b.emit('    /* check: {0} */'.format(_expr_to_source(check)))
-        _emit_check(b.lines, check, buf_params, scalar_params)
+        _emit_check(b, check, buf_params, scalar_params)
 
     # Overload dispatch
-    _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
+    _emit_overload_dispatch(b, func, buf_params, scalar_params,
                                     timing, has_gil_release)
 
     b.emit_blank()
@@ -398,7 +398,7 @@ def _emit_impl_func_builder(b, func, buf_params, scalar_params,
 # Overload dispatch emission
 # ---------------------------------------------------------------------------
 
-def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
+def _emit_overload_dispatch(b, func, buf_params, scalar_params,
                                     timing, has_gil_release):
     name = func.name
     overloads = func.overloads
@@ -407,7 +407,7 @@ def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
 
     has_groups = any(ol.variants for ol in overloads)
     if not has_groups:
-        _emit_flat_dispatch_builder(b, overloads, buf_params, scalar_params,
+        _emit_flat_dispatch(b, overloads, buf_params, scalar_params,
                                     timing, name, gil, default_raise)
         return
 
@@ -439,7 +439,7 @@ def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
                     ol.map_exprs, v.when_expr,
                     name=v.name, outputs=v.outputs, c_name=v.c_name)
                 b.emit('        case {0}: {{'.format(vi))
-                _emit_c_call_builder(b, syn_ol, buf_params, scalar_params,
+                _emit_c_call(b, syn_ol, buf_params, scalar_params,
                                      timing, name, gil,
                                      indent='                ')
                 b.emit('            break;')
@@ -449,13 +449,13 @@ def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
             group_index += 1
         else:
             b.emit('        /* {0} */'.format(ol.sig_str))
-            _emit_c_call_builder(b, ol, buf_params, scalar_params,
+            _emit_c_call(b, ol, buf_params, scalar_params,
                                  timing, name, gil,
                                  indent='        ')
 
     if default_raise:
         b.emit('    } else {')
-        _emit_default_raise_body(b.lines, default_raise)
+        _emit_default_raise_body(b, default_raise)
     b.emit('    }')
 
 
@@ -463,12 +463,12 @@ def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
 # Flat dispatch emission
 # ---------------------------------------------------------------------------
 
-def _emit_flat_dispatch_builder(b, overloads, buf_params, scalar_params,
+def _emit_flat_dispatch(b, overloads, buf_params, scalar_params,
                                 timing, name, gil, default_raise):
     if len(overloads) == 1 and overloads[0].when_expr is None:
         b.emit('    /* overload 0 (always) */')
         b.emit('    {')
-        _emit_c_call_builder(b, overloads[0], buf_params, scalar_params,
+        _emit_c_call(b, overloads[0], buf_params, scalar_params,
                              timing, name, gil)
         b.emit('    }')
         return
@@ -487,12 +487,12 @@ def _emit_flat_dispatch_builder(b, overloads, buf_params, scalar_params,
             else:
                 b.emit('    } else {  /* overload {0} (always) */'.format(i))
         b.emit('        /* {0} */'.format(ol.sig_str))
-        _emit_c_call_builder(b, ol, buf_params, scalar_params,
+        _emit_c_call(b, ol, buf_params, scalar_params,
                              timing, name, gil)
 
     if default_raise:
         b.emit('    } else {')
-        _emit_default_raise_body(b.lines, default_raise)
+        _emit_default_raise_body(b, default_raise)
     b.emit('    }')
 
 
@@ -502,7 +502,7 @@ def _emit_flat_dispatch_builder(b, overloads, buf_params, scalar_params,
 # C call emission
 # ---------------------------------------------------------------------------
 
-def _emit_c_call_builder(b, ol, buf_params, scalar_params,
+def _emit_c_call(b, ol, buf_params, scalar_params,
                          timing, func_name, gil_release_call=False,
                          indent=None):
     if indent is None:
@@ -688,7 +688,9 @@ def _emit_c_call_builder(b, ol, buf_params, scalar_params,
 
 # ---------------------------------------------------------------------------
 
-def _emit_module_init_builder(b, module_def, has_free_threading,
+
+# ---- Module support ----
+def _emit_module_init(b, module_def, has_free_threading,
                               has_gil_release):
     name = module_def.name
     has_timing = module_def.timing
@@ -839,7 +841,7 @@ def _emit_module_init_builder(b, module_def, has_free_threading,
     b.emit('    }')
     b.emit('')
     b.emit('    if (module != NULL) {')
-    _emit_constants(b.lines, module_def)
+    _emit_constants(b, module_def)
     if has_free_threading:
         b.emit('        if (C2PY.Unstable_Module_SetGIL != NULL) {')
         b.emit('            C2PY.Unstable_Module_SetGIL(module, (void*)1);'
@@ -862,7 +864,7 @@ def _emit_module_init_builder(b, module_def, has_free_threading,
     b.emit(
         '        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
     b.emit('    if (module != NULL) {')
-    _emit_constants(b.lines, module_def)
+    _emit_constants(b, module_def)
     b.emit('    }')
     b.emit('}')
 
@@ -882,18 +884,24 @@ _FORMAT_CHAR_TO_NAME = {
 }
 
 
+
+# ---- Expression transpilation ----
 def _is_ptr_expr(expr):
     """Check if expression is a .ptr access."""
     if isinstance(expr, Attr) and expr.attr == 'ptr':
         return True
     return False
 
+
+# ---- Expression transpilation ----
 def _expr_is_count_or_len(expr):
     """Check if expression is a buffer .n (element count) or .len (byte length)."""
     if isinstance(expr, Attr) and expr.attr in ('n', 'len'):
         return True
     return False
 
+
+# ---- String and numeric formatting ----
 def _escape_c_str(s):
     """Escape a string for use in a C string literal."""
     s = s.replace('\\', '\\\\')
@@ -903,6 +911,8 @@ def _escape_c_str(s):
     s = s.replace('\t', '\\t')
     return s
 
+
+# ---- String and numeric formatting ----
 def _float_literal(value):
     """Convert a Python float to a C double literal string.
     Handles whole-number floats (3.0 -> 3.0) and fractions."""
@@ -916,6 +926,8 @@ def _float_literal(value):
 # Generated C invariant checker
 # ---------------------------------------------------------------------------
 
+
+# ---- Expression transpilation ----
 def _expr_refers_to(expr, buf_name):
     """Check if an expression refers to a specific buffer param."""
     if isinstance(expr, Var):
@@ -932,6 +944,8 @@ def _expr_refers_to(expr, buf_name):
         return _expr_refers_to(expr.operand, buf_name)
     return False
 
+
+# ---- Expression helpers ----
 def _build_parse_format(py_params, func=None):
     """Build the PyArg_ParseTuple format string.
 
@@ -957,6 +971,8 @@ def _build_parse_format(py_params, func=None):
             fmt += 'd'
     return fmt
 
+
+# ---- Expression transpilation ----
 def _expr_to_c(expr, buf_params, scalar_params, current_ol):
     """Transpile an expression AST node to a C expression string."""
     if expr is None:
@@ -1059,6 +1075,8 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
     else:
         raise ValueError("Unknown expression type: {}".format(type(expr)))
 
+
+# ---- Expression transpilation ----
 def _expr_to_source(expr):
     """Convert an AST node back to its source form (for comments/error messages)."""
     if isinstance(expr, Var):
@@ -1098,6 +1116,8 @@ _FORMAT_CHAR_TO_NAME = {
     'Z': 'complex64', 'z': 'complex128',
 }
 
+
+# ---- Expression transpilation ----
 def _extract_fmt_from_expr(expr, param_name, fmt_chars):
     """Recursively extract format char comparisons from an expression tree."""
     if isinstance(expr, Compare) and expr.op == '==':
@@ -1112,6 +1132,8 @@ def _extract_fmt_from_expr(expr, param_name, fmt_chars):
     elif isinstance(expr, UnaryOp):
         _extract_fmt_from_expr(expr.operand, param_name, fmt_chars)
 
+
+# ---- Buffer and wrapper helpers ----
 def _get_buf_flags(buf_param, func):
     """Determine PyObject_GetBuffer flags for a buffer param.
 
@@ -1150,6 +1172,8 @@ def _get_buf_flags(buf_param, func):
     else:
         return 'PyBUF_STRIDES | PyBUF_FORMAT'
 
+
+# ---- Expression helpers ----
 def _is_simple_expr(expr):
     """Check if an expression is simple enough to inline in a format string."""
     if isinstance(expr, (Var, IntLit)):
@@ -1164,6 +1188,8 @@ def _is_simple_expr(expr):
         return False  # arithmetic is never simple
     return False
 
+
+# ---- Check emission and diagnostics ----
 def _make_compare_diag(compare, buf_params, scalar_params):
     """Generate diagnostic C code for a Compare expression."""
     left = compare.left
@@ -1227,6 +1253,8 @@ def _make_compare_diag(compare, buf_params, scalar_params):
 
     return None
 
+
+# ---- Check emission and diagnostics ----
 def _make_check_diag(check, buf_params, scalar_params):
     """Generate C code to capture actual runtime values for a check failure message.
 
@@ -1243,7 +1271,9 @@ def _make_check_diag(check, buf_params, scalar_params):
         return _make_check_diag(check.right, buf_params, scalar_params)
     return None
 
-def _emit_check(out, check, buf_params, scalar_params):
+
+# ---- Check emission and diagnostics ----
+def _emit_check(b, check, buf_params, scalar_params):
     """Emit a check that raises if condition is false.
 
     For single-char format comparisons on old buffers (format == NULL),
@@ -1255,19 +1285,21 @@ def _emit_check(out, check, buf_params, scalar_params):
     c_expr = _expr_to_c(check, buf_params, scalar_params, None)
     msg = _expr_to_source(check)
     diag = _make_check_diag(check, buf_params, scalar_params)
-    out.append('    if (!(' + c_expr + ')) {')
+    b.emit('    if (!(' + c_expr + ')) {')
     if diag:
-        out.append('        ' + diag[0])
+        b.emit('        ' + diag[0])
         if len(diag) > 1:
             for d in diag[1:]:
-                out.append('        ' + d)
-        out.append('        PyErr_SetString(PyExc_ValueError, _c2py_err);')
+                b.emit('        ' + d)
+        b.emit('        PyErr_SetString(PyExc_ValueError, _c2py_err);')
     else:
-        out.append('        PyErr_SetString(PyExc_ValueError, "check failed: ' + _escape_c_str(msg) + '");')
-    out.append('        return NULL;')
-    out.append('    }')
+        b.emit('        PyErr_SetString(PyExc_ValueError, "check failed: ' + _escape_c_str(msg) + '");')
+    b.emit('        return NULL;')
+    b.emit('    }')
 
-def _emit_default_raise_body(out, default_raise):
+
+# ---- Check emission and diagnostics ----
+def _emit_default_raise_body(b, default_raise):
     """Emit the body of a default raise block."""
     if ':' in default_raise:
         exc_type, msg = default_raise.split(':', 1)
@@ -1277,14 +1309,16 @@ def _emit_default_raise_body(out, default_raise):
         exc_type = 'TypeError'
         msg = default_raise
     exc_name = 'PyExc_' + exc_type
-    out.append('        PyErr_SetString(' + exc_name + ', "{}");'.format(_escape_c_str(msg)))
-    out.append('        return NULL;')
+    b.emit('        PyErr_SetString(' + exc_name + ', "{}");'.format(_escape_c_str(msg)))
+    b.emit('        return NULL;')
 
 
 # ---------------------------------------------------------------------------
 # _wrapper function (arg parsing, buffer acquire, cleanup)
 # ---------------------------------------------------------------------------
 
+
+# ---- Buffer and wrapper helpers ----
 def _collect_void_ptr_names(func):
     """Return set of scalar param names that map to C void* in any overload."""
     if func is None:
@@ -1304,44 +1338,48 @@ def _collect_void_ptr_names(func):
                         result.add(expr.name)
     return result
 
-def _emit_wrapper_locals(out, buf_params, scalar_params, func, timing=False):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
     """Emit local variable declarations shared by both wrappers."""
     void_ptr_names = _collect_void_ptr_names(func)
     for p in buf_params:
-        out.append('    PyObject *py_' + p.name + ' = NULL;')
+        b.emit('    PyObject *py_' + p.name + ' = NULL;')
     for p in scalar_params:
         default_val = p.default
         if p.pytype == 'int':
             if p.name in void_ptr_names:
                 if default_val is None:
-                    out.append('    intptr_t c_%s = 0;' % p.name)
+                    b.emit('    intptr_t c_%s = 0;' % p.name)
                 else:
-                    out.append('    intptr_t c_%s = %d;' % (p.name, int(default_val)))
+                    b.emit('    intptr_t c_%s = %d;' % (p.name, int(default_val)))
             else:
                 if default_val is None:
-                    out.append('    int c_%s = 0;' % p.name)
+                    b.emit('    int c_%s = 0;' % p.name)
                 else:
-                    out.append('    int c_%s = %d;' % (p.name, int(default_val)))
+                    b.emit('    int c_%s = %d;' % (p.name, int(default_val)))
         else:
             if default_val is None:
-                out.append('    double c_%s = 0.0;' % p.name)
+                b.emit('    double c_%s = 0.0;' % p.name)
             else:
-                out.append('    double c_%s = %s;' % (p.name, _float_literal(default_val)))
+                b.emit('    double c_%s = %s;' % (p.name, _float_literal(default_val)))
 
     for p in buf_params:
-        out.append('    Py_buffer buf_{0};'.format(p.name))
-        out.append('    int acq_{0} = 0;'.format(p.name))
+        b.emit('    Py_buffer buf_{0};'.format(p.name))
+        b.emit('    int acq_{0} = 0;'.format(p.name))
 
-    out.append('    PyObject *ret = NULL;')
+    b.emit('    PyObject *ret = NULL;')
 
     if timing:
-        out.append('    int _c2py_do_time = _c2py_timing_enabled;')
-        out.append('    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;')
-        out.append('    if (_c2py_do_time) _c2py_t0 = c2py_ticks();')
+        b.emit('    int _c2py_do_time = _c2py_timing_enabled;')
+        b.emit('    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;')
+        b.emit('    if (_c2py_do_time) _c2py_t0 = c2py_ticks();')
 
-    out.append('')
+    b.emit('')
 
-def _emit_restrict_checks(out, buf_params, func):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_restrict_checks(b, buf_params, func):
     """Emit restrict alias checks between buffers.
 
     Any non-const pointer must not alias with any other pointer.
@@ -1382,20 +1420,22 @@ def _emit_restrict_checks(out, buf_params, func):
             if pair in checked:
                 continue
             checked.add(pair)
-            out.append('    /* restrict check: {} vs {} */'.format(wn, other))
-            out.append('    if (buf_{0}.buf >= buf_{1}.buf && '.format(wn, other))
-            out.append('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(wn, other))
-            out.append('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-            out.append('        goto cleanup;')
-            out.append('    }')
-            out.append('    if (buf_{0}.buf >= buf_{1}.buf && '.format(other, wn))
-            out.append('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(other, wn))
-            out.append('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-            out.append('        goto cleanup;')
-            out.append('    }')
-            out.append('')
+            b.emit('    /* restrict check: {} vs {} */'.format(wn, other))
+            b.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(wn, other))
+            b.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(wn, other))
+            b.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
+            b.emit('        goto cleanup;')
+            b.emit('    }')
+            b.emit('    if (buf_{0}.buf >= buf_{1}.buf && '.format(other, wn))
+            b.emit('        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(other, wn))
+            b.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
+            b.emit('        goto cleanup;')
+            b.emit('    }')
+            b.emit('')
 
-def _emit_contiguity_checks(out, buf_params):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_contiguity_checks(b, buf_params):
     """Emit contiguity validation for each buffer.
 
     Accepts C-contiguous and Fortran-contiguous layouts.
@@ -1407,69 +1447,71 @@ def _emit_contiguity_checks(out, buf_params):
     for p in buf_params:
         name = p.name
         fmt = lambda s: s.format(name)
-        out.append('    /* contiguity check: {0} */'.format(name))
-        out.append('    do {')
-        out.append('        int _ok = 1;')
-        out.append('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
-        out.append(fmt('        if (buf_{0}.ndim >= 1) {{'))
-        out.append(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
-        out.append('            int _d;')
-        out.append('            /* check F-contiguous (column-major): first dim varies fastest */')
-        out.append(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
-        out.append(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-        out.append(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-        out.append(fmt('                _expected *= buf_{0}.shape[_d];'))
-        out.append('            }')
-        out.append('            if (_ok) break;')
-        out.append('            /* check C-contiguous (row-major): last dim varies fastest */')
-        out.append('            _ok = 1;')
-        out.append(fmt('            _expected = buf_{0}.itemsize;'))
-        out.append(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
-        out.append(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-        out.append(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-        out.append(fmt('                _expected *= buf_{0}.shape[_d];'))
-        out.append('            }')
-        out.append('        }')
-        out.append('        if (!_ok) {')
-        out.append('            PyErr_SetString(PyExc_ValueError,')
-        out.append('                "buffer not contiguous (C or Fortran contiguous required)");')
-        out.append('            goto cleanup;')
-        out.append('        }')
-        out.append('    } while(0);')
-        out.append('')
+        b.emit('    /* contiguity check: {0} */'.format(name))
+        b.emit('    do {')
+        b.emit('        int _ok = 1;')
+        b.emit('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
+        b.emit(fmt('        if (buf_{0}.ndim >= 1) {{'))
+        b.emit(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
+        b.emit('            int _d;')
+        b.emit('            /* check F-contiguous (column-major): first dim varies fastest */')
+        b.emit(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
+        b.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+        b.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+        b.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+        b.emit('            }')
+        b.emit('            if (_ok) break;')
+        b.emit('            /* check C-contiguous (row-major): last dim varies fastest */')
+        b.emit('            _ok = 1;')
+        b.emit(fmt('            _expected = buf_{0}.itemsize;'))
+        b.emit(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
+        b.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
+        b.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
+        b.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+        b.emit('            }')
+        b.emit('        }')
+        b.emit('        if (!_ok) {')
+        b.emit('            PyErr_SetString(PyExc_ValueError,')
+        b.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
+        b.emit('            goto cleanup;')
+        b.emit('        }')
+        b.emit('    } while(0);')
+        b.emit('')
 
 
 # ---------------------------------------------------------------------------
 # Expression transpiler: AST -> C code string
 # ---------------------------------------------------------------------------
 
-def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = '_perf_' + name
 
     # Initialize buffers
     for p in buf_params:
-        out.append('    memset(&buf_{0}, 0, C2PY.pybuffer_size);'.format(p.name))
-    out.append('')
+        b.emit('    memset(&buf_{0}, 0, C2PY.pybuffer_size);'.format(p.name))
+    b.emit('')
 
     # Acquire buffers
     for i, p in enumerate(buf_params):
         flags = _get_buf_flags(p, func)
         want_write = 'PyBUF_WRITABLE' in flags
         write_val = 'C2PY_BUF_WRITE' if want_write else 'C2PY_BUF_READ'
-        out.append('    if (c2py_acquire_buffer(py_{0}, &buf_{0}, {1}) == -1)'.format(p.name, write_val))
+        b.emit('    if (c2py_acquire_buffer(py_{0}, &buf_{0}, {1}) == -1)'.format(p.name, write_val))
         if i == 0:
-            out.append('        return NULL;')
+            b.emit('        return NULL;')
         else:
-            out.append('        goto cleanup;')
-        out.append('    acq_{0} = 1;'.format(p.name))
-        out.append('')
+            b.emit('        goto cleanup;')
+        b.emit('    acq_{0} = 1;'.format(p.name))
+        b.emit('')
 
     # Restrict checks
-    _emit_restrict_checks(out, buf_params, func)
+    _emit_restrict_checks(b, buf_params, func)
 
     # Contiguity checks
-    _emit_contiguity_checks(out, buf_params)
+    _emit_contiguity_checks(b, buf_params)
 
     # Call impl (with timing ticks around it)
     impl_args = []
@@ -1479,37 +1521,39 @@ def _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing=False)
         impl_args.append('c_' + p.name)
 
     if timing:
-        out.append('    if (_c2py_do_time) _c2py_t1 = c2py_ticks();')
-    out.append('    ret = _{0}_impl({1});'.format(name, ', '.join(impl_args)))
+        b.emit('    if (_c2py_do_time) _c2py_t1 = c2py_ticks();')
+    b.emit('    ret = _{0}_impl({1});'.format(name, ', '.join(impl_args)))
     if timing:
-        out.append('    if (_c2py_do_time) _c2py_t2 = c2py_ticks();')
-    out.append('')
+        b.emit('    if (_c2py_do_time) _c2py_t2 = c2py_ticks();')
+    b.emit('')
 
     # Cleanup
     if len(buf_params) >= 1:
-        out.append('cleanup:')
+        b.emit('cleanup:')
     for p in reversed(buf_params):
-        out.append('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
+        b.emit('    if (acq_{0}) c2py_release_buffer(&buf_{0});'.format(p.name))
 
     if timing:
-        out.append('')
-        out.append('    if (_c2py_do_time) {')
-        out.append('        c2py_perf_record(&{0}, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());'.format(perf_name))
-        out.append('    }')
+        b.emit('')
+        b.emit('    if (_c2py_do_time) {')
+        b.emit('        c2py_perf_record(&{0}, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());'.format(perf_name))
+        b.emit('    }')
 
-    out.append('    return ret;')
+    b.emit('    return ret;')
 
-def _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing):
     """Emit the METH_VARARGS wrapper (Python 2.7 through 3.11)."""
     name = func.name
     all_params = func.py_params
 
-    out.append('static PyObject*')
-    out.append('_' + name + '_wrapper(PyObject *self, PyObject *args)')
-    out.append('{')
+    b.emit('static PyObject*')
+    b.emit('_' + name + '_wrapper(PyObject *self, PyObject *args)')
+    b.emit('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params, func, timing)
+    _emit_wrapper_locals(b, buf_params, scalar_params, func, timing)
 
     # Arg parse via PyArg_ParseTuple
     fmt_str = _build_parse_format(all_params, func)
@@ -1521,46 +1565,48 @@ def _emit_varargs_wrapper(out, func, buf_params, scalar_params, timing):
             parse_args.append('&c_' + p.name)
         else:
             parse_args.append('&c_' + p.name)
-    out.append('    if (!PyArg_ParseTuple({}))'.format(', '.join(parse_args)))
-    out.append('        return NULL;')
-    out.append('')
+    b.emit('    if (!PyArg_ParseTuple({}))'.format(', '.join(parse_args)))
+    b.emit('        return NULL;')
+    b.emit('')
 
     # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing)
+    _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing)
 
-    out.append('}')
-    out.append('')
+    b.emit('}')
+    b.emit('')
 
-def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
+
+# ---- Buffer and wrapper helpers ----
+def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
     """Emit the METH_FASTCALL wrapper (Python >= 3.12)."""
     name = func.name
     all_params = func.py_params
 
-    out.append('static PyObject*')
-    out.append('_' + name + '_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)')
-    out.append('{')
+    b.emit('static PyObject*')
+    b.emit('_' + name + '_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)')
+    b.emit('{')
 
     # Local variables
-    _emit_wrapper_locals(out, buf_params, scalar_params, func, timing)
+    _emit_wrapper_locals(b, buf_params, scalar_params, func, timing)
 
     # Arg count check (handle optional params with defaults)
     total = len(all_params)
     min_req = sum(1 for p in all_params if p.default is None)
     if min_req == total:
-        out.append('    if (nargs != {0}) {{'.format(total))
-        out.append('        PyErr_SetString(PyExc_TypeError,')
-        out.append('            \"{0} expects {1} argument{2}\");'.format(
+        b.emit('    if (nargs != {0}) {{'.format(total))
+        b.emit('        PyErr_SetString(PyExc_TypeError,')
+        b.emit('            \"{0} expects {1} argument{2}\");'.format(
             name, total, 's' if total != 1 else ''))
-        out.append('        return NULL;')
-        out.append('    }')
+        b.emit('        return NULL;')
+        b.emit('    }')
     else:
-        out.append('    if (nargs < {0} || nargs > {1}) {{'.format(min_req, total))
-        out.append('        PyErr_SetString(PyExc_TypeError,')
-        out.append('            \"{0} expects {1} to {2} arguments\");'.format(
+        b.emit('    if (nargs < {0} || nargs > {1}) {{'.format(min_req, total))
+        b.emit('        PyErr_SetString(PyExc_TypeError,')
+        b.emit('            \"{0} expects {1} to {2} arguments\");'.format(
             name, min_req, total))
-        out.append('        return NULL;')
-        out.append('    }')
-    out.append('')
+        b.emit('        return NULL;')
+        b.emit('    }')
+    b.emit('')
 
     # Extract args directly from the array (only up to nargs)
     void_ptr_names = _collect_void_ptr_names(func)
@@ -1568,42 +1614,44 @@ def _emit_fastcall_wrapper(out, func, buf_params, scalar_params, timing):
     for p in all_params:
         is_optional = (p.default is not None)
         if p.pytype == 'buffer':
-            out.append('    py_{0} = args[{1}];'.format(p.name, idx))
+            b.emit('    py_{0} = args[{1}];'.format(p.name, idx))
         elif p.pytype == 'int':
-            out.append('    /* extract int: {0} from args[{1}]{2} */'.format(
+            b.emit('    /* extract int: {0} from args[{1}]{2} */'.format(
                 p.name, idx, ' (optional)' if is_optional else ''))
             if is_optional:
-                out.append('    if (nargs > {0}) {{'.format(idx))
+                b.emit('    if (nargs > {0}) {{'.format(idx))
             else:
-                out.append('    {')
-            out.append('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
-            out.append('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
+                b.emit('    {')
+            b.emit('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
+            b.emit('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
             if p.name in void_ptr_names:
-                out.append('        c_{0} = (intptr_t)_c2py_tmp;'.format(p.name))
+                b.emit('        c_{0} = (intptr_t)_c2py_tmp;'.format(p.name))
             else:
-                out.append('        c_{0} = (int)_c2py_tmp;'.format(p.name))
-            out.append('    }')
+                b.emit('        c_{0} = (int)_c2py_tmp;'.format(p.name))
+            b.emit('    }')
         else:
-            out.append('    /* extract float: {0} from args[{1}]{2} */'.format(
+            b.emit('    /* extract float: {0} from args[{1}]{2} */'.format(
                 p.name, idx, ' (optional)' if is_optional else ''))
             if is_optional:
-                out.append('    if (nargs > {0}) {{'.format(idx))
+                b.emit('    if (nargs > {0}) {{'.format(idx))
             else:
-                out.append('    {')
-            out.append('        double _c2py_tmp = PyFloat_AsDouble(args[{0}]);'.format(idx))
-            out.append('        if (_c2py_tmp == -1.0 && PyErr_Occurred()) return NULL;')
-            out.append('        c_{0} = _c2py_tmp;'.format(p.name))
-            out.append('    }')
+                b.emit('    {')
+            b.emit('        double _c2py_tmp = PyFloat_AsDouble(args[{0}]);'.format(idx))
+            b.emit('        if (_c2py_tmp == -1.0 && PyErr_Occurred()) return NULL;')
+            b.emit('        c_{0} = _c2py_tmp;'.format(p.name))
+            b.emit('    }')
         idx += 1
 
-    out.append('')
+    b.emit('')
 
     # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(out, func, buf_params, scalar_params, name, timing)
+    _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing)
 
-    out.append('}')
-    out.append('')
+    b.emit('}')
+    b.emit('')
 
+
+# ---- Docstring generation ----
 def _overload_map_lines(ol, indent):
     """Build Map: and Outputs: description lines for an overload or group.
     Returns a list of strings."""
@@ -1634,6 +1682,8 @@ def _overload_map_lines(ol, indent):
 
     return lines
 
+
+# ---- Docstring generation ----
 def _derive_param_info(param_name, checks, overloads):
     """Auto-derive parameter description info from checks and overloads.
     Returns a list of description strings (one per line)."""
@@ -1707,7 +1757,9 @@ def _derive_param_info(param_name, checks, overloads):
 
     return info
 
-def _emit_constants(out, mod):
+
+# ---- Module support ----
+def _emit_constants(b, mod):
     """Emit PyObject_SetAttrString calls for module-level integer constants,
     timing perf struct pointers, and GIL release flags."""
     has_gil = any(f.gil_release for f in mod.functions)
@@ -1715,71 +1767,75 @@ def _emit_constants(out, mod):
         return
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
-            out.append('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
-            out.append('            PyLong_FromLong({}));'.format(cvalue))
+            b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
+            b.emit('            PyLong_FromLong({}));'.format(cvalue))
     if mod.timing:
-        out.append('        PyObject_SetAttrString(module, "_c2py_timing_enabled",')
-        out.append('            PyLong_FromVoidPtr(&_c2py_timing_enabled));')
+        b.emit('        PyObject_SetAttrString(module, "_c2py_timing_enabled",')
+        b.emit('            PyLong_FromVoidPtr(&_c2py_timing_enabled));')
         for func in mod.functions:
-            out.append('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
-            out.append('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
+            b.emit('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
+            b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
             for ol in func.overloads:
                 if ol.variants:
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                         perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
-                        out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
-                        out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                        b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                        b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                     perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
-                    out.append('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
-                    out.append('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                    b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                    b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
     if has_gil:
-        out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
-        out.append('            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));')
+        b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
+        b.emit('            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));')
         for func in mod.functions:
             if func.gil_release:
-                out.append('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
-                out.append('            PyLong_FromVoidPtr(&_gil_release_{0}));'.format(func.name))
+                b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
+                b.emit('            PyLong_FromVoidPtr(&_gil_release_{0}));'.format(func.name))
 
-def _emit_timing_decls(out, mod):
+
+# ---- Module support ----
+def _emit_timing_decls(b, mod):
     """Emit global timing declarations: enabled flag, perf structs, tick API."""
-    out.append('/* ---- Performance timing ---- */')
-    out.append('static int _c2py_timing_enabled = 1;')
-    out.append('')
+    b.emit('/* ---- Performance timing ---- */')
+    b.emit('static int _c2py_timing_enabled = 1;')
+    b.emit('')
     for func in mod.functions:
-        out.append('static c2py_perf_t _perf_{0};'.format(func.name))
+        b.emit('static c2py_perf_t _perf_{0};'.format(func.name))
         for ol in func.overloads:
             if ol.variants:
                 for v in ol.variants:
                     c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
-                    out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+                    b.emit('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
             else:
                 c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
-                out.append('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
-    out.append('')
-    out.append('/* Python-callable: return tick source frequency in Hz */')
-    out.append('static PyObject*')
-    out.append('__c2py_tick_frequency(PyObject *self, PyObject *args) {')
-    out.append('    (void)self;')
-    out.append('    if (!PyArg_ParseTuple(args, ""))')
-    out.append('        return NULL;')
-    out.append('    return PyLong_FromUnsignedLongLong(c2py_tick_frequency());')
-    out.append('}')
-    out.append('')
-    out.append('/* Python-callable: convert ticks to nanoseconds at given frequency */')
-    out.append('static PyObject*')
-    out.append('__c2py_ticks_to_ns(PyObject *self, PyObject *args) {')
-    out.append('    unsigned long long ticks, freq_hz;')
-    out.append('    (void)self;')
-    out.append('    if (!PyArg_ParseTuple(args, "KK", &ticks, &freq_hz))')
-    out.append('        return NULL;')
-    out.append('    return PyLong_FromUnsignedLongLong(')
-    out.append('        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));')
-    out.append('}')
-    out.append('')
+                b.emit('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+    b.emit('')
+    b.emit('/* Python-callable: return tick source frequency in Hz */')
+    b.emit('static PyObject*')
+    b.emit('__c2py_tick_frequency(PyObject *self, PyObject *args) {')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, ""))')
+    b.emit('        return NULL;')
+    b.emit('    return PyLong_FromUnsignedLongLong(c2py_tick_frequency());')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Python-callable: convert ticks to nanoseconds at given frequency */')
+    b.emit('static PyObject*')
+    b.emit('__c2py_ticks_to_ns(PyObject *self, PyObject *args) {')
+    b.emit('    unsigned long long ticks, freq_hz;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "KK", &ticks, &freq_hz))')
+    b.emit('        return NULL;')
+    b.emit('    return PyLong_FromUnsignedLongLong(')
+    b.emit('        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));')
+    b.emit('}')
+    b.emit('')
 
+
+# ---- Docstring generation ----
 def _mod_doc(mod):
     """Build a module-level docstring.
     Returns a string with module info, or empty string if no info."""
@@ -1805,6 +1861,8 @@ def _mod_doc(mod):
         parts.append("GIL release: {}".format(", ".join(gil_funcs)))
     return "\n".join(parts)
 
+
+# ---- Docstring generation ----
 def _doc(func):
     """Build a fully transparent docstring for a function.
     Every piece of YAML info is surfaced: checks, maps, GIL, overloads, outputs.
@@ -1914,162 +1972,8 @@ def _doc(func):
 # Module init
 # ---------------------------------------------------------------------------
 
-def _emit_module_init(out, mod, has_free_threading=False):
-    name = mod.name
-    has_gil = any(f.gil_release for f in mod.functions)
-    has_variants = any(any(ol.variants for ol in f.overloads) for f in mod.functions)
-    has_attrs = mod.constants or mod.timing or has_gil
-    out.append('')
-    out.append('/* ' + '-' * 44 + ' */')
-    out.append('/* Module definition                          */')
-    out.append('/* ' + '-' * 44 + ' */')
-    out.append('')
 
-    # --- VARARGS method table (Python < 3.12) ---
-    out.append('static PyMethodDef _methods_varargs[] = {')
-    for func in mod.functions:
-        out.append('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(
-            func.name, func.name, _escape_c_str(_doc(func))))
-    if has_variants:
-        for func in mod.functions:
-            if any(ol.variants for ol in func.overloads):
-                out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
-                           .format(func.name))
-                out.append('     "rebind variant for {0}"}},'.format(func.name))
-    if mod.timing:
-        out.append('    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,')
-        out.append('     "return tick source frequency in Hz"},')
-        out.append('    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,')
-        out.append('     "convert (ticks, freq_hz) to nanoseconds"},')
-    out.append('    {NULL, NULL, 0, NULL}')
-    out.append('};')
-    out.append('')
-
-    # --- FASTCALL method table (Python >= 3.12) ---
-    out.append('static PyMethodDef _methods_fastcall[] = {')
-    for func in mod.functions:
-        out.append('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(
-            func.name, func.name, _escape_c_str(_doc(func))))
-    if has_variants:
-        for func in mod.functions:
-            if any(ol.variants for ol in func.overloads):
-                out.append('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'
-                           .format(func.name))
-                out.append('     "rebind variant for {0}"}},'.format(func.name))
-    if mod.timing:
-        out.append('    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,')
-        out.append('     "return tick source frequency in Hz"},')
-        out.append('    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,')
-        out.append('     "convert (ticks, freq_hz) to nanoseconds"},')
-    out.append('    {NULL, NULL, 0, NULL}')
-    out.append('};')
-    out.append('')
-
-    # Module-level docstring
-    mod_doc = _mod_doc(mod)
-    mod_doc_c = _escape_c_str(mod_doc) if mod_doc else None
-
-    # Module definition struct - methods pointer set at init time
-    # GIL-enabled layout (standard CPython)
-    out.append('static PyModuleDef _module_def = {')
-    out.append('    PyModuleDef_HEAD_INIT,')
-    out.append('    "{}",'.format(name))
-    if mod_doc_c:
-        out.append('    "{}",'.format(mod_doc_c))
-    else:
-        out.append('    NULL,')
-    out.append('    -1,')
-    out.append('    NULL,  /* methods set at init */')
-    out.append('    NULL, NULL, NULL, NULL')
-    out.append('};')
-    out.append('')
-
-    # Free-threading slots array (Py_mod_gil for Python 3.15t+)
-    if has_free_threading:
-        out.append('static PyModuleDef_Slot _slots[] = {')
-        out.append('    {Py_mod_gil, Py_MOD_GIL_NOT_USED},')
-        out.append('    {0, NULL}')
-        out.append('};')
-        out.append('')
-
-    # Free-threaded layout (PyModuleDef_FT, PyObject is 32 bytes)
-    out.append('static PyModuleDef_FT _module_def_ft = {')
-    out.append('    PyModuleDef_HEAD_INIT_FT,')
-    out.append('    "{}",'.format(name))
-    if mod_doc_c:
-        out.append('    "{}",'.format(mod_doc_c))
-    else:
-        out.append('    NULL,')
-    out.append('    -1,')
-    out.append('    NULL,  /* methods set at init */')
-    if has_free_threading:
-        out.append('    _slots,  /* m_slots */')
-    else:
-        out.append('    NULL,  /* m_slots */')
-    out.append('    NULL, NULL, NULL')
-    out.append('};')
-    out.append('')
-
-    # Resolve calls at init
-    resolve_calls = ''
-    if has_variants:
-        for func in mod.functions:
-            if any(ol.variants for ol in func.overloads):
-                resolve_calls += '    _resolve_{}();\n'.format(func.name)
-
-    # Python 3 init
-    out.append('PyObject* PyInit_{}(void) {{'.format(name))
-    out.append('    c2py_runtime_init();')
-    if resolve_calls:
-        out.append(resolve_calls.rstrip('\n'))
-    out.append('')
-    out.append('    PyObject *module = NULL;')
-    out.append('    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;')
-    out.append('')
-    out.append('    if (C2PY.is_free_threaded) {')
-    out.append('        _module_def_ft.m_methods = methods;')
-    out.append('        if (C2PY.Module_Create2 != NULL) {')
-    out.append('            module = C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 3);')
-    out.append('        }')
-    out.append('    } else {')
-    out.append('        _module_def.m_methods = methods;')
-    if has_attrs:
-        out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            module = C2PY.Module_Create2(&_module_def, 3);')
-        out.append('        } else {')
-        out.append('            /* Fallback for Python 2.7 where PyModuleDef is not supported */')
-        out.append('            module = C2PY.InitModule_2_7("{}", methods);'.format(name))
-        out.append('        }')
-    else:
-        out.append('        if (C2PY.Module_Create2 != NULL) {')
-        out.append('            module = C2PY.Module_Create2(&_module_def, 3);')
-        out.append('        } else {')
-        out.append('            module = C2PY.InitModule_2_7("{}", methods);'.format(name))
-        out.append('        }')
-    out.append('    }')
-    out.append('')
-    out.append('    if (module != NULL) {')
-    _emit_constants(out, mod)
-    if has_free_threading:
-        out.append('        if (C2PY.Unstable_Module_SetGIL != NULL) {')
-        out.append('            C2PY.Unstable_Module_SetGIL(module, (void*)1);'
-                   '  /* Py_MOD_GIL_NOT_USED */')
-        out.append('        }')
-    out.append('    }')
-    out.append('    return module;')
-    out.append('}')
-    out.append('')
-    # Python 2.7 init (free_threading not applicable -- Python 2.7 has no FT builds)
-    out.append('void init{}(void) {{'.format(name))
-    out.append('    c2py_runtime_init();')
-    out.append(resolve_calls)
-    out.append('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
-    out.append('        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);')
-    out.append('    if (module != NULL) {')
-    _emit_constants(out, mod)
-    out.append('    }')
-    out.append('}')
-
+# ---- Module support ----
 def _verify_c_invariants(code):
     """Check generated C for structural errors before returning.
 
@@ -2086,6 +1990,8 @@ def _verify_c_invariants(code):
     _check_buffer_invariants(lines)
     _check_output_scalar_invariants(lines)
 
+
+# ---- Invariant checker ----
 def _check_balanced_braces(lines):
     """Verify brace depth returns to zero after each function."""
     depth = 0
@@ -2110,6 +2016,8 @@ def _check_balanced_braces(lines):
         raise ValueError(
             "End of file: unbalanced braces (depth=%d)" % depth)
 
+
+# ---- Invariant checker ----
 def _check_buffer_invariants(lines):
     """Check buffer acquire/release pairs in every wrapper function.
 
@@ -2133,6 +2041,8 @@ def _check_buffer_invariants(lines):
         else:
             lineno += 1
 
+
+# ---- Invariant checker ----
 def _check_one_wrapper(lines, start_lineno):
     """Check buffer / GIL invariants for a single wrapper function.
 
@@ -2303,6 +2213,8 @@ def _check_one_wrapper(lines, start_lineno):
             "(%d save vs %d restore)" % (
                 start_lineno + 1, gil_save_count, gil_restore_count))
 
+
+# ---- Invariant checker ----
 def _check_output_scalar_invariants(lines):
     """Check that every output PyObject has NULL check + PyTuple_SetItem.
 
