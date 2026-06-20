@@ -37,6 +37,15 @@ extern "C" {
 #define inline __inline
 #endif
 
+/* DLL export attribute for module init functions.
+ * On Windows the PyInit_<name> symbol must be in the .pyd export
+ * table or Python cannot load the module. */
+#ifdef _WIN32
+#define C2PY_EXPORT __declspec(dllexport)
+#else
+#define C2PY_EXPORT
+#endif
+
 /* ------------------------------------------------------------------ */
 /* Py_ssize_t - must be defined before any struct using it            */
 /* ------------------------------------------------------------------ */

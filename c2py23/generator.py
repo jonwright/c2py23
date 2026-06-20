@@ -882,7 +882,7 @@ def _emit_module_init(b, module_def, has_free_threading,
                 resolve_calls.append('    _resolve_{}();'.format(func.name))
 
     # PyInit (Python 3)
-    b.emit('PyObject* PyInit_{}(void) {{'.format(name))
+    b.emit('C2PY_EXPORT PyObject* PyInit_{}(void) {{'.format(name))
     b.emit('    c2py_runtime_init();')
     for rc in resolve_calls:
         b.emit(rc)
@@ -933,7 +933,7 @@ def _emit_module_init(b, module_def, has_free_threading,
     b.emit('')
 
     # Python 2.7 init
-    b.emit('void init{}(void) {{'.format(name))
+    b.emit('C2PY_EXPORT void init{}(void) {{'.format(name))
     b.emit('    c2py_runtime_init();')
     for rc in resolve_calls:
         b.emit(rc)
