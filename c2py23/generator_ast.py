@@ -627,11 +627,15 @@ def _build_c_call_ast(body, ol, buf_params, scalar_params,
         if expr is None:
             continue
         arg_c = _expr_to_c(expr, buf_params, scalar_params, ol)
+        # Save pre-cast expression for INT_MAX check (must use raw Py_ssize_t)
+        raw_c = arg_c
         # Add casts for void* / type conversion
         if p.is_pointer and _is_ptr_expr(expr):
-            arg_c = '(' + p.ctype + ')' + arg_c
+            raw_c = '(' + p.ctype + ')' + raw_c
+            arg_c = raw_c
         elif p.is_pointer and p.base_type == 'void':
-            arg_c = '(void *)(intptr_t)' + arg_c
+            raw_c = '(void *)(intptr_t)' + raw_c
+            arg_c = raw_c
         elif not p.is_pointer and p.base_type == 'int' and _expr_is_count_or_len(expr):
             arg_c = '(int)(' + arg_c + ')'
         elif not p.is_pointer and p.base_type == 'float':
@@ -642,7 +646,7 @@ def _build_c_call_ast(body, ol, buf_params, scalar_params,
             args.append(arg_c)
         else:
             body.add(CIf(
-                '({0}) > (Py_ssize_t)INT_MAX'.format(arg_c),
+                '({0}) > (Py_ssize_t)INT_MAX'.format(raw_c),
                 CBlock()
                     .add(CStmt('PyErr_SetString(PyExc_ValueError,'
                                ' "buffer too large for int n'
