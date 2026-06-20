@@ -333,6 +333,27 @@ checks:
 - **Alias:** c2py23 checks writable buffer aliasing at runtime; add
   `default_raise:` for a clear error message
 
+### Format char portability: never use `'l'` or `'L'` for fixed-width dispatch
+
+The PEP 3118 format characters `'l'` (signed long) and `'L'` (unsigned long)
+are **platform-sized**: `sizeof(long)` differs between LP64 (Linux/macOS, 8
+bytes) and LLP64 (Windows 64-bit, 4 bytes).  A buffer with format `'l'` has
+8-byte elements on Linux but 4-byte elements on Windows.
+
+**Do not rely on `'l'`/`'L'` for fixed-width dispatch.**  Use the format
+characters that have guaranteed sizes on all platforms:
+
+| Format | C type | Size (all platforms) |
+|--------|--------|---------------------|
+| `'i'` / `'I'` | `int32_t` / `uint32_t` | 4 bytes |
+| `'q'` / `'Q'` | `int64_t` / `uint64_t` | 8 bytes |
+
+c2py23 generates a runtime `itemsize == sizeof(long)` check alongside format
+comparisons for `'l'`/`'L'`, so these characters remain usable if you need
+platform-native `long` semantics.  But the generated `.so` or `.pyd` will
+dispatch to different C code on different platforms -- do not depend on
+`'l'`/`'L'` mapping to a specific fixed-width type.
+
 ### Buffer writability and overload dispatch
 
 When a function has multiple overloads, the wrapper acquires each buffer with

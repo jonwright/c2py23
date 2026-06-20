@@ -844,13 +844,9 @@ _FORMAT_TO_CTYPE = {
     'H': 'uint16_t',
     'i': 'int32_t',
     'I': 'uint32_t',
-    # 'l' and 'L' are platform-sized in PEP 3118 (not fixed-width).
-    # On LP64 they match int64_t/uint64_t; on ILP32 they match int32_t/uint32_t.
-    # We map them to 'int64_t'/'uint64_t' (LP64) and note the portability caveat.
-    # Downstream code on non-LP64 platforms should use 'q'/'Q' for portable
-    # 64-bit dispatch and 'i'/'I' for portable 32-bit dispatch.
-    'l': 'int64_t',
-    'L': 'uint64_t',
+    # 'l' and 'L' are platform-sized (PEP 3118): sizeof(long) differs
+    # between LP64 (8) and LLP64 (4).  They are handled in _expr_to_c
+    # with a runtime itemsize == sizeof(long) check.  See AGENTS.md.
     'q': 'int64_t',
     'Q': 'uint64_t',
     'f': 'float',
@@ -863,7 +859,7 @@ _FORMAT_CHAR_TO_NAME = {
     'h': 'int16', 'H': 'uint16',
     'i': 'int32', 'I': 'uint32',
     'q': 'int64', 'Q': 'uint64',
-    'l': 'int64 (platform)', 'L': 'uint64 (platform)',
+    # 'l'/'L' are platform-sized, handled in _expr_to_c
     'f': 'float32', 'd': 'float64',
     'c': 'char', '?': 'bool', 'e': 'half-float',
     'Z': 'complex64', 'z': 'complex128',
@@ -1213,9 +1209,17 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             if len(str_lit.value) == 1:
                 ch = str_lit.value
                 if op == '==':
-                    return '(!{0} || {0}[strlen({0}) - 1] == \'{1}\')'.format(fmt_expr, ch)
+                    result = '(!{0} || {0}[strlen({0}) - 1] == \'{1}\')'.format(fmt_expr, ch)
                 elif op == '!=':
-                    return '({0} && {0}[strlen({0}) - 1] != \'{1}\')'.format(fmt_expr, ch)
+                    result = '({0} && {0}[strlen({0}) - 1] != \'{1}\')'.format(fmt_expr, ch)
+                # 'l'/'L' are platform-sized in PEP 3118: sizeof(long)
+                # differs between LP64 (8) and LLP64 (4).  Add an
+                # itemsize check so the same .c2py works on both.
+                if ch in ('l', 'L'):
+                    buf_var = fmt_expr[:-8]  # strip '->format'
+                    result = '({0} && {1}->itemsize == (Py_ssize_t)sizeof(long))'.format(
+                        result, buf_var)
+                return result
             if op == '==':
                 return 'strcmp({}, {}) == 0'.format(left, right)
             elif op == '!=':

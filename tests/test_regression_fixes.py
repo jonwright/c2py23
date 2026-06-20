@@ -96,14 +96,26 @@ def test_B3_proper_paren_matching():
 
 
 def test_B4_L_format_char_in_C_TYPES_INT():
-    """B4: 'L' mapping must point to a type in _C_TYPES_INT to avoid false P4 errors."""
-    assert 'L' in _FORMAT_TO_CTYPE, "'L' must be in _FORMAT_TO_CTYPE"
-    assert _FORMAT_TO_CTYPE['L'] in _C_TYPES_INT, (
-        "FORMAT_TO_CTYPE['L'] = '%s' must be in _C_TYPES_INT" % _FORMAT_TO_CTYPE['L'])
+    """B4: 'l'/'L' are platform-sized and handled in _expr_to_c
+    with a sizeof(long) itemsize check, not via _FORMAT_TO_CTYPE."""
+    # 'l' and 'L' are platform-sized -- sizeof(long) differs LP64 vs LLP64.
+    # _expr_to_c generates a runtime itemsize check instead of a static mapping.
+    for ch in ('l', 'L'):
+        assert ch not in _FORMAT_TO_CTYPE, (
+            "'%s' should not be in _FORMAT_TO_CTYPE (handled by _expr_to_c)" % ch)
 
-    assert 'l' in _FORMAT_TO_CTYPE, "'l' must be in _FORMAT_TO_CTYPE"
-    assert _FORMAT_TO_CTYPE['l'] in _C_TYPES_INT, (
-        "FORMAT_TO_CTYPE['l'] = '%s' must be in _C_TYPES_INT" % _FORMAT_TO_CTYPE['l'])
+    # Verify the codegen produces sizeof(long) check for format 'l'/'L'
+    from c2py23.parser import Compare, StrLit, Attr, Var, _expr_to_c
+    arr = Var('arr')
+    for ch in ('l', 'L'):
+        tree = Compare(Attr(arr, 'format'), '==', StrLit(ch))
+        c_code = _expr_to_c(tree, [arr], [], None)
+        assert 'sizeof(long)' in c_code, (
+            "_expr_to_c('%s') must include sizeof(long): %s" % (ch, c_code))
+
+    # Fixed-width formats still map via _FORMAT_TO_CTYPE
+    assert 'i' in _FORMAT_TO_CTYPE
+    assert 'I' in _FORMAT_TO_CTYPE
     test_passed()
 
 

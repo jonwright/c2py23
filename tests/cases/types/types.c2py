@@ -10,10 +10,7 @@ functions:
         when: "arr.format == 'H'"
       - sig: "fill_u32(uint32_t *arr, int n, uint32_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'I' or arr.format == 'L'"
-      - sig: "fill_i32(int32_t *arr, int n, int32_t value)"
-        map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'i' or arr.format == 'l'"
+        when: "arr.format == 'I'"
       - sig: "fill_i64(int64_t *arr, int n, int64_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
         when: "arr.format == 'q'"
@@ -23,4 +20,4 @@ functions:
       - sig: "fill_i16(int16_t *arr, int n, int16_t value)"
         map: {arr: "arr.ptr", n: "arr.n", value: value}
         when: "arr.format == 'h'"
-    default_raise: "TypeError: expected 'H', 'I'/'L', 'q', 'b', 'i'/'l', or 'h' buffer"
+    default_raise: "TypeError: expected 'H', 'I', 'q', 'b', or 'h' buffer"
