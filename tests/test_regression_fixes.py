@@ -754,6 +754,62 @@ _good_impl(Py_buffer *buf)
     test_passed()
 
 
+def test_three_generators_compile_all_cases():
+    """Verify all 3 generators produce compilable C for every test case."""
+    from c2py23.parser import load_c2py, _parse_c_sig
+    from c2py23.generator_builder import generate as gen_builder
+    from c2py23.generator_ast import generate as gen_ast
+    from c2py23.generator import generate as gen_orig
+    import subprocess
+    import tempfile
+    import os
+
+    cases_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'tests', 'cases')
+    runtime_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'c2py23', 'runtime')
+
+    for case_name in sorted(os.listdir(cases_dir)):
+        case_dir = os.path.join(cases_dir, case_name)
+        c2py_files = [f for f in os.listdir(case_dir) if f.endswith('.c2py')]
+        if not c2py_files:
+            continue
+        c2py_file = os.path.join(case_dir, c2py_files[0])
+        mod = load_c2py(c2py_file)
+
+        for gen_name, gen_func in [('original', gen_orig),
+                                    ('builder', gen_builder),
+                                    ('ast', gen_ast)]:
+            try:
+                code = gen_func(mod)
+            except Exception as e:
+                assert False, (
+                    "%s: %s generate() raised: %s" % (
+                        case_name, gen_name, e))
+
+            # Compile
+            tmpf = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
+            tmpf.write(code.encode('ascii'))
+            tmpf.close()
+            try:
+                ret = subprocess.call(
+                    ['gcc', '-Wall', '-Werror', '-c',
+                     '-I', runtime_dir,
+                     '-o', '/dev/null',
+                     tmpf.name],
+                    timeout=30)
+            except Exception as e:
+                ret = -1
+            os.unlink(tmpf.name)
+
+            if ret != 0:
+                assert False, (
+                    "%s: %s generated code failed to compile" % (
+                        case_name, gen_name))
+
+    test_passed()
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):
