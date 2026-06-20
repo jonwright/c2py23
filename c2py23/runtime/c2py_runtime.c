@@ -94,6 +94,12 @@ int c2py_ppc64_power9 = 0;
  * Declared extern in c2py_runtime.h so generated code can read it. */
 uint64_t c2py_tick_frequency_hz = 0;
 
+/* On Windows GetProcAddress returns a function-pointer type;
+ * casting it to void* and back is inherent to the nimpy trick. */
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4152)
+#endif
 static int _resolve(void **ptr, const char *name)
 {
     *ptr = C2PY_RESOLVE(C2PY.dl_handle, name);
@@ -104,6 +110,9 @@ static int _resolve(void **ptr, const char *name)
     }
     return 0;
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #define RESOLVE(ptr, name) _resolve((void**)&(ptr), name)
 #define RESOLVE_REQ(ptr, name) do { \
@@ -114,6 +123,10 @@ static int _resolve(void **ptr, const char *name)
 } while(0)
 
 /* Python 2.7 module init helper */
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4152)
+#endif
 static PyObject*
 _init_module_2_7(const char *name, PyMethodDef *methods)
 {
@@ -138,6 +151,9 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
     fprintf(stderr, "c2py_runtime: could not find module init function\n");
     return NULL;
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 
 /* ---- CPU feature probing ---- */
@@ -378,6 +394,10 @@ static void _c2py_probe_cpu_features(void)
 }
 
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4152)  /* GetProcAddress fn/data ptr cast */
+#endif
 static void _c2py_runtime_init_once(void)
 {
     _c2py_init_result = -1;  /* assume failure until full success */
@@ -442,7 +462,11 @@ static void _c2py_runtime_init_once(void)
         ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
         if (getver) {
             const char *v = getver();
+#ifdef _MSC_VER
+            if (v) sscanf_s(v, "%d.%d", &C2PY.version_major, &C2PY.version_minor);
+#else
             if (v) sscanf(v, "%d.%d", &C2PY.version_major, &C2PY.version_minor);
+#endif
         }
         if (C2PY.version_major == 0) {
             /* Fallback: check for Py3-only symbol */
@@ -755,6 +779,9 @@ static void _c2py_runtime_init_once(void)
     _c2py_init_result = 0;
     _c2py_runtime_initialized = 1;
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 int c2py_runtime_init(void)
 {
