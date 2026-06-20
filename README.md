@@ -104,6 +104,12 @@ The wrapper never dereferences `void*` -- it is a pure address passthrough.
 - No copies or transpositions -- zero-copy, C functions operate on buffers in-place
 - No numpy required -- `ctypes` arrays, `memoryview`, `bytearray`, and anything supporting PEP 3118 works
 
+> **Warning for Python 3.14t (free-threaded) users:** By default, c2py23 modules
+> re-enable the GIL globally on load (safe default). Set `free_threading: true` in
+> your `.c2py` file to opt into true free-threading -- but only after verifying
+> your C code is thread-safe. See `docs/user_guide.md` for a guide to thread-safe
+> C patterns.
+
 ## Features
 
 The `.c2py` YAML interface defines Python signatures, C overloads, and dispatch conditions.
@@ -116,7 +122,7 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 - **Output scalars** (`outputs:`) return-by-pointer parameters as Python tuple values
 - **Optional parameters** with defaults, custom docstrings, `default_raise:` error messages
 - **Opaque pointers** -- `void*` maps from Python `int` for user-managed memory (GPU, custom allocators)
-- **Per-function timing** with `rdtsc`/`CNTVCT_EL0`/`mftb` clocks, decoded via ctypes
+- **Per-function timing** via `clock_gettime` (default, nanosecond resolution) or CPU cycle counters (`rdtsc`/`CNTVCT_EL0`/`mftb` with `-DC2PY_USE_CYCLE_COUNTER`), decoded via ctypes
 - **ASan support** via `c2py23 build --asan`
 - **Separate generate/compile** steps for meson/cmake/setuptools integration
 - **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` when PEP 3118 is unavailable
@@ -135,7 +141,7 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 | 3.12.3 | ubuntu24.04 | 14/14 pass |
 | 3.13.14 | ubuntu24.04 | 14/14 pass |
 | 3.14.6 | ubuntu24.04 | 14/14 pass (PEP 763 biased refcounting) |
-| 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded; GIL re-enabled for c2py23 modules) |
+| 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded build; loading c2py23 re-enables GIL globally -- serialized like standard CPython; `PYTHON_GIL=0` for true free-threading) |
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
@@ -197,7 +203,9 @@ c2py23/
     check_abi.c               # ABI introspection tool
     populate_abi_matrix.py    # Collect ABI data from all containers
     abi_matrix.json           # Py_buffer/PyObject layout across 11 versions
-  docs/                       # Specification and grammar
+  docs/                       # Specification, grammar, and user guide
+    specification.md          # Full grammar, architecture, runtime internals
+    user_guide.md             # Thread safety guide and best practices
   PLAN.md                     # Future work and roadmap
 ```
 
@@ -205,10 +213,11 @@ c2py23/
 
 - `AGENTS.md` -- guidelines for AI agents working on the codebase
 - `docs/specification.md` -- full grammar, worked examples, architecture
+- `docs/user_guide.md` -- thread safety guide and best practices
 - `docs/referee_reports_2026-06-15.md` -- referee review reports with point-by-point response
 
 ## Limitations
 
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
-- Thread safety for free-threaded 3.14+ handled by CPython re-enabling the GIL for c2py23 modules (safe-by-default).
+- On free-threaded 3.14t, CPython re-enables the GIL globally when a c2py23 module loads (no `Py_MOD_GIL_NOT_USED`). All Python threads are serialized; parallel C execution requires `gil_release: true` (same as standard CPython). Set `PYTHON_GIL=0` or `-Xgil=0` for true free-threading at your own risk (C code must be thread-safe). See `docs/specification.md` for details.

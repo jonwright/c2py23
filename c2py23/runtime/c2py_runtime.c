@@ -526,6 +526,8 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.SaveThread, "PyEval_SaveThread");
     RESOLVE_REQ(C2PY.RestoreThread, "PyEval_RestoreThread");
     if (C2PY.SaveThread == NULL || C2PY.RestoreThread == NULL) return;
+    /* PyUnstable_Module_SetGIL: only exported on --disable-gil builds (3.13+) */
+    RESOLVE(C2PY.Unstable_Module_SetGIL, "PyUnstable_Module_SetGIL");
 
     /* --- None singleton ---
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,

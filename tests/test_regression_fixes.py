@@ -53,6 +53,7 @@ def test_B1_varargs_wrapper_no_kwargs():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
 
@@ -159,6 +160,7 @@ def test_P5_trailing_newline():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     assert code.endswith('\n'), "Generated C must end with a newline"
@@ -195,6 +197,7 @@ def test_INT_MAX_check_in_generated_code():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     # Must contain the INT_MAX guard
@@ -233,6 +236,7 @@ def test_INT_MAX_check_absent_when_no_int_n():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     assert 'buffer too large' not in code, (
@@ -287,6 +291,7 @@ def test_default_raise_valid():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     assert 'PyExc_ValueError' in code, (
@@ -336,6 +341,7 @@ def test_optional_int_default_zero():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     # Verify default=0 appears in the C code for local var initialization
@@ -380,6 +386,7 @@ def test_outputs_with_gil_release():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     # GIL restore must appear before output tuple construction
@@ -427,6 +434,7 @@ def test_keyword_argument_rejection():
         ],
         constants={},
         timing=False,
+        free_threading=False,
     )
     code = generate(mod)
     # Must NOT have METH_KEYWORDS on any method def

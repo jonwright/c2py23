@@ -140,9 +140,11 @@ class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks
         self.params = params or {}
         return self
 
-class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants', 'timing'])):
+class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'functions', 'constants', 'timing', 'free_threading'])):
     """constants is a dict of {name: int_value} for module-level integer constants.
-       timing is a bool enabling per-function performance profiling."""
+       timing is a bool enabling per-function performance profiling.
+       free_threading is a bool; when true, the module declares Py_MOD_GIL_NOT_USED
+       on free-threaded Python builds (prevents GIL re-enablement)."""
     pass
 
 # ---------------------------------------------------------------------------
@@ -174,8 +176,9 @@ def load_c2py(path):
             raise ValueError("Constant '{}' in {} must be an integer, got {}".format(k, path, type(v)))
 
     timing = bool(raw.get('timing', False))
+    free_threading = bool(raw.get('free_threading', False))
 
-    mod = ModuleDef(module_name, sources, headers, funcs, constants, timing)
+    mod = ModuleDef(module_name, sources, headers, funcs, constants, timing, free_threading)
 
     base_dir = os.path.dirname(os.path.abspath(path))
     _validate_module(mod, base_dir)

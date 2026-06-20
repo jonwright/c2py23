@@ -23,6 +23,7 @@ def generate(module_def):
     """
     out = []
     has_gil_release = any(f.gil_release for f in module_def.functions)
+    has_free_threading = module_def.free_threading
     _emit_header(out, module_def)
     _emit_forward_decls(out, module_def)
     if module_def.timing:
@@ -31,7 +32,7 @@ def generate(module_def):
         _emit_gil_release_decls(out, module_def)
     for func in module_def.functions:
         _emit_function(out, func, module_def.name, module_def.timing, has_gil_release)
-    _emit_module_init(out, module_def)
+    _emit_module_init(out, module_def, has_free_threading)
     return '\n'.join(out) + '\n'
 
 
@@ -1480,6 +1481,10 @@ def _mod_doc(mod):
         parts.append("Timing: enabled")
     else:
         parts.append("Timing: no")
+    if mod.free_threading:
+        parts.append("Free-threading: yes (Py_MOD_GIL_NOT_USED)")
+    else:
+        parts.append("Free-threading: no (GIL re-enabled on 3.14t)")
     gil_funcs = [f.name for f in mod.functions if f.gil_release]
     if gil_funcs:
         parts.append("GIL release: {}".format(", ".join(gil_funcs)))
@@ -1632,7 +1637,7 @@ def _emit_constants(out, mod):
                 out.append('            PyLong_FromVoidPtr(&_gil_release_{0}));'.format(func.name))
 
 
-def _emit_module_init(out, mod):
+def _emit_module_init(out, mod, has_free_threading=False):
     name = mod.name
     has_gil = any(f.gil_release for f in mod.functions)
     has_variants = any(any(ol.variants for ol in f.overloads) for f in mod.functions)
@@ -1756,11 +1761,16 @@ def _emit_module_init(out, mod):
     out.append('')
     out.append('    if (module != NULL) {')
     _emit_constants(out, mod)
+    if has_free_threading:
+        out.append('        if (C2PY.Unstable_Module_SetGIL != NULL) {')
+        out.append('            C2PY.Unstable_Module_SetGIL(module, 1);'
+                   '  /* Py_MOD_GIL_NOT_USED */')
+        out.append('        }')
     out.append('    }')
     out.append('    return module;')
     out.append('}')
     out.append('')
-    # Python 2.7 init
+    # Python 2.7 init (free_threading not applicable -- Python 2.7 has no FT builds)
     out.append('void init{}(void) {{'.format(name))
     out.append('    c2py_runtime_init();')
     out.append(resolve_calls)

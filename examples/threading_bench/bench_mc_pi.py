@@ -165,9 +165,9 @@ def main():
     # ---- Notes ----
     if IS_FREE_THREADED:
         print("Note: running on free-threaded Python (--disable-gil).")
-        print("  PyEval_SaveThread is a no-op; threads overlap natively.")
-        print("  c2py23 modules have GIL re-enabled for safety,")
-        print("  so true free-threading requires PYTHON_GIL=0.")
+        print("  This module declares Py_MOD_GIL_NOT_USED (free_threading: true),")
+        print("  so the GIL stays disabled. PyEval_SaveThread is a no-op;")
+        print("  threads overlap natively without requiring gil_release.")
     elif not HAS_OMP:
         print("Tip: rebuild with OpenMP for mode 3:")
         print("  EXTRA_CFLAGS=-fopenmp c2py23 build mc_pi.c2py")

@@ -38,6 +38,7 @@ constants:                            # optional: module-level integer constants
   NAME1: 42
   NAME2: 7
 timing: true                          # optional: enable perf timing
+free_threading: true                  # optional: declare Py_MOD_GIL_NOT_USED
 
 functions:                            # required: list of wrapped functions
   - py_sig: "name(arg: type, ...) -> return_type"
@@ -996,37 +997,113 @@ No compile-time Python headers are included, so a single `.so` built on any
 machine works on both standard and free-threaded interpreters without
 recompilation.
 
-#### GIL Behavior
+#### GIL Behavior on Free-Threaded Builds
 
-On free-threaded builds, `PyEval_SaveThread` and `PyEval_RestoreThread` are
-no-ops. The `gil_release` flag in `.c2py` files is harmless -- the generated
-code still compiles and runs correctly, it just has no effect on free-threaded
-builds.
+When a c2py23 module is loaded on `python3.14t` (or any `--disable-gil`
+build), the module does NOT declare `Py_MOD_GIL_NOT_USED`. This triggers
+CPython's backward-compatibility mechanism (PEP 703, "Py_mod_gil Slot"):
 
-**Important:** c2py23 modules do NOT declare `Py_MOD_GIL_NOT_USED`. When loaded
-by a free-threaded interpreter, CPython re-enables the GIL for the module. This
-produces a `RuntimeWarning`:
+> *"If the slot is not set, the interpreter pauses all threads and enables
+> the GIL before continuing."*
+
+The GIL is re-enabled **globally** for the entire interpreter -- not per-module.
+All Python threads become serialized, exactly as on standard CPython.
+
+**What this means in practice:**
+
+- `PyEval_SaveThread()` / `PyEval_RestoreThread()` -- resolved at runtime
+  via `dlsym()` from the CPython binary -- now release and re-acquire the
+  (re-enabled) GIL. They behave identically to standard CPython.
+- The `gil_release: true` option therefore works normally: it releases the
+  GIL during C calls, allowing other Python threads to run concurrently.
+- Without `gil_release: true`, a C call blocks all other Python threads.
+- `Py_BEGIN_ALLOW_THREADS` / `Py_END_ALLOW_THREADS` work the same way.
+
+The only case where `PyEval_SaveThread` is truly a no-op is when the GIL
+has NOT been re-enabled. This happens when:
+- `PYTHON_GIL=0` or `-Xgil=0` overrides GIL re-enablement at the process
+  level (see below).
+- The module declares `Py_MOD_GIL_NOT_USED` (see next section).
+
+**RuntimeWarning:**
+
+CPython produces a warning on module load:
 
 ```
 RuntimeWarning: The global interpreter lock (GIL) has been enabled to load
 module 'mymod', which has not declared that it can run safely without the GIL.
 ```
 
-This is safe-by-default behavior: the wrapped C code may not be thread-safe,
-so the GIL is preserved. Users who have verified that their C code is
-thread-safe can suppress the warning:
+Users who have verified that their C code is thread-safe can suppress the
+GIL re-enablement entirely:
 
 ```bash
 PYTHON_GIL=0 python3.14t -c "import mymod; ..."
 python3.14t -Xgil=0 -c "import mymod; ..."
 ```
 
-Or within Python:
+Or suppress just the warning:
 
 ```python
 import warnings
 warnings.filterwarnings("ignore", message=".*GIL.*")
 ```
+
+#### Opting Into Free-Threading with Py_MOD_GIL_NOT_USED
+
+c2py23 does not yet expose a YAML option to add the `Py_mod_gil` slot.
+All generated modules omit `Py_MOD_GIL_NOT_USED` by design (safe default).
+To declare a module free-threading-safe, you have three options:
+
+**Option 1: PYTHON_GIL=0 (runtime, no code changes)**
+
+```bash
+PYTHON_GIL=0 python3.14t -c "import mymod; mymod.do_stuff()"
+```
+
+This disables GIL re-enablement for the entire process. Your C code must
+be thread-safe: c2py23's buffer alias checks prevent concurrent writes to
+overlapping buffers, but internal C state (globals, static variables, file
+descriptors) and external library calls are your responsibility.
+
+**Option 2: Use `free_threading: true` in your `.c2py` file**
+
+```yaml
+module: mymod
+source: [mymod.c]
+free_threading: true
+```
+
+This is the recommended approach. The generator emits:
+
+```c
+if (module != NULL && C2PY.Unstable_Module_SetGIL != NULL) {
+    C2PY.Unstable_Module_SetGIL(module, 1);  /* Py_MOD_GIL_NOT_USED */
+}
+```
+
+`PyUnstable_Module_SetGIL` is resolved at runtime via dlsym. It is only
+exported from the CPython shared library on `--disable-gil` builds
+(3.13+). On standard builds the symbol is not exported, dlsym returns
+NULL, and the call is skipped -- no effect, no error. The same `.so`
+works on Python 2.7 through 3.14t without recompilation.
+
+**Option 3: Manual wrapper patch**
+
+For cases where you cannot modify the `.c2py` file, add the same call
+manually after `c2py23 generate`:
+
+```c
+if (module != NULL && C2PY.Unstable_Module_SetGIL != NULL) {
+    C2PY.Unstable_Module_SetGIL(module, 1);
+}
+```
+
+Do NOT use the `PyModuleDef_Slot` mechanism (`Py_mod_gil`) for this.
+The slot is only available on Python 3.13+ and using it in a wrapper
+compiled without `<Python.h>` requires fragile compile-time version
+guards. The `PyUnstable_Module_SetGIL` function approach resolved at
+runtime avoids this entirely.
 
 #### Refcounting on Free-Threaded Builds
 
@@ -1043,7 +1120,7 @@ This prevents silent data races from non-atomic `++op->ob_refcnt`.
 |-------------|-----------------|----------------|-------------|-----------|
 | 2.7 - 3.13 (standard) | 16 bytes | `ob_refcnt` at offset 0 | `PyEval_SaveThread` releases | Yes |
 | 3.14 (standard) | 16 bytes | Biased: `ob_ref_shared` at offset 0 | `PyEval_SaveThread` releases | Yes |
-| 3.14t (free-threaded) | 32 bytes | `ob_ref_shared` at offset 16 | `PyEval_SaveThread` is no-op; GIL re-enabled for module | Yes |
+| 3.14t (free-threaded) | 32 bytes | `ob_ref_shared` at offset 16 | GIL re-enabled globally; `PyEval_SaveThread` releases it (resolved via dlsym) | Yes |
 
 **Note:** Python 3.14 standard (GIL) uses biased reference counting (PEP 763)
 where the PyObject layout is unchanged (16 bytes) but `ob_refcnt` is replaced

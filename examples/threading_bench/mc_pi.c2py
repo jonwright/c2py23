@@ -1,5 +1,6 @@
 module: mcpimod
 source: [mc_pi.c]
+free_threading: true
 
 functions:
   - py_sig: "mc_pi(n: int, seed: int = 0) -> int"

@@ -271,6 +271,8 @@ typedef struct {
     /* GIL management */
     void* (*SaveThread)(void);
     void (*RestoreThread)(void*);
+    /* Free-threading: set Py_MOD_GIL_NOT_USED on module (optional, may be NULL) */
+    void (*Unstable_Module_SetGIL)(PyObject*, int);
 
 } c2py_api_t;
 
