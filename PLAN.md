@@ -2,7 +2,14 @@
 
 ## Deferred
 
-### P4: Binary wheel distribution
+### P3: aarch64 / ppc64le support
+
+**Status: Not started.**  The runtime already has CPU feature detection for
+ARM64 (`getauxval`, `mrs`) and POWER (`getauxval`, `mftb`).  No CI yet.
+Approach: QEMU user-mode emulation inside Apptainer containers
+(similar to existing manylinux2014 strategy in snakepit).
+
+### P4: PyPI distribution
 
 **Status: Partially implemented** -- design complete, loader + demo working.
 
@@ -57,6 +64,19 @@ free-threading. Low priority since FT is opt-in.
 ---
 
 ## Completed
+
+- **P2: Windows port (2026-06-20)** -- `GetModuleHandle`/`GetProcAddress` runtime
+  via `python3.dll` with versioned fallback; MSVC and MinGW build paths in `cli.py`;
+  LLP64 format handling (`sizeof(long)` itemsize check, `'L'`/`'l'` dispatch);
+  CI on GitHub Actions `windows-latest` (Python 2.7, 3.13, 3.14), 14/14 pass.
+  ABI confirmed: `sizeof(long)=4`, all struct layouts identical across 2.7-3.15.
+  - Both buffer-length and format-dispatch portability fixed.
+  - Buffer length type converted from `int` to `intptr_t` (pointer-width).
+  - `_FORMT_TO_CTYPE` now excludes `'l'`/`'L'`; `_expr_to_c` generates runtime
+    `itemsize == sizeof(long)` check for platform correctness.
+  - MSVC quirks: `inline` -> `__inline`, `##__VA_ARGS__` guard, `sscanf_s`,
+    `C2PY_EXPORT`/`__declspec(dllexport)`, C4152 `#pragma warning` suppression.
+
   CPUID (x86_64), getauxval (ARM64, POWER), `.rebind()` method, flat + grouped
   overloads, switch/function-pointer dispatch, timing integration, user-defined
   features via `c2py_cpuid_bit()`.  Worked example in `examples/simd_dispatch/`.

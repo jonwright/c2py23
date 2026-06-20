@@ -2,6 +2,7 @@
 
 Wrap a strict subset of C99 code as Python C extensions via the buffer protocol.
 One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
+Now supports Linux x86_64 (gcc) and Windows x64 (MSVC / MinGW).
 
 ## Install
 
@@ -10,7 +11,7 @@ cd c2py23
 pip install -e .
 ```
 
-Requires PyYAML and a C99 compiler (gcc or clang).
+Requires PyYAML and a C99 compiler (gcc, clang, or MSVC on Windows).
 
 ## Quick Start
 
@@ -75,6 +76,20 @@ c2py23 compile mymod_wrapper.c -s mymod.c -I include/ -o mymod.so
 
 The `build` subcommand also supports `--generate-only` and `--compile-only` flags.
 
+## Platforms
+
+| OS | Architecture | Compiler | Status |
+|----|-------------|----------|--------|
+| Linux | x86_64 | gcc | Supported |
+| Windows | x64 | MSVC / MinGW | Supported |
+| Linux | aarch64 | gcc cross | Planned |
+| Linux | ppc64le | gcc cross | Planned |
+| macOS | arm64 | clang | Future |
+
+On Windows, set `CC=cl` for MSVC (recommended) or `CC=gcc` for MinGW.
+The compiler is auto-detected in `c2py23 build`.  Output extension is
+`.pyd` on Windows, `.so` elsewhere.
+
 ## Supported Types
 
 | Python type | C types |
@@ -100,7 +115,7 @@ The wrapper never dereferences `void*` -- it is a pure address passthrough.
 ## What It Doesn't Do
 
 - No structs, enums, nested pointers, or heap allocation -- all memory is flat and owned by Python
-- No `-lpython` link -- one `.so` works on Python 2.7 through 3.15 (nimpy-style `dlopen(NULL)` + `dlsym()` at load time)
+- No `-lpython` link -- one `.so`/`.pyd` works on Python 2.7 through 3.15.  Uses nimpy-style `dlopen(NULL)` + `dlsym()` (Linux) or `GetModuleHandle` + `GetProcAddress` (Windows) at load time.
 - No copies or transpositions -- zero-copy, C functions operate on buffers in-place
 - No numpy required -- `ctypes` arrays, `memoryview`, `bytearray`, and anything supporting PEP 3118 works
 
@@ -129,28 +144,30 @@ The generator emits a single-file C99 wrapper with no heap allocations.
 
 ## Supported Python Versions
 
-| Version | Container | Tests |
-|---------|-----------|-------|
-| 2.7.18 | ubuntu20.04 | 13/14 pass, 1 skip (transform) |
-| 3.6.15 | debian10 | 14/14 pass |
-| 3.7.17 | ubuntu24.04 | 14/14 pass |
-| 3.8.10 | ubuntu20.04 | 14/14 pass |
-| 3.9.25 | ubuntu24.04 | 14/14 pass |
-| 3.10.20 | ubuntu24.04 | 14/14 pass |
-| 3.11.15 | ubuntu24.04 | 14/14 pass |
-| 3.12.3 | ubuntu24.04 | 14/14 pass |
-| 3.13.14 | ubuntu24.04 | 14/14 pass |
-| 3.14.6 | ubuntu24.04 | 14/14 pass (PEP 763 biased refcounting) |
-| 3.14.0t | ubuntu24.04 | 14/14 pass (free-threaded build; loading c2py23 re-enables GIL globally -- serialized like standard CPython; `PYTHON_GIL=0` for true free-threading) |
-| 3.15.x | ubuntu26.04 | Not yet tested in CI; struct layouts verified identical to 3.14 |
+| Version | Linux (Apptainer) | Windows (GitHub Actions) |
+|---------|-------------------|--------------------------|
+| 2.7.18 | 13/14 pass, 1 skip | 14/14 pass |
+| 3.6.15 | 14/14 pass | 14/14 pass |
+| 3.7.17 | 14/14 pass | 14/14 pass |
+| 3.8.10 | 14/14 pass | 14/14 pass |
+| 3.9.13 | 14/14 pass | 14/14 pass |
+| 3.10.x | 14/14 pass | 14/14 pass |
+| 3.11.x | 14/14 pass | 14/14 pass |
+| 3.12.x | 14/14 pass | 14/14 pass |
+| 3.13.14 | 14/14 pass | 14/14 pass |
+| 3.14.6 | 14/14 pass | 14/14 pass |
+| 3.14.0t | 14/14 pass | -- (no FT builds on CI) |
+| 3.15.x | 14/14 pass | guarded: not yet supported |
 
-Python 3.16+ is **not supported**. Module import on unsupported versions fails at runtime
-with a diagnostic instructing the user on how to add support (audit CPython headers against
-`tests/check_abi.c`, update version gates in `c2py_runtime.c`, run full test suite).
+CI: Linux via Apptainer containers (snakepit), Windows via GitHub Actions
+(MSVC on `windows-latest`, Python 2.7/3.13/3.14).
+
+Python 3.15+ on Windows and 3.16+ on all platforms are **rejected** at
+module-load time with a diagnostic explaining how to add support.
 
 Additional tests in `test_peer_review.py` (alias + contiguity, 10 tests, requires numpy),
 `test_error_paths.py` (refcount stability, 5 tests), and
-`test_regression_fixes.py` (codegen validation, 14 tests).
+`test_regression_fixes.py` (codegen validation, 23 tests).
 
 ## Examples
 
@@ -268,5 +285,5 @@ c2py23/
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
 - On free-threaded 3.14t, CPython re-enables the GIL globally when a c2py23 module loads (no `Py_MOD_GIL_NOT_USED`). All Python threads are serialized; parallel C execution requires `gil_release: true` (same as standard CPython). Set `PYTHON_GIL=0` or `-Xgil=0` for true free-threading at your own risk (C code must be thread-safe). See `docs/specification.md` for details.
-- Subinterpreters (Python 3.12+ `_xxsubinterpreters`) are not supported. The nimpy-style module init bypasses the multi-phase initialization slot (`Py_mod_multiple_interpreters`) required by subinterpreters. This is not a practical limitation — `multiprocessing`, `concurrent.futures`, and `asyncio` do not use subinterpreters.
+- Subinterpreters (Python 3.12+ `_xxsubinterpreters`) are not supported. The nimpy-style module init bypasses the multi-phase initialization slot (`Py_mod_multiple_interpreters`) required by subinterpreters. This is not a practical limitation -- `multiprocessing`, `concurrent.futures`, and `asyncio` do not use subinterpreters.
 - 32-bit platforms are not supported. Module import fails at runtime with a clear diagnostic. Only LP64 (64-bit) targets are tested.

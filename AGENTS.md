@@ -226,26 +226,38 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 
 ### P2: Windows Port
 
-**Status: Not started. Planning.**
+**Status: Completed (2026-06-20).**
 
-The current codebase is Linux-only:
-- `dlopen(NULL)` with `RTLD_GLOBAL` -- on Windows this is `GetModuleHandle(NULL)`
-  plus `GetProcAddress()`
-- `/proc/cpuinfo` fallback -- use `IsProcessorFeaturePresent()` or CPUID on Windows
-- `gcc -shared` with `-ldl` -- MSVC/clang-cl build path needed
-- `Py_ssize_t` is `__int64` on 64-bit Windows (LP64 vs LLP64)
-- PEP 3118 format chars `'l'`/`'L'` are platform-sized and will differ on LLP64
-- `memset`, `snprintf`, `strlen`, `strcmp` -- all standard C99, fine on MSVC
+Key work items completed:
+1. Runtime: `GetModuleHandle`/`GetProcAddress` via `python3.dll` (versioned fallback)
+2. Build system: MSVC (`/LD /Fe`) and MinGW (`-shared -o`) paths in `cli.py`
+3. ABI matrix: `sizeof(long)=4` on Windows, `c_uint32` maps to `'L'` format
+4. CI: GitHub Actions `windows-latest`, Python 2.7/3.13/3.14, 14/14 pass
+5. Platform-sized format chars: `'l'`/`'L'` auto-generate `sizeof(long)` itemsize check
+6. Buffer length type: `intptr_t` (pointer-width on all platforms)
+7. MSVC quirks handled: `inline` -> `__inline`, `##__VA_ARGS__` guard, `sscanf_s`,
+   `C2PY_EXPORT`/`__declspec(dllexport)`, C4152 pragma suppression
 
-Key work items:
-1. Runtime: replace `dlopen`/`dlsym` with Windows equivalents
-2. Build system: support MSVC or clang-cl compilation
-3. ABI matrix: add a Windows column with LLP64 sizes
-4. Test: CI on Windows with native Python
+Remaining Windows work:
+- ABI matrix: populate `abi_matrix.json` with Windows-x86_64 entries
+- PyPI CI: cross-compile Windows wheels on GitHub Actions
+- Free-threading: no x64 FT builds available via setup-python
 
-### P4: Binary Wheel Distribution
+### P3: aarch64 / ppc64le
+
+**Status: Not started.  Requires QEMU + Apptainer (snakepit).**
+
+These architectures are supported by the runtime (CPU feature detection
+is implemented) but have no CI.  Approach: QEMU user-mode emulation
+inside an Apptainer container, similar to existing manylinux2014 strategy.
+
+### P4: PyPI Distribution
 
 **Status: Designed -- loader and demos implemented, manylinux cross-testing complete.**
+
+Next: GitHub Actions CI to build multi-platform wheels (Linux x86_64,
+Windows x64, eventually aarch64/ppc64le) and upload to PyPI via trusted
+publishing.
 
 The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
 convention that solves the multi-architecture wheel problem:
@@ -275,11 +287,18 @@ SIMD flags and compiler selection remain in the user's build system
 
 ## Recently Completed
 
+- P2: **Windows port** -- `GetModuleHandle`/`GetProcAddress` runtime, MSVC/MinGW build,
+  LLP64 format handling (`sizeof(long)` itemsize check), CI on GitHub Actions
+  (Python 2.7, 3.13, 3.14), 14/14 uniform tests pass
 - P1: SIMD dispatch / CPU feature detection (CPUID x86_64, getauxval ARM64/POWER)
 - P3: Reviewer response (addressed all three referee reports)
 - P4: Free-threaded Python 3.14+ support (dual PyModuleDef, FT ABI detection)
 - Issue #5: Biased refcounting on Python 3.14 standard (PEP 763) -- test guard update
 - `pthread_once` init, `_Py_IsGILEnabled()` FT detection fallback, test runner timeouts
+- `intptr_t`/`size_t` added to supported C types, buffer length parameters
+  converted from `int` to `intptr_t` for large-buffer safety
+- `C2PY_EXPORT` / `__declspec(dllexport)` for Windows .pyd export table
+- `default_raise` diagnostics: actual buffer format included in error message
 
 See `PLAN.md` Completed section for full details.
 
@@ -388,10 +407,10 @@ When adding support for a new Python version (e.g., 3.16):
    '
    ```
    Key things to check in the diff:
-   - `sizeof(PyObject)`, `sizeof(Py_buffer)`, `sizeof(PyModuleDef)` — must match
-   - `PyObject.ob_refcnt` and `ob_type` offsets — must match
-   - `PY_MOD_GIL` value — if changed, update `C2PY.py_mod_gil_slot` in `runtime.c`
-   - Symbol availability (any symbols removed?) — update `c2py_runtime.c`
+   - `sizeof(PyObject)`, `sizeof(Py_buffer)`, `sizeof(PyModuleDef)` -- must match
+   - `PyObject.ob_refcnt` and `ob_type` offsets -- must match
+   - `PY_MOD_GIL` value -- if changed, update `C2PY.py_mod_gil_slot` in `runtime.c`
+   - Symbol availability (any symbols removed?) -- update `c2py_runtime.c`
 
 3. **Run the full test suite** across all containers:
    ```bash
