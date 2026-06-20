@@ -37,9 +37,35 @@
 
 ---
 
-## Completed
+## Outstanding (low-priority)
 
-- P1: SIMD dispatch / CPU feature detection -- two-level group/variant dispatch,
+### Generator structural hardening (P5)
+
+The generator emits C via hundreds of `out.append(...)` calls building a string
+list. This is prone to logical errors: a re-order can miss a cleanup, GIL
+save/restore, or null-check. The existing regression tests (21 tests in
+`test_regression_fixes.py`) cover known bug patterns but do not verify
+invariant-level properties. A future improvement could add a structural
+invariant checker that walks the generated C and validates properties
+(e.g. every buffer acquire has matching release, every GIL save has matching
+restore, every error path releases all acquired buffers). See
+`audit/20260620/workplan.md` Task O for discussion.
+
+### FT globals audit (P5)
+
+Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
+`_gil_release_*`, variant `_var_*` globals for atomic safety under
+free-threading. Low priority since FT is opt-in.
+
+### P3: 32-bit Py_buffer layout (LOW, no CI target)
+
+32-bit `Py_buffer` sizes (52/44 bytes pre/post 3.12) are unverified. No 32-bit
+CI container exists. When a 32-bit target is added, the runtime struct layout
+and the ABI matrix must be verified.
+
+---
+
+## Completed
   CPUID (x86_64), getauxval (ARM64, POWER), `.rebind()` method, flat + grouped
   overloads, switch/function-pointer dispatch, timing integration, user-defined
   features via `c2py_cpuid_bit()`.  Worked example in `examples/simd_dispatch/`.
@@ -83,9 +109,30 @@
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)
 - Debug build support: `--asan` flag, `CC`/`CFLAGS`/`LDFLAGS` env vars, `gcc -shared -g -O0`
 
+- **Referee audit (2026-06-20):** 22 tasks from 2 new referee reports:
+  - A: fix `int64_t` multi-output tuple bug (missing NULL check + PyTuple_SetItem)
+  - B: fix `Unstable_Module_SetGIL` function pointer type mismatch (UB fix)
+  - C: remove dead `src_path` assignment in cli.py
+  - D: anchor `_C_PARAM_RE` regex to end-of-string
+  - E: validate return types against generator capabilities (reject int8_t..uint64_t returns)
+  - F: store `c_name` in AST, eliminate both `_extract_c_name()` functions
+  - G: fix expression string escape handling (decode `\n`, `\t`, `\\`, `\"`)
+  - H: validate template expansion values are strings
+  - I: improved error messages for multi-word/unknown return types
+  - J: add `assert.h` and runtime static assertions for detected ABI layout
+  - K: add `C2PY_FORCE_FT` env var override for free-threading detection
+  - L: remove stale "does not yet expose" FT documentation sentence
+  - M: document buffer writability per-function limitation (generator, AGENTS.md)
+  - N: document `_c2py_dec_ref_manual` fallback limitation (runtime.h)
+  - V: update P4 wheel entry with concrete open design questions
+- **Lifecycle tests:** 10 new tests covering re-import cycles (3), concurrent imports (2),
+  exception path stress (3), and subinterpreters (2, documenting known limitation).
+  All 59/59 tests pass.
+- **Subinterpreter limitation documented** in README.md Limitations section.
+
 ### Reviewer Response
 
-**Status: Completed (2026-06-16)** -- Point-by-point response addressing all three
-referee reports (2026-06-15) with fixes for all HIGH and MEDIUM severity items
-is prepended to `docs/referee_reports_2026-06-15.md`. LOW-severity items deferred
-as noted in the response.
+**Status: Completed (2026-06-20)** -- Point-by-point response addressing all
+four referee reports. All HIGH and MEDIUM severity items resolved. LOW-severity
+items (generator structural hardening, FT globals audit, 32-bit CI) tracked in
+Outstanding section above.

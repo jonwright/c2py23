@@ -221,3 +221,4 @@ c2py23/
 - No structs, enums, or nested data types
 - Flat memory only (contiguous buffers)
 - On free-threaded 3.14t, CPython re-enables the GIL globally when a c2py23 module loads (no `Py_MOD_GIL_NOT_USED`). All Python threads are serialized; parallel C execution requires `gil_release: true` (same as standard CPython). Set `PYTHON_GIL=0` or `-Xgil=0` for true free-threading at your own risk (C code must be thread-safe). See `docs/specification.md` for details.
+- Subinterpreters (Python 3.12+ `_xxsubinterpreters`) are not supported. The nimpy-style module init bypasses the multi-phase initialization slot (`Py_mod_multiple_interpreters`) required by subinterpreters. This is not a practical limitation — `multiprocessing`, `concurrent.futures`, and `asyncio` do not use subinterpreters.
