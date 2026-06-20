@@ -255,8 +255,8 @@ def _emit_function_builder(b, func, module_name, timing, has_gil_release):
                             timing, has_gil_release)
 
     # Wrapper functions (VARARGS + FASTCALL)
-    _emit_varargs_wrapper_builder(b, func, buf_params, scalar_params, timing)
-    _emit_fastcall_wrapper_builder(b, func, buf_params, scalar_params, timing)
+    _emit_varargs_wrapper(b.lines, func, buf_params, scalar_params, timing)
+    _emit_fastcall_wrapper(b.lines, func, buf_params, scalar_params, timing)
 
     b.assert_gil_balanced(name)
 
@@ -376,7 +376,7 @@ def _emit_impl_func_builder(b, func, buf_params, scalar_params,
     # Checks
     for check in func.checks:
         b.emit('    /* check: {0} */'.format(_expr_to_source(check)))
-        _emit_check_builder(b, check, buf_params, scalar_params)
+        _emit_check(b.lines, check, buf_params, scalar_params)
 
     # Overload dispatch
     _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
@@ -392,9 +392,6 @@ def _emit_impl_func_builder(b, func, buf_params, scalar_params,
 # ---------------------------------------------------------------------------
 # Check emission
 # ---------------------------------------------------------------------------
-
-def _emit_check_builder(b, check, buf_params, scalar_params):
-    _emit_check(b.lines, check, buf_params, scalar_params)
 
 
 # ---------------------------------------------------------------------------
@@ -458,7 +455,7 @@ def _emit_overload_dispatch_builder(b, func, buf_params, scalar_params,
 
     if default_raise:
         b.emit('    } else {')
-        _emit_default_raise_body_builder(b, default_raise)
+        _emit_default_raise_body(b.lines, default_raise)
     b.emit('    }')
 
 
@@ -495,12 +492,10 @@ def _emit_flat_dispatch_builder(b, overloads, buf_params, scalar_params,
 
     if default_raise:
         b.emit('    } else {')
-        _emit_default_raise_body_builder(b, default_raise)
+        _emit_default_raise_body(b.lines, default_raise)
     b.emit('    }')
 
 
-def _emit_default_raise_body_builder(b, default_raise):
-    _emit_default_raise_body(b.lines, default_raise)
 
 
 # ---------------------------------------------------------------------------
@@ -691,130 +686,6 @@ def _emit_c_call_builder(b, ol, buf_params, scalar_params,
         emitl('return _c2py_tup;')
 
 
-# ---------------------------------------------------------------------------
-# Wrapper functions (VARARGS + FASTCALL)
-# ---------------------------------------------------------------------------
-
-def _emit_varargs_wrapper_builder(b, func, buf_params, scalar_params, timing):
-    _emit_varargs_wrapper(b.lines, func, buf_params, scalar_params, timing)
-
-
-def _emit_fastcall_wrapper_builder(b, func, buf_params, scalar_params, timing):
-    _emit_fastcall_wrapper(b.lines, func, buf_params, scalar_params, timing)
-
-
-def _emit_restrict_checks_builder(b, buf_params, func):
-    writable = set()
-    const_set = set()
-    for ol in func.overloads:
-        targets = []
-        if ol.variants:
-            for v in ol.variants:
-                targets.append((v, ol.map_exprs))
-        else:
-            targets.append((ol, ol.map_exprs))
-        for entry, map_exprs in targets:
-            for cp in entry.params:
-                if cp.is_pointer:
-                    expr = map_exprs.get(cp.name)
-                    if expr is not None and _expr_refers_to(expr, ''):
-                        for bp in buf_params:
-                            if _expr_refers_to(expr, bp.name):
-                                if not cp.is_const:
-                                    writable.add(bp.name)
-                                else:
-                                    const_set.add(bp.name)
-    if writable:
-        writable = set()
-        for ol in func.overloads:
-            for cp in ol.params:
-                if cp.is_pointer and not cp.is_const:
-                    for bp in buf_params:
-                        expr = ol.map_exprs.get(cp.name)
-                        if expr is not None and _expr_refers_to(expr, bp.name):
-                            writable.add(bp.name)
-    writable_list = list(writable)
-    for i in range(len(writable_list)):
-        for j in range(i + 1, len(writable_list)):
-            a = writable_list[i]
-            b_name = writable_list[j]
-            b.emit('')
-            b.emit(
-                '    /* restrict check: {0} vs {1} */'.format(a, b_name))
-            b.emit(
-                '    if (buf_{0}.buf >= buf_{1}.buf && '.format(a, b_name))
-            b.emit(
-                '        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(
-                    a, b_name))
-            b.emit(
-                '        PyErr_SetString(PyExc_ValueError,'
-                ' "buffer aliasing forbidden");')
-            b.emit('        goto cleanup;')
-            b.emit('    }')
-            b.emit(
-                '    if (buf_{0}.buf >= buf_{1}.buf && '.format(b_name, a))
-            b.emit(
-                '        buf_{0}.buf < buf_{1}.buf + buf_{1}.len) {{'.format(
-                    b_name, a))
-            b.emit(
-                '        PyErr_SetString(PyExc_ValueError,'
-                ' "buffer aliasing forbidden");')
-            b.emit('        goto cleanup;')
-            b.emit('    }')
-
-
-def _emit_contiguity_checks_builder(b, buf_params):
-    for p in buf_params:
-        buf_name = 'buf_' + p.name
-        b.emit('')
-        b.emit('    /* contiguity check: {0} */'.format(p.name))
-        b.emit('    do {')
-        b.emit('        int _ok = 1;')
-        b.emit('        if ({0}.strides == NULL && {0}.ndim <= 1) break;'.format(buf_name))
-        b.emit('        if ({0}.ndim >= 1) {{'.format(buf_name))
-        b.emit('            Py_ssize_t _expected = {0}.itemsize;'.format(buf_name))
-        b.emit('            int _d;')
-        b.emit(
-            '            /* check F-contiguous (column-major):'
-            ' first dim varies fastest */')
-        b.emit('            for (_d = 0; _d < {0}.ndim; _d++) {{'.format(buf_name))
-        b.emit(
-            '                if ({0}.strides[_d] < 0)'
-            ' {{ _ok = 0; break; }}'.format(buf_name))
-        b.emit(
-            '                if ({0}.strides[_d] != _expected)'
-            ' {{ _ok = 0; break; }}'.format(buf_name))
-        b.emit('                _expected *= {0}.shape[_d];'.format(buf_name))
-        b.emit('            }')
-        b.emit('            if (_ok) break;')
-        b.emit(
-            '            /* check C-contiguous (row-major):'
-            ' last dim varies fastest */')
-        b.emit('            _ok = 1;')
-        b.emit('            _expected = {0}.itemsize;'.format(buf_name))
-        b.emit(
-            '            for (_d = {0}.ndim - 1; _d >= 0; _d--) {{'.format(buf_name))
-        b.emit(
-            '                if ({0}.strides[_d] < 0)'
-            ' {{ _ok = 0; break; }}'.format(buf_name))
-        b.emit(
-            '                if ({0}.strides[_d] != _expected)'
-            ' {{ _ok = 0; break; }}'.format(buf_name))
-        b.emit('                _expected *= {0}.shape[_d];'.format(buf_name))
-        b.emit('            }')
-        b.emit('        }')
-        b.emit('        if (!_ok) {')
-        b.emit('            PyErr_SetString(PyExc_ValueError,')
-        b.emit(
-            '                "buffer not contiguous'
-            ' (C or Fortran contiguous required)");')
-        b.emit('            goto cleanup;')
-        b.emit('        }')
-        b.emit('    } while(0);')
-
-
-# ---------------------------------------------------------------------------
-# Module init
 # ---------------------------------------------------------------------------
 
 def _emit_module_init_builder(b, module_def, has_free_threading,
