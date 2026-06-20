@@ -14,14 +14,14 @@ static void c2py_sleep_us(int us)
 #endif
 }
 
-void sleep_fill_f32(float *arr, int n, float value, int us)
+void sleep_fill_f32(float *arr, intptr_t n, float value, int us)
 {
     c2py_sleep_us(us);
     int i;
     for (i = 0; i < n; i++) arr[i] = value;
 }
 
-void sleep_fill_f64(double *arr, int n, double value, int us)
+void sleep_fill_f64(double *arr, intptr_t n, double value, int us)
 {
     c2py_sleep_us(us);
     int i;

@@ -1,4 +1,5 @@
-double scale_and_sum(const double *data, int n, int factor)
+#include <stdint.h>
+double scale_and_sum(const double *data, intptr_t n, int factor)
 {
     int i;
     double s = 0.0;

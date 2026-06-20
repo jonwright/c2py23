@@ -275,6 +275,8 @@ def _parse_py_sig(sig_str, path):
 _C_TYPES_INT = (
     'int8_t', 'uint8_t', 'int16_t', 'uint16_t',
     'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
+    'intptr_t',  # signed pointer-width: matches Py_ssize_t on 64-bit
+    'size_t',    # unsigned pointer-width
     'int', 'float', 'double', 'char', 'void',
     '_Bool',
 )

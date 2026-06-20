@@ -9,5 +9,5 @@ functions:
     checks:
       - "data.len >= 0"
     c_overloads:
-      - sig: "int sum_${SUFFIX}(const ${TYPE} *data, int n)"
+      - sig: "int sum_${SUFFIX}(const ${TYPE} *data, intptr_t n)"
         map: {data: "data.ptr", n: "data.n"}

@@ -1,6 +1,7 @@
+#include <stdint.h>
 /* transform.c - in-place 2D transform: AoS vs SoA dispatch */
 
-void transform_aos(double *points, int n, double *out) {
+void transform_aos(double *points, intptr_t n, double *out) {
     /* points: [n, 3] layout (array of structs) */
     int i;
     for (i = 0; i < n; i++) {
@@ -13,7 +14,7 @@ void transform_aos(double *points, int n, double *out) {
     }
 }
 
-void transform_soa(double *points, int n, double *out) {
+void transform_soa(double *points, intptr_t n, double *out) {
     /* points: [3, n] layout (struct of arrays) */
     int i;
     for (i = 0; i < n; i++) {

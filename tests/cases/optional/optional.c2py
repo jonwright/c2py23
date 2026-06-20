@@ -6,5 +6,5 @@ functions:
     checks:
       - "data.format == 'd'"
     c_overloads:
-      - sig: "process_data(const double *data, int n, int stride, int verbose) -> int"
+      - sig: "process_data(const double *data, intptr_t n, int stride, int verbose) -> int"
         map: {data: "data.ptr", n: "data.n", stride: stride, verbose: verbose}

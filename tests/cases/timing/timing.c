@@ -1,4 +1,5 @@
-double weighted_sum(const double *data, int n, double weight)
+#include <stdint.h>
+double weighted_sum(const double *data, intptr_t n, double weight)
 {
     int i;
     double s = 0.0;

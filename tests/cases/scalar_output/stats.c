@@ -1,4 +1,5 @@
-void stats(const double *data, int n, double *minval, double *maxval)
+#include <stdint.h>
+void stats(const double *data, intptr_t n, double *minval, double *maxval)
 {
     int i;
     double mn = data[0];

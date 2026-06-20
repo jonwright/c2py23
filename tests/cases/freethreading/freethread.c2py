@@ -9,5 +9,5 @@ functions:
       - "result.format == 'd'"
       - "result.n >= a.n"
     c_overloads:
-      - sig: "double_it(const double *a, double *result, int n) -> int"
+      - sig: "double_it(const double *a, double *result, intptr_t n) -> int"
         map: {a: "a.ptr", result: "result.ptr", n: "a.n"}

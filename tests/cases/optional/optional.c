@@ -1,4 +1,5 @@
-int process_data(const double *data, int n, int stride, int verbose)
+#include <stdint.h>
+int process_data(const double *data, intptr_t n, int stride, int verbose)
 {
     int i;
     int result = 0;
