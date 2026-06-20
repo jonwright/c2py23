@@ -4,44 +4,33 @@
 
 ### P4: Binary wheel distribution
 
-**Severity: Low** -- replaces --no-build-isolation workflow
+**Status: Partially implemented** -- design complete, loader + demo working.
 
-**Status: DEFERRED** -- design TBD, implement later.
+The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
+convention that solves the multi-architecture wheel problem:
 
-**Open design questions (from referee review):**
+    _mymodule.c2py23-linux_x86_64.so
+    _mymodule.c2py23-linux_aarch64.so
+    _mymodule.c2py23-linux_ppc64le.so
+    _mymodule.c2py23-win_amd64.pyd
+    _mymodule.c2py23-darwin_arm64.so
 
-1. **Wheel tagging:** The c2py23 .so uses the nimpy trick -- one binary works
-   on CPython 2.7-3.15 without linking libpython. Standard wheel tags
-   (cp312-cp312-*, cp37-abi3-*, etc.) assume a specific CPython ABI. A
-   bare `modulename.so` with no Python link dependency has no standard
-   wheel tag. Need to investigate whether `py3-none` tag can be used.
+The .so is loaded by explicit filename via `ExtensionFileLoader` (3.x) or
+`imp.load_dynamic` (2.7).  No `EXTENSION_SUFFIXES` monkeypatching, no
+`sys.path` hacking.
 
-2. **Symbol export dependency:** c2py_runtime_init() does dlopen(NULL,
-   RTLD_GLOBAL) and expects CPython API symbols already loaded. This
-   depends on the interpreter being built with --enable-shared. Not
-   guaranteed for: musllinux/Alpine, some conda builds, embedded/frozen
-   Python, PyPy.
+The wheel is tagged `py3-none-any` (setuptools `bdist_wheel.get_tag()`
+override).  Multiple platform-specific .so files coexist in one wheel.
+pip installs the same .whl on any arch; the loader picks the right .so.
 
-3. **Build-backend integration:** Current cli.py shells out to gcc
-   directly. No setuptools build_ext / meson-python / scikit-build-core
-   hookup for pip wheel . or cibuildwheel. This integration layer must
-   be built from scratch.
+See `examples/wheel_demo/` for a complete working example.
 
-4. **Platform matrix:** Need verification on manylinux2014 x86_64 and
-   aarch64, musllinux, macOS, and Windows before distribution.
+The convention follows the ctypes peer model: ship platform-specific .so,
+load by explicit name, Python version does not enter the filename.
+Python 2.7 users install from sdist (the wheel is py3-tagged).
 
-**Completed:**
-- Manylinux2014 build verification on all Python versions (3.9-3.14)
-- Build-once cross-test strategy `tests/test_manylinux.py`:
-  Phase 1: build on all manylinux2014 Python versions
-  Phase 2: master build with Python 3.12 on manylinux2014
-  Phase 3: cross-test the 3.12-built .so on all 11 other targets (2.7-3.14t)
-  across ubuntu20.04, ubuntu24.04, debian10 containers
-  Also includes `tests/build_all.sh` and `tests/run_tests_only.sh` helpers.
-
-**Next steps before implementation:**
-- Evaluate py3-none vs. platform-specific wheel tags
-- Evaluate setuptools vs. meson-python vs. scikit-build-core for build backend
+SIMD flags and compiler selection remain in the user's build system
+(Makefile, meson, CMake, etc.) -- not in pyproject.toml.
 
 ---
 

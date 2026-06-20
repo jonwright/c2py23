@@ -1,8 +1,6 @@
-"""Setup for polysimd -- SIMD dispatch wheel demo.
+"""Setup for arraysum-meson demo.
 
-Uses c2py_loader naming convention: _polysimd.c2py23-{os}_{arch}.so
-
-The .so is pre-built via `make` and included as package_data.
+The .so is pre-built via meson and included as package_data.
 """
 from __future__ import print_function
 
@@ -20,12 +18,12 @@ class BdistWheel(_bdist_wheel):
 
 
 setup(
-    name='polysimd',
+    name='arraysum-meson',
     version='0.1.0',
-    description='SIMD dispatch demo (c2py23 + c2py_loader)',
-    packages=['polysimd'],
+    description='arraysum built with meson (c2py23 + c2py_loader)',
+    packages=['arraysum'],
     package_data={
-        'polysimd': [
+        'arraysum': [
             '*.c2py23-*.so',
             '*.c2py23-*.pyd',
         ],

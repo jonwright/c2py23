@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=44", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arraysum"
+version = "0.1.0"
+description = "Element-wise addition of double arrays (c2py23 demo)"
+requires-python = ">=2.7"
+dependencies = [
+    "c2py23",
+]

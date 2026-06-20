@@ -7,7 +7,7 @@
 # Build:  make
 # Test:   python3 test_polysimd.py
 
-module: polysimd
+module: _polysimd
 source: [poly_f32_avx512.o, poly_f32_avx2.o, poly_f32_scalar.o]
 headers: [c2py_amd64.h]
 timing: true

@@ -127,6 +127,11 @@ Valgrind leak check:
 valgrind --leak-check=full python3 tests/test_leaks.py
 ```
 
+Build a c2py23 module as a multi-platform wheel (see examples/wheel_demo/):
+```bash
+cd examples/wheel_demo && bash build.sh
+```
+
 Populate ABI matrix:
 ```bash
 python3 tests/populate_abi_matrix.py
@@ -238,15 +243,33 @@ Key work items:
 
 ### P4: Binary Wheel Distribution
 
-**Severity: Low -- replaces --no-build-isolation workflow**
+**Status: Designed -- implementation in progress.**
 
-**Status: Deferred -- design TBD, implement later.**
+The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
+convention that solves the multi-architecture wheel problem:
 
-Publish binary wheels to PyPI: one per platform (linux, windows, macos) and
-one per architecture (x86_64, aarch64). Python-version-independent (the .so
-works on 2.7-3.15 via nimpy trick). Similar to ctypes-style distribution --
-install via pip, import from any Python version. May need a wrapper import
-mechanism or `ctypes.CDLL` loader bootstrap.
+    _mymodule.c2py23-linux_x86_64.so
+    _mymodule.c2py23-linux_aarch64.so
+    _mymodule.c2py23-linux_ppc64le.so
+    _mymodule.c2py23-win_amd64.pyd
+    _mymodule.c2py23-darwin_arm64.so
+
+The .so is loaded by explicit filename via `ExtensionFileLoader` (3.x) or
+`imp.load_dynamic` (2.7).  No `EXTENSION_SUFFIXES` monkeypatching, no
+`sys.path` hacking.
+
+The wheel is tagged `py3-none-any` (setuptools `bdist_wheel.get_tag()`
+override).  Multiple platform-specific .so files coexist in one wheel.
+pip installs the same .whl on any arch; the loader picks the right .so.
+
+See `examples/wheel_demo/` for a complete working example.
+
+The convention follows the ctypes peer model: ship platform-specific .so,
+load by explicit name, Python version does not enter the filename.
+Python 2.7 users install from sdist (the wheel is py3-tagged).
+
+SIMD flags and compiler selection remain in the user's build system
+(Makefile, meson, CMake, etc.) -- not in pyproject.toml.
 
 ## Recently Completed
 

@@ -1,0 +1,4 @@
+include polysimd/*.c2py23-*.so
+include polysimd/*.c2py23-*.pyd
+include polysimd.c2py
+include poly_kernel.c

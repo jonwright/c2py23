@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=44", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arraysum-meson"
+version = "0.1.0"
+description = "arraysum built with meson (c2py23 + c2py_loader)"
+requires-python = ">=2.7"
+dependencies = [
+    "c2py23",
+]

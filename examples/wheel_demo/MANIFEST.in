@@ -1,0 +1,4 @@
+include arraysum/*.c2py23-*.so
+include arraysum/*.c2py23-*.pyd
+include arraysum.c2py
+include arraysum.c
