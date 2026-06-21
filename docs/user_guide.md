@@ -270,6 +270,85 @@ python3 tests/test_all.py
 valgrind --leak-check=full python3 tests/test_leaks.py
 ```
 
+## Packaging as a Wheel
+
+c2py23 modules can be distributed as multi-platform `py3-none-any` wheels.
+One wheel containing .so files for multiple architectures -- pip installs
+the same artifact everywhere, the loader selects the right binary at import
+time.
+
+### Filename Convention
+
+Each .so is named `_module.c2py23-{os}_{arch}.so`:
+
+```
+mymodule/_mymodule.c2py23-linux_x86_64.so
+mymodule/_mymodule.c2py23-linux_aarch64.so
+mymodule/_mymodule.c2py23-linux_ppc64le.so
+```
+
+### Loader
+
+The package's `__init__.py` uses `c2py_loader` to load the right .so
+by explicit path.  No `EXTENSION_SUFFIXES` monkeypatching, no `sys.path`
+hacking.
+
+```python
+import os
+from c2py23.c2py_loader import load_native
+
+_mod = load_native(os.path.dirname(os.path.abspath(__file__)), '_mymodule')
+for k, v in _mod.__dict__.items():
+    if k.startswith('__') and k.endswith('__'):
+        continue
+    globals()[k] = v
+```
+
+Set `C2PY_TRACE=1` to see which .so file was loaded.
+
+### Wheel Setup
+
+The `setup.py` overrides `bdist_wheel.get_tag()` to produce `py3-none-any`:
+
+```python
+from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+class BdistWheel(_bdist_wheel):
+    def finalize_options(self):
+        super().finalize_options(self)
+        self.root_is_pure = True
+
+    def get_tag(self):
+        return ('py3', 'none', 'any')
+```
+
+The .so files are declared as `package_data`, not `ext_modules`, so
+`EXT_SUFFIX` is never applied and the filenames are preserved.
+
+### Building
+
+Build the .so inside a manylinux2014 container (glibc 2.17) for
+maximum portability:
+
+```bash
+c2py23 generate mymodule.c2py -o wrapper.c
+gcc -shared -fPIC wrapper.c mymodule.c c2py_runtime.c -ldl -lm \
+    -o mymodule/_mymodule.c2py23-linux_x86_64.so
+python3 -m build
+```
+
+Compile per-architecture in each target container, collect all .so files
+into the package directory, then run `python3 -m build` once.  The
+resulting wheel installs on any platform.
+
+Python 2.7 users install from sdist (the wheel is `py3`-tagged).
+
+### Complete Example
+
+See `examples/wheel_demo/` for a minimal working project.  Also
+`examples/meson_demo/` and `examples/cmake_demo/` for meson and
+cmake build system integration.
+
 ## See Also
 
 - `docs/specification.md` -- Full grammar, architecture, runtime internals

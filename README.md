@@ -242,8 +242,8 @@ import time by explicit path via `ExtensionFileLoader` (3.x) or
 Multiple platform-specific `.so` files can coexist in the same wheel.
 pip installs on any arch; the loader picks the right one.
 
-See `examples/wheel_demo/` for a complete working example and `docs/c2pypi-specification.md`
-for the full design.
+See `examples/wheel_demo/` for a complete working example and `docs/user_guide.md`
+for the full packaging guide.
 
 ## Testing
 
@@ -272,8 +272,7 @@ Requires the snakepit SIF containers at `../snakepit/`.
 
 - `AGENTS.md` -- guidelines for AI agents working on the codebase
 - `docs/specification.md` -- full grammar, worked examples, architecture
-- `docs/user_guide.md` -- thread safety guide and best practices
-- `docs/c2pypi-specification.md` -- wheel distribution design
+- `docs/user_guide.md` -- thread safety guide and packaging instructions
 
 ## Limitations
 
