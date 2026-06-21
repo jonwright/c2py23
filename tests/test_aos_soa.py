@@ -18,8 +18,6 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip("numpy")
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'transform'))
 import xfrm
 

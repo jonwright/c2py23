@@ -21,8 +21,6 @@ import ctypes
 import warnings
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
-import pytest
-pytest.importorskip("numpy")
 import numpy as np
 
 IS_PY3 = sys.version_info[0] >= 3
