@@ -68,9 +68,10 @@ functions:                            # required: list of wrapped functions
         doc: "Group description"      # optional: group-level docstring notes
         variants:                     # required for grouped: list of variants
           - sig: "c_variant(c_params...) -> c_ret"
-            name: "label"             # required: variant name for rebind/doc
+            name: "label"             # optional: defaults to c function name
             doc: "Variant description" # optional: per-variant docstring notes
             when: "cpu_feature_check" # optional: static (init-time) dispatch
+            default: true|false       # optional: true (auto-select) or false (manual only)
             outputs: {c_param: ctype}
       - ...
     default_raise: "TypeError: msg"   # optional: error when no overload matches
@@ -276,6 +277,7 @@ attributes and operators are available:
 | `buf.format` | `buf->format` | PEP 3118 format character |
 | `buf.ndim` | `buf->ndim` | Number of dimensions |
 | `buf.ptr` | `buf->buf` | Raw pointer (map: only) |
+| `buf.contiguous` | `_c2py_contig_buf_*` | `'C'`, `'F'`, or `'?'` — per-buffer layout |
 | integer literal | `42` | |
 | float literal | `3.14` | |
 | string literal | `"hello"` | |
@@ -306,8 +308,34 @@ containing `.`, `[`, `(`, or whitespace must be quoted.
 
 Variant dispatch respects declaration order. The first variant whose
 `when:` condition matches wins auto-dispatch. Both Python 3.7+ dicts and
-PyYAML `safe_load` preserve insertion order. If ordering matters for
-correctness, use `default:` markers (see Dispatch section).
+PyYAML `safe_load` preserve insertion order.
+
+Variants with `default: false` are skipped during auto-resolve and are
+reachable only via `_rebind_<name>()`. At least one variant per group
+must have `default: true` (the default).
+
+#### Variant Naming
+
+The `name` field on a variant defaults to the C function name extracted
+from `sig` (e.g., `poly_f32_avx512`). If specified, `name` must match
+the C function name exactly — enforced at parse time. This ensures
+`_variants_<name>()` returns names that correspond to real .so symbols.
+
+```yaml
+variants:
+  - sig: "void poly_f32_avx512(...)"   # name → "poly_f32_avx512"
+    when: "c2py_amd64_avx512f"
+  - sig: "void poly_f32_scalar(...)"   # name → "poly_f32_scalar"
+```
+
+#### Variant Enumeration and Rebind
+
+Every function with grouped variants gets:
+
+- `_rebind_<name>(variant_name)` — sets the active variant by name.
+  Call with `None` to re-run auto-resolve.
+- `_variants_<name>()` — returns a tuple of all variant names (including
+  `default: false` variants) in declaration order.
 
 ### Default Raise
 

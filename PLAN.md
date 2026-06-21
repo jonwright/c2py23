@@ -68,6 +68,18 @@ free-threading. Low priority since FT is opt-in.
 
 ## Completed
 
+- **Variant dispatch enhancements (2026-06-21)** — `default: false` for
+  benchmark-only variants; `_variants_<name>()` enumeration API; variant
+  `name` enforced to match C function name from `sig`; per-variant perf
+  metadata (`variant`, `group_idx`, `variant_name`).
+
+- **Buffer layout guard (2026-06-21)** — `buf.contiguous` expression
+  returning `'C'`, `'F'`, or `'?'` for per-buffer layout constraints.
+
+- **Wheel packaging (2026-06-20)** — `c2py_loader` explicit-filename
+  `.so` loader; `py3-none-any` wheel tag; multi-platform `.so` coexistence;
+  cross-tested on all snakepit containers.
+
 - **P2: Windows port (2026-06-20)** -- `GetModuleHandle`/`GetProcAddress` runtime
   via `python3.dll` with versioned fallback; MSVC and MinGW build paths in `cli.py`;
   LLP64 format handling (`sizeof(long)` itemsize check, `'L'`/`'l'` dispatch);

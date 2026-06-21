@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='c2py23',
-    version='0.1.0',
+    version='0.2.0',
     description='Wrap C99 code to Python via the buffer protocol',
     packages=find_packages(include=['c2py23', 'c2py23.*']),
     package_data={'c2py23': ['runtime/*.h', 'runtime/*.c']},

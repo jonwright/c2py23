@@ -204,17 +204,21 @@ The wrapper never dereferences `void*` -- it is a pure address passthrough.
 The `.c2py` YAML interface defines Python signatures, C overloads, and dispatch conditions.
 The generator emits a single-file C99 wrapper with no heap allocations.
 
-- **Buffer protocol** with format dispatch (`float` vs `double` vs `int32_t`), arithmetic checks (`a.n >= b.n + 2`), and contiguity enforcement
-- **Overload dispatch** by buffer type, shape, CPU features (AVX2/AVX-512/NEON), or arbitrary `when:` conditions; variants statically resolved at init
+- **Buffer protocol** with format dispatch (`float` vs `double` vs `int32_t`), arithmetic checks (`a.n >= b.n + 2`), and C/F-contiguity enforcement; `buf.contiguous == 'C'` or `'F'` for per-buffer layout guards
+- **Overload dispatch** by buffer type, shape, CPU features (AVX2/AVX-512/NEON), or arbitrary `when:` conditions; variant dispatch with function-pointer or switch-case selection
+- **Variant API** — `_rebind_<name>()` for runtime variant selection, `_variants_<name>()` for enumeration, `default: false` to exclude benchmark-only variants from auto-dispatch
 - **Template expansion** (`expand:` with `${VAR}` substitution) for generating typed variants
 - **GIL release** (`gil_release: true`) per-function for parallel C calls
+- **Free-threading support** (`free_threading: true`) for Python 3.14t+
 - **Output scalars** (`outputs:`) return-by-pointer parameters as Python tuple values
 - **Optional parameters** with defaults, custom docstrings, `default_raise:` error messages
-- **Opaque pointers** -- `void*` maps from Python `int` for user-managed memory (GPU, custom allocators)
-- **Per-function timing** via `clock_gettime` (default, nanosecond resolution) or CPU cycle counters (`rdtsc`/`CNTVCT_EL0`/`mftb` with `-DC2PY_USE_CYCLE_COUNTER`), decoded via ctypes
+- **Opaque pointers** (`void*` from Python `int`) for user-managed memory (GPU, custom allocators)
+- **Per-function timing** via `clock_gettime` (default) or CPU cycle counters (`rdtsc`/`CNTVCT_EL0`/`mftb`), per-variant perf metadata (`variant`, `group_idx`, `variant_name`)
 - **ASan support** via `c2py23 build --asan`
 - **Separate generate/compile** steps for meson/cmake/setuptools integration
-- **Python 2.7 fallback** -- `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` when PEP 3118 is unavailable
+- **Wheel packaging** — multi-platform `py3-none-any` wheels via `c2py_loader` naming convention
+- **Windows support** — MSVC and MinGW, `.pyd` output, `GetModuleHandle`/`GetProcAddress` runtime
+- **Python 2.7 fallback** — `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` when PEP 3118 is unavailable
 
 ## Supported Python Versions
 
@@ -246,15 +250,20 @@ Additional tests in `test_peer_review.py` (alias + contiguity, 11 tests, require
 
 ## Examples
 
-The `examples/` directory contains seven worked examples:
+| Example | Build System | Description |
+|---------|-------------|-------------|
+| [`kissfft_wrap/`](examples/kissfft_wrap/) | c2py23 build | real + complex FFT over float buffers |
+| [`lz4_wrap/`](examples/lz4_wrap/) | c2py23 build | compress/decompress over byte buffers |
+| [`simd_dispatch/`](examples/simd_dispatch/) | Makefile, Meson, CMake, setuptools | multi-flag compilation + CPU feature dispatch |
+| [`threading_bench/`](examples/threading_bench/) | c2py23 build | GIL release, free-threading, OpenMP |
+| [`wheel_demo/`](examples/wheel_demo/) | setuptools + gcc | minimal `py3-none-any` wheel |
+| [`meson_demo/`](examples/meson_demo/) | meson.build | arraysum wheel built with meson |
+| [`cmake_demo/`](examples/cmake_demo/) | CMakeLists.txt | arraysum wheel built with cmake |
 
-- **KissFFT** (`examples/kissfft_wrap/`) -- real and complex FFT over float buffers
-- **LZ4** (`examples/lz4_wrap/`) -- compress/decompress over byte buffers
-- **SIMD Dispatch** (`examples/simd_dispatch/`) -- multi-flag compilation with CPU feature dispatch; includes meson.build, CMakeLists.txt, and setup.py build system integration demos
-- **Threading Benchmark** (`examples/threading_bench/`) -- Monte Carlo pi comparing serial, GIL release, free-threading (3.14t), and OpenMP parallelism
-- **Wheel Demo** (`examples/wheel_demo/`) -- packaging a c2py23 module as a `py3-none-any` wheel using the `c2py_loader` naming convention
-- **Meson Demo** (`examples/meson_demo/`) -- same module built with meson.build
-- **CMake Demo** (`examples/cmake_demo/`) -- same module built with CMakeLists.txt
+The `simd_dispatch/` example demonstrates the full variant API: `default: false`
+for benchmark-only variants, `_variants_*()` for enumeration, `_rebind_*()` for
+runtime selection, and per-variant perf metadata.  See `examples/simd_dispatch/Makefile`
+for multi-flag compilation.
 
 ## Wheel Packaging
 
