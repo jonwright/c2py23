@@ -21,11 +21,9 @@ import ctypes
 import warnings
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
-try:
-    import numpy as np
-except ImportError:
-    print("SKIP: numpy not available")
-    sys.exit(0)
+import pytest
+pytest.importorskip("numpy")
+import numpy as np
 
 IS_PY3 = sys.version_info[0] >= 3
 

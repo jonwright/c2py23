@@ -10,12 +10,9 @@ jobs:
     timeout-minutes: 10
 
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        python-version:
-          - "2.7"
-          - "3.13"
-          - "3.14"
+        python-version: ["2.7", "3.13", "3.14"]
 
     defaults:
       run:
@@ -24,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         if: matrix.python-version != '2.7'
         uses: actions/setup-python@v5
         with:
@@ -36,16 +33,12 @@ jobs:
         run: |
           $url = "https://www.python.org/ftp/python/2.7.18/python-2.7.18.amd64.msi"
           $msi = "$env:RUNNER_TEMP\python-2.7.18.amd64.msi"
-          Write-Host "Downloading $url ..."
           Invoke-WebRequest -Uri $url -OutFile $msi
-          Write-Host "Installing Python 2.7.18 ..."
           Start-Process msiexec.exe -Wait -ArgumentList "/i `"$msi`" /quiet /norestart TARGETDIR=C:\Python27"
-          Write-Host "Python 2.7.18 installed"
           echo "C:\Python27" >> $env:GITHUB_PATH
           echo "C:\Python27\Scripts" >> $env:GITHUB_PATH
           $env:Path = "C:\Python27;C:\Python27\Scripts;$env:Path"
           python --version
-          # bootstrap pip if needed
           python -m ensurepip 2>$null
           python -m pip install --upgrade pip --quiet
 
@@ -57,55 +50,15 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: ABI diagnostic (C compile)
-        if: matrix.python-version != '2.7' && matrix.python-version != '3.6'
+        if: matrix.python-version != '2.7'
         run: python tests/abi_check_win.py
 
-      - name: Install c2py23
+      - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
+          python -m pip install pytest numpy --quiet 2>$null
 
-      - name: Build test modules
+      - name: Run tests
         env:
           CC: cl
-        run: |
-          $cases = @(
-            "tests/cases/arraysum/arraysum.c2py",
-            "tests/cases/fill/fill.c2py",
-            "tests/cases/dot/dot.c2py",
-            "tests/cases/types/types.c2py",
-            "tests/cases/optional/optional.c2py",
-            "tests/cases/docstring/docstring.c2py",
-            "tests/cases/timing/timing.c2py",
-            "tests/cases/scalar_output/stats.c2py",
-            "tests/cases/template/sum.c2py",
-            "tests/cases/typedispatch/typedispatch.c2py",
-            "tests/cases/transform/transform.c2py",
-            "tests/cases/constants/constants.c2py",
-            "tests/cases/address/address.c2py",
-            "tests/cases/gil_release/sleep_fill.c2py"
-          )
-          foreach ($c in $cases) {
-            Write-Host "  Building: $c"
-            python -m c2py23.cli build $c
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Build failed for $c"
-              exit 1
-            }
-          }
-
-      - name: Run uniform tests
-        run: python tests/test_uniform.py
-
-      - name: Run peer review tests
-        if: matrix.python-version != '2.7'
-        run: |
-          pip install numpy --quiet 2>$null; $LASTEXITCODE = 0
-          python tests/test_peer_review.py
-
-      - name: Run regression tests
-        if: matrix.python-version != '2.7'
-        run: python tests/test_regression_fixes.py
-
-      - name: Run error path tests
-        if: matrix.python-version != '2.7'
-        run: python tests/test_error_paths.py
+        run: python -m pytest tests/ -v --durations=10 --tb=short

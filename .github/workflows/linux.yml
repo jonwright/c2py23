@@ -20,7 +20,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           pip install -e . --quiet
-          pip install pytest numpy --quiet || echo "(numpy not available - peer_review will skip)"
+          pip install pytest numpy --quiet || echo "(numpy not available - peer_review/aos_soa will skip)"
 
       - name: Run tests
-        run: pytest tests/ -v --durations=10 --tb=long 2>&1
+        run: pytest tests/ -v --durations=10 --tb=short
