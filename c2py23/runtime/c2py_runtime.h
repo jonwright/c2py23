@@ -280,7 +280,8 @@ typedef struct {
     int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
 
     /* String construction */
-    PyObject* (*Unicode_FromString)(const char*);
+    PyObject* (*Unicode_FromString)(const char*);   /* Python 3.x str */
+    PyObject* (*String_FromString)(const char*);    /* Python 2.7 str */
 
     /* Scalar conversion from objects */
     long (*Long_AsLong)(PyObject*);
@@ -362,7 +363,6 @@ extern c2py_api_t C2PY;
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
-#define PyUnicode_FromString(s)         C2PY.Unicode_FromString(s)
 #define PyEval_SaveThread()            C2PY.SaveThread()
 #define PyEval_RestoreThread(s)        C2PY.RestoreThread((void*)(s))
 

@@ -459,7 +459,11 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
             all_names.append(v.name)
     b.emit('    PyObject *tuple = PyTuple_New({0});'.format(len(all_names)))
     for idx, vname in enumerate(all_names):
-        b.emit('    PyTuple_SetItem(tuple, {0}, PyUnicode_FromString("{1}"));'.format(idx, vname))
+        b.emit('    if (C2PY.version_major >= 3) {{')
+        b.emit('        PyTuple_SetItem(tuple, {0}, C2PY.Unicode_FromString("{1}"));'.format(idx, vname))
+        b.emit('    }} else {{')
+        b.emit('        PyTuple_SetItem(tuple, {0}, C2PY.String_FromString("{1}"));'.format(idx, vname))
+        b.emit('    }}')
     b.emit('    return tuple;')
     b.emit('}')
     b.emit_blank()

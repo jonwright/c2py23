@@ -660,6 +660,7 @@ static void _c2py_runtime_init_once(void)
 
     /* --- String construction (optional, needed for _variants_*) --- */
     RESOLVE(C2PY.Unicode_FromString, "PyUnicode_FromString");
+    RESOLVE(C2PY.String_FromString, "PyString_FromString");
 
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
