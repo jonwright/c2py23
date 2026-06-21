@@ -59,9 +59,10 @@ jobs:
         run: |
           python -m pip install -e . --quiet
           python -m pip install pytest --quiet
-          if ($env:python-version -ne '2.7') {
-            python -m pip install numpy --quiet
-          }
+
+      - name: Install numpy (3.x)
+        if: matrix.python-version != '2.7'
+        run: python -m pip install numpy --quiet
 
       - name: Run tests (3.x)
         if: matrix.python-version != '2.7'
