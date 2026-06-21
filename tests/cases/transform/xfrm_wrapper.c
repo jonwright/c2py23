@@ -5,6 +5,33 @@
 extern void transform_aos(double * points, intptr_t n, double * out);
 extern void transform_soa(double * points, intptr_t n, double * out);
 
+/* ---- Performance timing ---- */
+static int _c2py_timing_enabled = 1;
+
+static c2py_perf_t _perf_transform;
+static c2py_perf_t _perf_transform__transform_aos;
+static c2py_perf_t _perf_transform__transform_soa;
+
+/* Python-callable: return tick source frequency in Hz */
+static PyObject*
+__c2py_tick_frequency(PyObject *self, PyObject *args) {
+    (void)self;
+    if (!PyArg_ParseTuple(args, ""))
+        return NULL;
+    return PyLong_FromUnsignedLongLong(c2py_tick_frequency());
+}
+
+/* Python-callable: convert ticks to nanoseconds at given frequency */
+static PyObject*
+__c2py_ticks_to_ns(PyObject *self, PyObject *args) {
+    unsigned long long ticks, freq_hz;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "KK", &ticks, &freq_hz))
+        return NULL;
+    return PyLong_FromUnsignedLongLong(
+        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));
+}
+
 /* -------------------------------------------- */
 /* Wrapper for: transform */
 /* -------------------------------------------- */
@@ -82,6 +109,9 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
         }
     } while(0);
 
+    int _c2py_do_time = _c2py_timing_enabled;
+    uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;
+
     /* check: points.format == 'd' */
     if (!((!buf_points->format || buf_points->format[strlen(buf_points->format) - 1] == 'd'))) {
         char _c2py_err[256];
@@ -123,11 +153,21 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
     }
     if ((buf_points->shape[1]) == (3)) {
         /* transform_aos(double *points, intptr_t n, double *out) */
+        if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
         transform_aos((double *)buf_points->buf, (intptr_t)(buf_points->shape[0]), (double *)buf_out->buf);
+        if (_c2py_do_time) {
+            _c2py_ct1 = c2py_ticks();
+            c2py_perf_record_call(&_perf_transform__transform_aos, _c2py_ct0, _c2py_ct1);
+        }
         Py_RETURN_NONE;
     } else if ((buf_points->shape[0]) == (3)) {
         /* transform_soa(double *points, intptr_t n, double *out) */
+        if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
         transform_soa((double *)buf_points->buf, (intptr_t)(buf_points->shape[1]), (double *)buf_out->buf);
+        if (_c2py_do_time) {
+            _c2py_ct1 = c2py_ticks();
+            c2py_perf_record_call(&_perf_transform__transform_soa, _c2py_ct0, _c2py_ct1);
+        }
         Py_RETURN_NONE;
     } else {
         PyErr_SetString(PyExc_ValueError, "expected [N,3] or [3,N] buffer");
@@ -154,6 +194,9 @@ _transform_wrapper(PyObject *self, PyObject *args)
     Py_buffer buf_out;
     int acq_out = 0;
     PyObject *ret = NULL;
+    int _c2py_do_time = _c2py_timing_enabled;
+    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;
+    if (_c2py_do_time) _c2py_t0 = c2py_ticks();
 
     if (!PyArg_ParseTuple(args, "OO", &py_points, &py_out))
         return NULL;
@@ -181,11 +224,17 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     }
 
+    if (_c2py_do_time) _c2py_t1 = c2py_ticks();
     ret = _transform_impl(&buf_points, &buf_out);
+    if (_c2py_do_time) _c2py_t2 = c2py_ticks();
 
 cleanup:
     if (acq_out) c2py_release_buffer(&buf_out);
     if (acq_points) c2py_release_buffer(&buf_points);
+
+    if (_c2py_do_time) {
+        c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());
+    }
     return ret;
 }
 
@@ -199,6 +248,9 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     Py_buffer buf_out;
     int acq_out = 0;
     PyObject *ret = NULL;
+    int _c2py_do_time = _c2py_timing_enabled;
+    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;
+    if (_c2py_do_time) _c2py_t0 = c2py_ticks();
 
     if (nargs != 2) {
         PyErr_SetString(PyExc_TypeError,
@@ -232,11 +284,17 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     }
 
+    if (_c2py_do_time) _c2py_t1 = c2py_ticks();
     ret = _transform_impl(&buf_points, &buf_out);
+    if (_c2py_do_time) _c2py_t2 = c2py_ticks();
 
 cleanup:
     if (acq_out) c2py_release_buffer(&buf_out);
     if (acq_points) c2py_release_buffer(&buf_points);
+
+    if (_c2py_do_time) {
+        c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());
+    }
     return ret;
 }
 
@@ -247,18 +305,26 @@ cleanup:
 
 static PyMethodDef _methods_varargs[] = {
     {"transform", (PyCFunction)_transform_wrapper, METH_VARARGS, "transform(points, out)\n--\n\ntransform(points: buffer, out: buffer) -> void\n\nParameters\n----------\npoints : buffer\n    Type: float64 (format 'd')\n    Writable\n    Shape: 2D\nout : buffer\n    Type: float64 (format 'd')\n    Writable\n    Size must equal points\n\nChecks\n------\n  points.format == 'd'  [ValueError]\n  out.format == 'd'  [ValueError]\n  out.n == points.n  [ValueError]\n  points.ndim == 2  [ValueError]\n  points.slow_axis == 0  [ValueError]\n\nOverloads\n---------\n  transform_aos(double *points, intptr_t n, double *out) (When: points.shape[1] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[0] (intptr_t)\n         out = out.ptr (double *)\n  transform_soa(double *points, intptr_t n, double *out) (When: points.shape[0] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[1] (intptr_t)\n         out = out.ptr (double *)\n\nValueError: expected [N,3] or [3,N] buffer"},
+    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,
+     "return tick source frequency in Hz"},
+    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
+     "convert (ticks, freq_hz) to nanoseconds"},
     {NULL, NULL, 0, NULL}
 };
 
 static PyMethodDef _methods_fastcall[] = {
     {"transform", (PyCFunction)_transform_fastcall, METH_FASTCALL, "transform(points, out)\n--\n\ntransform(points: buffer, out: buffer) -> void\n\nParameters\n----------\npoints : buffer\n    Type: float64 (format 'd')\n    Writable\n    Shape: 2D\nout : buffer\n    Type: float64 (format 'd')\n    Writable\n    Size must equal points\n\nChecks\n------\n  points.format == 'd'  [ValueError]\n  out.format == 'd'  [ValueError]\n  out.n == points.n  [ValueError]\n  points.ndim == 2  [ValueError]\n  points.slow_axis == 0  [ValueError]\n\nOverloads\n---------\n  transform_aos(double *points, intptr_t n, double *out) (When: points.shape[1] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[0] (intptr_t)\n         out = out.ptr (double *)\n  transform_soa(double *points, intptr_t n, double *out) (When: points.shape[0] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[1] (intptr_t)\n         out = out.ptr (double *)\n\nValueError: expected [N,3] or [3,N] buffer"},
+    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,
+     "return tick source frequency in Hz"},
+    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
+     "convert (ticks, freq_hz) to nanoseconds"},
     {NULL, NULL, 0, NULL}
 };
 
 static PyModuleDef _module_def = {
     PyModuleDef_HEAD_INIT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: no\nFree-threading: no (GIL re-enabled on 3.14t)",
+    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: no (GIL re-enabled on 3.14t)",
     -1,
     NULL,  /* methods set at init */
     NULL, NULL, NULL, NULL
@@ -267,7 +333,7 @@ static PyModuleDef _module_def = {
 static PyModuleDef_FT _module_def_ft = {
     PyModuleDef_HEAD_INIT_FT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: no\nFree-threading: no (GIL re-enabled on 3.14t)",
+    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: no (GIL re-enabled on 3.14t)",
     -1,
     NULL,  /* methods set at init */
     NULL,  /* m_slots = NULL (single-phase init; PyUnstable_Module_SetGIL handles FT) */
@@ -290,11 +356,20 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
         if (C2PY.Module_Create2 != NULL) {
             module = C2PY.Module_Create2(&_module_def, 3);
         } else {
+            /* Fallback for Python 2.7 where PyModuleDef is not supported */
             module = C2PY.InitModule_2_7("xfrm", methods);
         }
     }
 
     if (module != NULL) {
+        PyObject_SetAttrString(module, "_c2py_timing_enabled",
+            PyLong_FromVoidPtr(&_c2py_timing_enabled));
+        PyObject_SetAttrString(module, "_perf_transform",
+            PyLong_FromVoidPtr(&_perf_transform));
+        PyObject_SetAttrString(module, "_perf_transform__transform_aos",
+            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+        PyObject_SetAttrString(module, "_perf_transform__transform_soa",
+            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
     return module;
 }
@@ -305,5 +380,13 @@ C2PY_EXPORT void initxfrm(void) {
     PyObject *module = C2PY.InitModule_2_7("xfrm",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
+        PyObject_SetAttrString(module, "_c2py_timing_enabled",
+            PyLong_FromVoidPtr(&_c2py_timing_enabled));
+        PyObject_SetAttrString(module, "_perf_transform",
+            PyLong_FromVoidPtr(&_perf_transform));
+        PyObject_SetAttrString(module, "_perf_transform__transform_aos",
+            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+        PyObject_SetAttrString(module, "_perf_transform__transform_soa",
+            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
 }
