@@ -313,6 +313,46 @@ def test_default_raise_valid():
     _pass()
 
 
+def test_default_raise_typeerror():
+    """default_raise with TypeError must emit PyExc_TypeError."""
+    from c2py23.parser import parse_expr
+
+    mod = ModuleDef(
+        name='defraise_te',
+        sources=['test.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='f',
+                py_params=[PyParam('arr', 'buffer', None)],
+                return_type='void',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='void do_f(float *arr, int n)',
+                    params=[CParam('arr', 'float *', 'float', True, True),
+                            CParam('n', 'int', 'int', False, False)],
+                    return_type='void',
+                    map_exprs={'arr': parse_expr("arr.ptr"),
+                                'n': parse_expr("arr.n")},
+                    when_expr=parse_expr("arr.format == 'f'"),
+                )],
+                default_raise='TypeError: expected float buffer',
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    code = generate(mod)
+    assert 'PyExc_TypeError' in code, (
+        "default_raise must emit PyExc_TypeError")
+    assert 'expected float buffer' in code, (
+        "default_raise message must appear in generated C")
+    _pass()
+
+
 def test_optional_int_default_zero():
     """Optional int param with default 0: must not be mistaken for 'no default' (falsy edge case)."""
     from c2py23.parser import PyParam, _parse_py_sig

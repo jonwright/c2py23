@@ -50,7 +50,7 @@ def _dirty(c2py_path):
     so_mtime = os.path.getmtime(so_file)
     if os.path.getmtime(c2py_path) > so_mtime:
         return True
-    if _runtime_mtime() > so_mtime + 1:
+    if _runtime_mtime() > so_mtime:
         return True
     for name in sorted(os.listdir(os.path.dirname(c2py_path))):
         fpath = os.path.join(os.path.dirname(c2py_path), name)

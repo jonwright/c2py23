@@ -199,6 +199,32 @@ def test_arraysum_alias_detection_refcounts():
     print("PASS: alias detection path" + tag)
 
 
+def test_zero_length_buffer():
+    """Zero-length buffer must be accepted (no div-by-zero, no segfault)."""
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    import arraysum
+
+    a = (ctypes.c_double * 0)()
+    b = (ctypes.c_double * 0)()
+    r = (ctypes.c_double * 0)()
+
+    arraysum.array_sum(a, b, r)
+    print("PASS: zero-length buffer accepted")
+
+
+def test_two_read_only_overlap():
+    """Two read-only input buffers may overlap (not flagged as alias)."""
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    import arraysum
+
+    a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
+    # r is the output buffer, separate from a
+    r = (ctypes.c_double * 4)(0.0, 0.0, 0.0, 0.0)
+    # a and b are the SAME object -- two read-only inputs overlapping
+    arraysum.array_sum(a, a, r)
+    print("PASS: read-only overlap allowed")
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):

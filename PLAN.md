@@ -52,10 +52,20 @@ Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
 `_gil_release_*`, variant `_var_*` globals for atomic safety under
 free-threading. Low priority since FT is opt-in.
 
+The `free_threading` .c2py feature (`tests/cases/freethreading/`) has
+NO integration test that imports `freethreadmod` at runtime (the
+conftest builds the .so but no test exercises it).
+
 ### 32-bit CI
 
 No 32-bit CI target (i386/ARM32).  Reject 32-bit builds at module import
 with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
+
+### MSVC detection only searches PATH (P5)
+
+`_find_msvc` in `cli.py` iterates only `PATH` entries for `cl.exe`.
+Standard Visual Studio installs require `vcvarsall.bat` to be sourced
+first.  Consider using `vswhere.exe` for VS detection on user machines.
 
 ---
 
@@ -67,7 +77,7 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
   metadata (`variant`, `group_idx`, `variant_name`).
 
 - **Buffer layout guard (2026-06-21)** — `buf.slow_axis`, `buf.fast_axis`,
-  `buf.slow_dim` expressions; contiguity check enforces C-or-F density;
+  `buf.slow_dim` and `buf.fast_dim` expressions; contiguity check enforces C-or-F density;
   `slow_axis == 0` in `checks:` guards against transposed layouts.
 
 - **Generator structural hardening (2026-06-21)** — `c2py23/invariant_checker.py`

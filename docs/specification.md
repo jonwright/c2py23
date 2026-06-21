@@ -204,7 +204,7 @@ map_expr ::= py_param_name
            | literal
 
 buffer_attr ::= buf "." attr
-attr ::= "ptr" | "n" | "len" | "format" | "ndim" | "shape" "[" int "]" | "itemsize" | "strides" "[" int "]" | "slow_axis" | "fast_axis" | "slow_dim"
+attr ::= "ptr" | "n" | "len" | "format" | "ndim" | "shape" "[" int "]" | "itemsize" | "strides" "[" int "]" | "slow_axis" | "fast_axis" | "slow_dim" | "fast_dim"
 ```
 
 Buffer attribute reference:
@@ -280,6 +280,7 @@ attributes and operators are available:
 | `buf.slow_axis` | `_c2py_slow_axis_buf_*` | 0 (C-contiguous) or ndim-1 (F-contiguous) |
 | `buf.fast_axis` | `_c2py_fast_axis_buf_*` | ndim-1 (C-contiguous) or 0 (F-contiguous) |
 | `buf.slow_dim` | `buf->shape[_c2py_slow_axis_buf_*]` | Size of the slowest-varying dimension |
+| `buf.fast_dim` | `buf->shape[_c2py_fast_axis_buf_*]` | Size of the fastest-varying dimension |
 | integer literal | `42` | |
 | float literal | `3.14` | |
 | string literal | `"hello"` | |
@@ -294,7 +295,7 @@ Both `buf.n` and `buf.len` are available; `n` returns the number of
 elements, `len` returns the byte length (matching the PEP 3118 `Py_buffer.len`
 field).
 
-#### Buffer Layout: slow_axis, fast_axis, slow_dim
+#### Buffer Layout: slow_axis, fast_axis, slow_dim, fast_dim
 
 c2py23 requires every buffer to be dense -- either C-contiguous or
 F-contiguous.  The contiguity check rejects any buffer that is not
@@ -310,6 +311,9 @@ These are integers, not strings.  No Fortran terminology.
 
 `slow_dim` is shorthand for `shape[slow_axis]` -- the size of the
 free dimension that a C loop typically iterates over.
+
+`fast_dim` is shorthand for `shape[fast_axis]` -- the size of the
+inner (packed) dimension, such as 3 in an `A[n][3]` AoS layout.
 
 **Usage pattern -- layout guard in checks:**
 

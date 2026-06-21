@@ -1267,7 +1267,7 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
                 if default_val is None:
                     b.emit('    intptr_t c_%s = 0;' % p.name)
                 else:
-                    b.emit('    intptr_t c_%s = %d;' % (p.name, int(default_val)))
+                    b.emit('    intptr_t c_%s = %ld;' % (p.name, int(default_val)))
             else:
                 if default_val is None:
                     b.emit('    int c_%s = 0;' % p.name)
@@ -1430,6 +1430,11 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
             else:
                 b.emit('        long _c2py_tmp = PyLong_AsLong(args[{0}]);'.format(idx))
                 b.emit('        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;')
+                b.emit('        if (_c2py_tmp < (long)INT_MIN || _c2py_tmp > (long)INT_MAX) {{'.format())
+                b.emit('            PyErr_SetString(PyExc_ValueError,')
+                b.emit('                "int parameter {0} out of range (must fit in C int)");'.format(p.name))
+                b.emit('            return NULL;')
+                b.emit('        }')
                 b.emit('        c_{0} = (int)_c2py_tmp;'.format(p.name))
             b.emit('    }')
         else:

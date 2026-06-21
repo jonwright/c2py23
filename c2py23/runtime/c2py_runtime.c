@@ -785,13 +785,21 @@ static void _c2py_runtime_init_once(void)
         if (by) {
             memset(probe, 0xAA, sizeof(probe));
             if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {
-                /* internal=NULL at offset 72 (80-byte layout) or
-                 * offset 88 (96-byte layout). If offset 72 is zeroed,
-                 * the internal field was written there -> 80-byte layout. */
+                /* internal=NULL at offset 72 (80-byte layout, LP64) or
+                 * offset 88 (96-byte layout, LP64).  The offset 72 is
+                 * LP64-specific; on ILP32 the correct offset would be 40.
+                 * The 32-bit rejection above ensures we never reach here
+                 * on platforms where this offset would be wrong.
+                 * See also: c2py_runtime.h C2PY_PYBUFFER_SZ_* definitions. */
+#ifdef __LP64__
                 if (*((char*)pb + 72) == 0)
                     C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
                 else
                     C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+#else
+                /* 32-bit not supported; previous check rejects it */
+                C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+#endif
                 C2PY.ReleaseBuffer(pb);
             }
             C2PY.DecRef(by);

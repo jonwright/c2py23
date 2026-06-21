@@ -208,13 +208,17 @@ def test_docstring():
 
 
 def test_constants():
-    """Test module-level integer constants."""
+    """Test module-level integer constants (incl. zero, negative, edge-large)."""
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'constants'))
     import constmod
 
     assert constmod.ALPHA == 1, "ALPHA = %s, expected 1" % constmod.ALPHA
     assert constmod.BETA == 2, "BETA = %s, expected 2" % constmod.BETA
     assert constmod.GAMMA == 3, "GAMMA = %s, expected 3" % constmod.GAMMA
+    assert constmod.ZERO == 0, "ZERO = %s, expected 0" % constmod.ZERO
+    assert constmod.NEG == -1, "NEG = %s, expected -1" % constmod.NEG
+    assert constmod.LARGE == 2147483647, (
+        "LARGE = %s, expected 2147483647" % constmod.LARGE)
 
     # Also test the function
     data = _double_array([1.0, 2.0, 3.0])
@@ -234,6 +238,11 @@ def test_timing():
     import timedmod
     import ctypes as ct
 
+    py0 = read_perf(timedmod._perf_wsum)
+    ov0 = read_perf(timedmod._perf_wsum__weighted_sum)
+    py_count0 = py0['call_count']
+    ov_count0 = ov0['call_count']
+
     arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
     for i in range(10):
         r = timedmod.wsum(arr, 2.0)
@@ -242,10 +251,12 @@ def test_timing():
     py = read_perf(timedmod._perf_wsum)
     ov = read_perf(timedmod._perf_wsum__weighted_sum)
 
-    assert py['call_count'] == 10, "py call_count expected 10, got %d" % py['call_count']
+    assert py['call_count'] == py_count0 + 10, (
+        "py call_count expected %d, got %d" % (py_count0 + 10, py['call_count']))
     assert py['c_mean_ns'] > 0
     assert py['wrap_mean_ns'] >= 0
-    assert ov['call_count'] == 10, "ov call_count expected 10, got %d" % ov['call_count']
+    assert ov['call_count'] == ov_count0 + 10, (
+        "ov call_count expected %d, got %d" % (ov_count0 + 10, ov['call_count']))
     assert ov['c_mean_ns'] > 0
     assert ov['wrap_dur_ns'] == 0
 
@@ -257,7 +268,7 @@ def test_timing():
 
     timedmod.wsum(arr, 1.0)
     py2 = read_perf(timedmod._perf_wsum)
-    assert py2['call_count'] == 10  # should NOT have incremented
+    assert py2['call_count'] == py['call_count']  # should NOT have incremented
     set_enabled(timedmod._c2py_timing_enabled, 1)
 
     print("PASS: timing")

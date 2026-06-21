@@ -3,7 +3,6 @@
 Usage:
     c2py23 build foo.c2py [-o foo.so] [--asan] [--generate-only] [--compile-only [--source s.c ...] [--include d/ ...]]
     c2py23 generate foo.c2py [-o wrapper.c]
-    c2py23 compile wrapper.c [-s user.c ...] [-I include/ ...] [-o output.so] [--asan]
 """
 from __future__ import print_function
 
@@ -122,6 +121,8 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
             cflags.append('/fsanitize=address')
         else:
             cflags.append('-fsanitize=address')
+            cflags.append('-g')
+            cflags.append('-O1')
             ldflags.append('-fsanitize=address')
         print("  [ASan enabled]")
 
@@ -229,29 +230,7 @@ def cmd_build(args):
 def cmd_generate(args):
     """Generate C wrapper from a .c2py file without compiling."""
     wrapper_path, _ = _generate_wrapper(args.file, args.output)
-    print("Wrapper written to: {}".format(wrapper_path))
-
-
-def cmd_compile(args):
-    """Compile a wrapper .c file to a .so."""
-    wrapper_path = args.file
-    if not os.path.exists(wrapper_path):
-        print("ERROR: wrapper file not found: {}".format(wrapper_path), file=sys.stderr)
-        sys.exit(1)
-
-    source_files = args.source or []
-    source_files = [os.path.abspath(s) for s in source_files]
-
-    include_dirs = args.include or []
-    include_dirs = [os.path.abspath(d) for d in include_dirs]
-
-    base = os.path.splitext(os.path.basename(wrapper_path))[0]
-    so_base = base.replace('_wrapper', '')
-    output_so = _determine_so_path(args.output, so_base,
-                                    os.path.dirname(wrapper_path) or '.')
-    _compile_wrapper(wrapper_path, source_files, include_dirs, output_so,
-                      asan=getattr(args, 'asan', False))
-
+    print("Wrapper written to: %s" % wrapper_path)
 
 def _add_build_parser(sub):
     build_p = sub.add_parser('build', help='Build a .so from a .c2py file')
@@ -279,20 +258,6 @@ def _add_generate_parser(sub):
     gen_p.set_defaults(func=cmd_generate)
 
 
-def _add_compile_parser(sub):
-    comp_p = sub.add_parser('compile', help='Compile a wrapper .c file to .so')
-    comp_p.add_argument('file', help='Path to wrapper .c file')
-    comp_p.add_argument('-s', '--source', action='append',
-                         help='User C source files (repeatable)')
-    comp_p.add_argument('-I', '--include', action='append',
-                         help='Include directories (repeatable)')
-    comp_p.add_argument('-o', '--output', help='Output .so path')
-    comp_p.add_argument('--asan', action='store_true',
-                          help='Compile with -fsanitize=address '
-                               '(detects buffer overflows, leaks, use-after-free)')
-    comp_p.set_defaults(func=cmd_compile)
-
-
 def main():
     parser = argparse.ArgumentParser(prog='c2py23',
                                       description='Wrap C99 code to Python via the buffer protocol')
@@ -300,7 +265,6 @@ def main():
 
     _add_build_parser(sub)
     _add_generate_parser(sub)
-    _add_compile_parser(sub)
 
     args = parser.parse_args()
     if args.command is None:

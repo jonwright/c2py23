@@ -61,10 +61,8 @@ def _check_buffer_invariants(lines):
         stripped = line.strip()
 
         if stripped.startswith('static PyObject*'):
-            _check_one_wrapper(lines, lineno)
-            lineno += 1
-            while lineno < len(lines) and 'static PyObject*' not in lines[lineno]:
-                lineno += 1
+            end = _check_one_wrapper(lines, lineno)
+            lineno = end + 1 if end else lineno + 1
         else:
             lineno += 1
 
@@ -84,7 +82,7 @@ def _check_one_wrapper(lines, start_lineno):
             break
 
     if end_lineno is None or first_brace is None:
-        return
+        return None
 
     buf_names = []
     acq_names = set()
@@ -217,6 +215,8 @@ def _check_one_wrapper(lines, start_lineno):
             "Function starting at line %d: unbalanced GIL save/restore "
             "(%d save vs %d restore)" % (
                 start_lineno + 1, gil_save_count, gil_restore_count))
+
+    return end_lineno
 
 
 def _check_output_scalar_invariants(lines):
