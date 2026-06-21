@@ -190,7 +190,7 @@ The compiler is auto-detected in `c2py23 build`.  Output extension is
 | Return `int` | C `int` return |
 | Return `float` | C `float` or `double` return |
 
-**C pointer element types**: `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`,
+**C pointer element types**: `_Bool`, `int8_t`, `uint8_t`, `int16_t`, `uint16_t`, `int32_t`,
 `uint32_t`, `int64_t`, `uint64_t`, `intptr_t`, `size_t`, `int`, `float`, `double`, `char`, `void`
 
 The `void*` pointer type maps from Python `int` (pointer-width, casts via `intptr_t`).

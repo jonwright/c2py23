@@ -198,11 +198,13 @@ def test_concurrent_import_fill():
 # ---- Task Q: subinterpreter test (Python 3.12+) ----
 
 def test_subinterpreter_basic():
-    """Verify that c2py23 modules report subinterpreter incompatibility (3.12+).
+    """Verify that subinterpreter import of c2py23 modules fails (3.12+).
 
     Known limitation: the nimpy-style extension loading bypasses normal
     extension module mechanics (no Py_mod_multiple_interpreters slot),
-    so c2py23 .so files cannot be imported in subinterpreters.
+    so c2py23 .so files cannot be imported in subinterpreters.  CPython's
+    import machinery emits the error message checked below; c2py23 itself
+    does not generate this message.
 
     This test documents the current behavior and will need updating
     if subinterpreter support is added in the future.

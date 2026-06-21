@@ -70,7 +70,7 @@ def load_native(package_dir, module_name='_native', tag='c2py23'):
         _mod = load_native(os.path.dirname(__file__), '_mymodule')
     """
     _key = _platform_key()
-    if sys.version_info[0] >= 3 and os.name == 'nt':
+    if os.name == 'nt':
         _ext = '.pyd'
     else:
         _ext = '.so'

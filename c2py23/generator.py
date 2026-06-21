@@ -235,7 +235,11 @@ class CBuilder:
             self.emit('    /* contiguity check: {0} */'.format(name))
             self.emit('    do {')
             self.emit('        int _ok = 1;')
-            self.emit('        if (buf_{0}->strides == NULL && buf_{0}->ndim <= 1) break;'.format(name))
+            self.emit('        if (buf_{0}->strides == NULL && buf_{0}->ndim <= 1) {{'.format(name))
+            self.emit('            _c2py_slow_axis_buf_{0} = 0;'.format(name))
+            self.emit('            _c2py_fast_axis_buf_{0} = (int)(buf_{0}->ndim - 1);'.format(name))
+            self.emit('            break;')
+            self.emit('        }')
             self.emit(fmt('        if (buf_{0}->ndim >= 1) {{'))
             self.emit(fmt('            Py_ssize_t _expected = buf_{0}->itemsize;'))
             self.emit('            int _d;')
@@ -361,7 +365,7 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
 
     has_groups = any(ol.variants for ol in func.overloads)
     if has_groups:
-        _emit_static_dispatch(b, func, buf_params, scalar_params)
+        _emit_static_dispatch(b, func, buf_params, scalar_params, timing)
 
     _emit_impl_func(b, func, buf_params, scalar_params,
                             timing, has_gil_release)
@@ -377,7 +381,7 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
 # Static dispatch (grouped overloads)
 # ---------------------------------------------------------------------------
 
-def _emit_static_dispatch(b, func, buf_params, scalar_params):
+def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
     name = func.name
     groups = [(i, ol) for i, ol in enumerate(func.overloads) if ol.variants]
 
@@ -386,6 +390,8 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
 
     def _perf_meta(gi, vi, v):
         """Emit perf struct metadata for a variant."""
+        if not timing:
+            return
         c_name = v.c_name or v.sig_str.split('(')[0].strip().split()[-1]
         pf = '_perf_{0}__{1}'.format(name, c_name)
         b.emit('        {0}.variant = {1};'.format(pf, vi))

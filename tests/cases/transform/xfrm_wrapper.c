@@ -46,7 +46,11 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
     /* contiguity check: points */
     do {
         int _ok = 1;
-        if (buf_points->strides == NULL && buf_points->ndim <= 1) break;
+        if (buf_points->strides == NULL && buf_points->ndim <= 1) {
+            _c2py_slow_axis_buf_points = 0;
+            _c2py_fast_axis_buf_points = (int)(buf_points->ndim - 1);
+            break;
+        }
         if (buf_points->ndim >= 1) {
             Py_ssize_t _expected = buf_points->itemsize;
             int _d;
@@ -81,7 +85,11 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
     /* contiguity check: out */
     do {
         int _ok = 1;
-        if (buf_out->strides == NULL && buf_out->ndim <= 1) break;
+        if (buf_out->strides == NULL && buf_out->ndim <= 1) {
+            _c2py_slow_axis_buf_out = 0;
+            _c2py_fast_axis_buf_out = (int)(buf_out->ndim - 1);
+            break;
+        }
         if (buf_out->ndim >= 1) {
             Py_ssize_t _expected = buf_out->itemsize;
             int _d;

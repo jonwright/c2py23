@@ -88,7 +88,7 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
   ABI confirmed: `sizeof(long)=4`, all struct layouts identical across 2.7-3.15.
   - Both buffer-length and format-dispatch portability fixed.
   - Buffer length type converted from `int` to `intptr_t` (pointer-width).
-  - `_FORMT_TO_CTYPE` now excludes `'l'`/`'L'`; `_expr_to_c` generates runtime
+  - `_FORMAT_TO_CTYPE` now excludes `'l'`/`'L'`; `_expr_to_c` generates runtime
     `itemsize == sizeof(long)` check for platform correctness.
   - MSVC quirks: `inline` -> `__inline`, `##__VA_ARGS__` guard, `sscanf_s`,
     `C2PY_EXPORT`/`__declspec(dllexport)`, C4152 `#pragma warning` suppression.
@@ -155,7 +155,7 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
   - V: update P4 wheel entry with concrete open design questions
 - **Lifecycle tests:** 10 new tests covering re-import cycles (3), concurrent imports (2),
   exception path stress (3), and subinterpreters (2, documenting known limitation).
-  All 59/59 tests pass.
+  All 74 tests pass.
 - **Subinterpreter limitation documented** in README.md Limitations section.
 
 ### Reviewer Response

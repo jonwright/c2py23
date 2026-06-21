@@ -588,6 +588,12 @@ class _ExprParser(object):
         return self.s[start:self.pos]
 
     def _parse_number(self):
+        """Parse an unsigned integer or float literal (no leading sign).
+
+        Leading '-' is handled by _parse_unary(), which wraps the result
+        in UnaryOp('-', ...).  The caller must not pass a negative literal
+        directly to this method.
+        """
         self._skip_ws()
         start = self.pos
         saw_dot = False
@@ -1144,7 +1150,7 @@ def _expr_is_count_or_len(expr):
 
 def _is_simple_expr(expr):
     """Check if an expression is simple enough to inline in a format string."""
-    if isinstance(expr, (Var, IntLit)):
+    if isinstance(expr, (Var, IntLit, FloatLit)):
         return True
     if isinstance(expr, Attr) and isinstance(expr.obj, Var):
         return True  # a.n, a.len, a.ndim etc.
