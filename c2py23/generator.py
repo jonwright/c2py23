@@ -536,15 +536,11 @@ def _emit_impl_func(b, func, buf_params, scalar_params,
                                     timing, has_gil_release)
 
     b.emit_blank()
-    b.emit('    /* should not reach here */')
-    b.emit('#ifdef _MSC_VER')
-    b.emit('__pragma(warning(push))')
-    b.emit('__pragma(warning(disable:4702)) /* unreachable code */')
-    b.emit('#endif')
-    b.emit('    return NULL;')
-    b.emit('#ifdef _MSC_VER')
-    b.emit('__pragma(warning(pop))')
-    b.emit('#endif')
+    if func.default_raise:
+        b.emit('    /* all branches return (default_raise covers else) */')
+    else:
+        b.emit('    /* fallback: no overload matched */')
+        b.emit('    return NULL;')
     b.emit('}')
     b.emit_blank()
 
