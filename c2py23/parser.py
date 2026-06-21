@@ -120,12 +120,15 @@ class CVariant(namedtuple('CVariant', ['name', 'sig_str', 'params', 'return_type
     outputs is an optional dict for scalar output parameters (same format as COverload).
     doc is an optional per-variant description string.
     c_name is the extracted C function name (no re-parsing needed).
+    default is True if the variant should be auto-selected at init.
+      Set default: false to make the variant reachable only via _rebind_<name>().
     """
     def __new__(cls, name, sig_str, params, return_type, when_expr,
-                outputs=None, doc=None, c_name=None):
+                outputs=None, doc=None, c_name=None, default=True):
         self = super(CVariant, cls).__new__(cls, name, sig_str, params,
                                              return_type, when_expr, outputs, c_name)
         self.doc = doc
+        self.default = default
         return self
 
 class FuncDef(namedtuple('FuncDef', ['name', 'py_params', 'return_type', 'checks', 'overloads', 'default_raise', 'doc', 'gil_release'])):
@@ -773,7 +776,13 @@ def _parse_func(raw, path):
                 v_doc = v.get('doc')
                 if v_doc is not None:
                     v_doc = _check_ascii(v_doc, 'variant.doc', path)
-                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret, v_when_expr, v_outputs, doc=v_doc, c_name=v_c_name))
+                v_default = v.get('default', True)
+                if not isinstance(v_default, bool):
+                    raise ValueError(
+                        "'default' must be true or false in {}".format(path))
+                variants.append(CVariant(v_name, v_sig_str, v_params, v_ret,
+                    v_when_expr, v_outputs, doc=v_doc, c_name=v_c_name,
+                    default=v_default))
 
             ol_doc = ol.get('doc')
             if ol_doc is not None:

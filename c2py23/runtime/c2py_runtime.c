@@ -658,6 +658,9 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
     if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL) return;
 
+    /* --- String construction (optional, needed for _variants_*) --- */
+    RESOLVE(C2PY.Unicode_FromString, "PyUnicode_FromString");
+
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
     RESOLVE_REQ(C2PY.Long_AsLongLong, "PyLong_AsLongLong");

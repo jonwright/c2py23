@@ -384,7 +384,11 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
     for gi, (i, ol) in enumerate(groups):
         b.emit(
             'static void _resolve_{0}_{1}(void) {{'.format(name, gi))
+        has_default = False
         for vi, v in enumerate(ol.variants):
+            if not v.default:
+                continue
+            has_default = True
             if v.when_expr is not None:
                 when_c = _expr_to_c(v.when_expr, buf_params, scalar_params, None)
                 b.emit('    if ({0}) {{'.format(when_c))
@@ -392,10 +396,21 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
                     '        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}"; '
                     'return;'.format(name, gi, vi, v.name))
                 b.emit('    }')
-        last_vi = len(ol.variants) - 1
+        # Find the last default:true variant for fallback
+        last_default_vi = -1
+        last_default_name = ""
+        for vi, v in enumerate(ol.variants):
+            if v.default:
+                last_default_vi = vi
+                last_default_name = v.name
+        if not has_default:
+            raise ValueError(
+                "Group '{0}' has no variant with default: true. "
+                "At least one variant must be auto-selectable.".format(
+                    ol.group_name or 'group{}'.format(gi)))
         b.emit(
             '    _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(
-                name, gi, last_vi, ol.variants[last_vi].name))
+                name, gi, last_default_vi, last_default_name))
         b.emit('}')
         b.emit_blank()
 
@@ -431,6 +446,21 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
     b.emit_blank()
     b.emit('    C2PY.Err_SetString(C2PY.exc_ValueError, "unknown variant");')
     b.emit('    return NULL;')
+    b.emit('}')
+    b.emit_blank()
+
+    # Variants enumeration function
+    b.emit(
+        'static PyObject* _variants_{0}(PyObject *self, PyObject *args) {{'.format(name))
+    # Collect all variant names across groups
+    all_names = []
+    for gi, (i, ol) in enumerate(groups):
+        for v in ol.variants:
+            all_names.append(v.name)
+    b.emit('    PyObject *tuple = PyTuple_New({0});'.format(len(all_names)))
+    for idx, vname in enumerate(all_names):
+        b.emit('    PyTuple_SetItem(tuple, {0}, PyUnicode_FromString("{1}"));'.format(idx, vname))
+    b.emit('    return tuple;')
     b.emit('}')
     b.emit_blank()
 
@@ -814,6 +844,9 @@ def _emit_module_init(b, module_def, has_free_threading,
                 b.emit('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'.format(
                     func.name))
                 b.emit('     "rebind variant for {0}"}},'.format(func.name))
+                b.emit('    {{"_variants_{0}", (PyCFunction)_variants_{0}, METH_VARARGS,'.format(
+                    func.name))
+                b.emit('     "list variant names for {0}"}},'.format(func.name))
     if has_timing:
         b.emit(
             '    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency,'
@@ -839,6 +872,9 @@ def _emit_module_init(b, module_def, has_free_threading,
                 b.emit('    {{"_rebind_{0}", (PyCFunction)_rebind_{0}, METH_VARARGS,'.format(
                     func.name))
                 b.emit('     "rebind variant for {0}"}},'.format(func.name))
+                b.emit('    {{"_variants_{0}", (PyCFunction)_variants_{0}, METH_VARARGS,'.format(
+                    func.name))
+                b.emit('     "list variant names for {0}"}},'.format(func.name))
     if has_timing:
         b.emit(
             '    {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency,'
