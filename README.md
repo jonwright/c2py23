@@ -62,6 +62,80 @@ print(n, list(r))   # 4 [6.0, 8.0, 10.0, 12.0]
 "
 ```
 
+### Shape Dispatch (AoS vs SoA)
+
+The same Python function can dispatch to different C code based on buffer
+shape.  Below, a `(n,3)` layout calls `transform_aos` (array-of-structs),
+and a `(3,n)` layout calls `transform_soa` (struct-of-arrays) -- same raw
+pointer, zero copies, different interpretation:
+
+```c
+/* transform.c -- AoS vs SoA dispatch */
+void transform_aos(double *points, int n, double *out) {
+    /* points[n][3] -- array of structs */
+    for (int i = 0; i < n; i++) {
+        out[i*3+0] = points[i*3+0] * 2.0;
+        out[i*3+1] = points[i*3+1] * 2.0;
+        out[i*3+2] = points[i*3+2] * 2.0;
+    }
+}
+
+void transform_soa(double *points, int n, double *out) {
+    /* points[3][n] -- struct of arrays */
+    for (int i = 0; i < n; i++) {
+        out[0*n + i] = points[0*n + i] * 2.0;
+        out[1*n + i] = points[1*n + i] * 2.0;
+        out[2*n + i] = points[2*n + i] * 2.0;
+    }
+}
+```
+
+Interface file:
+
+```yaml
+# transform.c2py
+module: xfrm
+source: [transform.c]
+
+functions:
+  - py_sig: "transform(points: buffer, out: buffer) -> void"
+    checks:
+      - "points.format == 'd'"
+      - "out.format == 'd'"
+      - "out.n == points.n"
+      - "points.ndim == 2"
+    c_overloads:
+      - sig: "transform_aos(double *points, intptr_t n, double *out)"
+        map: {points: "points.ptr", n: "points.shape[0]", out: "out.ptr"}
+        when: "points.shape[1] == 3"
+      - sig: "transform_soa(double *points, intptr_t n, double *out)"
+        map: {points: "points.ptr", n: "points.shape[1]", out: "out.ptr"}
+        when: "points.shape[0] == 3"
+    default_raise: "ValueError: expected [N,3] or [3,N] buffer"
+```
+
+Usage:
+
+```python
+import ctypes
+from ctypes import c_double
+
+aos = (c_double * 12)(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+out = (c_double * 12)()
+mv_aos = memoryview(aos).cast('B').cast('d', [4, 3])
+mv_out = memoryview(out).cast('B').cast('d', [4, 3])
+xfrm.transform(mv_aos, mv_out)  # shape[1]==3 -> transform_aos, n=shape[0]=4
+
+soa = (c_double * 12)(1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12)
+out2 = (c_double * 12)()
+mv_soa = memoryview(soa).cast('B').cast('d', [3, 4])
+mv_out2 = memoryview(out2).cast('B').cast('d', [3, 4])
+xfrm.transform(mv_soa, mv_out2)  # shape[0]==3 -> transform_soa, n=shape[1]=4
+```
+
+The wrapper never transposes or copies data.  `n` is computed from the
+appropriate dimension via `map:`, and `when:` picks the C function.
+
 ### Two-Step Workflow (generate then compile)
 
 For build system integration, c2py23 supports a split workflow:
