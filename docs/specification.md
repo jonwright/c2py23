@@ -278,7 +278,8 @@ attributes and operators are available:
 | `buf.ndim` | `buf->ndim` | Number of dimensions |
 | `buf.ptr` | `buf->buf` | Raw pointer (map: only) |
 | `buf.slow_axis` | `_c2py_slow_axis_buf_*` | 0 (C-contiguous) or ndim-1 (F-contiguous) |
-| `buf.slow_dim` | `buf->shape[_c2py_slow_axis_buf_*]` | Size of the slow dimension |
+| `buf.fast_axis` | `_c2py_fast_axis_buf_*` | ndim-1 (C-contiguous) or 0 (F-contiguous) |
+| `buf.slow_dim` | `buf->shape[_c2py_slow_axis_buf_*]` | Size of the slowest-varying dimension |
 | integer literal | `42` | |
 | float literal | `3.14` | |
 | string literal | `"hello"` | |
