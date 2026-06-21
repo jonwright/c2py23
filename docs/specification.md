@@ -204,7 +204,7 @@ map_expr ::= py_param_name
            | literal
 
 buffer_attr ::= buf "." attr
-attr ::= "ptr" | "n" | "len" | "format" | "ndim" | "shape" "[" int "]" | "itemsize" | "strides" "[" int "]"
+attr ::= "ptr" | "n" | "len" | "format" | "ndim" | "shape" "[" int "]" | "itemsize" | "strides" "[" int "]" | "slow_axis" | "fast_axis" | "slow_dim"
 ```
 
 Buffer attribute reference:
@@ -276,7 +276,7 @@ attributes and operators are available:
 | `buf.itemsize` | `buf->itemsize` | Bytes per element |
 | `buf.format` | `buf->format` | PEP 3118 format character |
 | `buf.ndim` | `buf->ndim` | Number of dimensions |
-| `buf.ptr` | `buf->buf` | Raw pointer (map: only) |
+| `buf.ptr` | `buf->buf` | Raw pointer |
 | `buf.slow_axis` | `_c2py_slow_axis_buf_*` | 0 (C-contiguous) or ndim-1 (F-contiguous) |
 | `buf.fast_axis` | `_c2py_fast_axis_buf_*` | ndim-1 (C-contiguous) or 0 (F-contiguous) |
 | `buf.slow_dim` | `buf->shape[_c2py_slow_axis_buf_*]` | Size of the slowest-varying dimension |

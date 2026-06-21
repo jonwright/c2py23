@@ -46,7 +46,7 @@ SIMD flags and compiler selection remain in the user's build system
 
 ## Outstanding (low-priority)
 
-### FT globals audit (P5)
+### Free Threading (FT) globals audit (P5)
 
 Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
 `_gil_release_*`, variant `_var_*` globals for atomic safety under

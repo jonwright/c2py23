@@ -11,9 +11,7 @@ Example files:
 
 No monkeypatching of EXTENSION_SUFFIXES.  No sys.path hacking.
 Loads the .so by full path via ExtensionFileLoader (Python 3.x) or
-imp.load_dynamic (Python 2.7).  Windows support requires replacing
-dlopen(NULL) with GetModuleHandle(NULL) in c2py_runtime.c -- that
-is a separate concern tracked in the c2py23 runtime.
+imp.load_dynamic (Python 2.7).
 
 Usage in your package's __init__.py:
 

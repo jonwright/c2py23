@@ -12,7 +12,7 @@ One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
 module: mymod
 source: [mymod.c]
 timing: false                           # enable perf timing (optional)
-free_threading: false                   # declare module safe for 3.14t (optional)
+free_threading: false                   # optional, declare module safe for 3.14t (default: false)
 
 functions:
   - py_sig: "myfunc(a: buffer, n: int) -> int"
@@ -33,7 +33,7 @@ the GIL is held by default. Other Python threads cannot run until the call
 returns. Use `gil_release: true` to release the GIL during pure-C computation,
 allowing other Python threads to execute in parallel.
 
-### Free-Threading (3.14t)
+### Free Threading (FT) 3.14t
 
 Free-threaded CPython (`--disable-gil`, `python3.14t`) eliminates the GIL
 at the interpreter level. However, c2py23 modules do NOT declare
@@ -54,7 +54,7 @@ free_threading: true
 ```
 
 This causes the generated wrapper to call `PyUnstable_Module_SetGIL(module, 1)`
-at init time (resolved via dlsym -- only available on FT builds). The GIL is
+at init time (resolved via dlsym -- only available on Free Threading (FT) builds). The GIL is
 NOT re-enabled when this module loads, and other Python threads can run in
 true parallelism.
 
@@ -243,7 +243,7 @@ on Linux, but it is still fragile).
 /* UNSAFE without GIL: global counter relies on GIL serialization */
 static int call_count = 0;
 int myfunc(...) {
-    call_count++;  // not atomic on FT builds without GIL
+    call_count++;  // not atomic on Free Threading (FT) builds without GIL
 }
 ```
 
@@ -294,14 +294,14 @@ by explicit path.  No `EXTENSION_SUFFIXES` monkeypatching, no `sys.path`
 hacking.
 
 ```python
-import os
+import os as _os
 from c2py23.c2py_loader import load_native
 
-_mod = load_native(os.path.dirname(os.path.abspath(__file__)), '_mymodule')
-for k, v in _mod.__dict__.items():
-    if k.startswith('__') and k.endswith('__'):
+_mod = load_native(_os.path.dirname(_os.path.abspath(__file__)), '_mymodule')
+for _k, _v in _mod.__dict__.items():
+    if _k.startswith('__') and _k.endswith('__'):
         continue
-    globals()[k] = v
+    globals()[_k] = _v
 ```
 
 Set `C2PY_TRACE=1` to see which .so file was loaded.

@@ -259,7 +259,8 @@ def _add_build_parser(sub):
     build_p.add_argument('-o', '--output', help='Output .so path (or wrapper .c path with --generate-only)')
 
     build_p.add_argument('--asan', action='store_true',
-                          help='Compile with -fsanitize=address for leak detection')
+                          help='Compile with -fsanitize=address '
+                               '(detects buffer overflows, leaks, use-after-free)')
     build_p.add_argument('--generate-only', action='store_true',
                           help='Generate wrapper .c only, do not compile')
     build_p.add_argument('--compile-only', action='store_true',
@@ -287,7 +288,8 @@ def _add_compile_parser(sub):
                          help='Include directories (repeatable)')
     comp_p.add_argument('-o', '--output', help='Output .so path')
     comp_p.add_argument('--asan', action='store_true',
-                         help='Compile with -fsanitize=address for leak detection')
+                          help='Compile with -fsanitize=address '
+                               '(detects buffer overflows, leaks, use-after-free)')
     comp_p.set_defaults(func=cmd_compile)
 
 

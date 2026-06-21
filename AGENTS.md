@@ -172,6 +172,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/perf.py` -- ctypes-based performance data decoder
 - `c2py23/invariant_checker.py` -- Validates generated C code structure
 - `c2py23/c2py_loader.py` -- Multi-platform .so loader
+- `c2py23/__init__.py` -- Package init and version string
 - `c2py23/runtime/c2py_runtime.h` -- Nimpy-style CPython type definitions and API macros
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`
 
@@ -179,7 +180,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
 2. `c2py23 build` generates a CPython C wrapper and compiles it with gcc into a `.so`
 3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
-4. One `.so` works on Python 2.7 through 3.14 (build on oldest target OS)
+4. One `.so` works on Python 2.7 through 3.15 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
 
 ### Interface File Format
@@ -196,7 +197,7 @@ YAML-based `.c2py` files define:
   - `params:` -- per-parameter descriptions (optional)
   - `checks:` -- pre-conditions (optional)
   - `gil_release:` -- release the GIL during C calls (optional, per-function)
-  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:`, `name:`, `variants:`, `group:` (optional)
+  - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:`, `name:`, `variants:`, `group:`, `doc:` (optional)
   - `default_raise:` -- error when no overload matches (optional)
   - `doc:` -- custom docstring (optional)
 
@@ -255,7 +256,6 @@ Next: GitHub Actions CI to build multi-platform wheels and publish to PyPI.
 
 ### P5: Low Priority
 
-- Generator structural hardening: invariant checker for generated C code
 - FT globals audit: atomic safety review for free-threading
 - 32-bit CI: add i386/ARM32 test container
 

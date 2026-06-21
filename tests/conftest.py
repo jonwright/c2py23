@@ -15,6 +15,9 @@ import pytest
 pytestmark = pytest.mark.filterwarnings(
     "ignore::pytest.PytestReturnNotNoneWarning")
 
+# Exclude container orchestrator and snakepit test scripts from test collection
+collect_ignore = ["test_all.py", "test_manylinux.py"]
+
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(PROJECT_DIR, "tests", "cases")
 EXAMPLES_DIR = os.path.join(PROJECT_DIR, "examples")
