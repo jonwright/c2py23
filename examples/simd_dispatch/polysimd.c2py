@@ -22,11 +22,8 @@ functions:
         map: {a: "a.ptr", b: "b.ptr", out: "out.ptr", n: "a.n"}
         group: float
         variants:
-          - name: "avx512"
-            sig: "void poly_f32_avx512(const float *a, const float *b, float *out, int n)"
+          - sig: "void poly_f32_avx512(const float *a, const float *b, float *out, int n)"
             when: "c2py_amd64_avx512f"
-          - name: "avx2"
-            sig: "void poly_f32_avx2(const float *a, const float *b, float *out, int n)"
+          - sig: "void poly_f32_avx2(const float *a, const float *b, float *out, int n)"
             when: "c2py_amd64_avx2"
-          - name: "scalar"
-            sig: "void poly_f32_scalar(const float *a, const float *b, float *out, int n)"
+          - sig: "void poly_f32_scalar(const float *a, const float *b, float *out, int n)"

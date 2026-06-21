@@ -765,7 +765,14 @@ def _parse_func(raw, path):
                 v_c_name, v_params, v_ret = _parse_c_sig(v_sig_str, path)
                 v_name = v.get('name')
                 if v_name is None:
-                    raise ValueError("Variant requires a 'name' in {}".format(path))
+                    v_name = v_c_name
+                else:
+                    _check_ascii(v_name, 'variant.name', path)
+                    if v_name != v_c_name:
+                        raise ValueError(
+                            "variant name '%s' does not match C function name "
+                            "'%s' in %s.  Omit 'name' to auto-fill from sig, "
+                            "or set them equal." % (v_name, v_c_name, path))
                 v_when_raw = v.get('when')
                 if v_when_raw is not None:
                     v_when_raw = _coerce_expr_value(v_when_raw, 'when', path)

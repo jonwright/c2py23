@@ -36,21 +36,21 @@ print(polysimd.poly.__doc__)
 print()
 
 # --- Correctness check ---
-variants = ["scalar", "avx2", "avx512"]
+variants = ["poly_f32_scalar", "poly_f32_avx2", "poly_f32_avx512"]
 results = {}
 for v in variants:
     polysimd._rebind_poly(v)
     polysimd.poly(a, b, out)
     results[v] = list(out[:3])
-    print("%-8s out[:3] = %s" % (v, results[v]))
+    print("%-20s out[:3] = %s" % (v, results[v]))
 
 # All should match
-ref = results["scalar"]
-for v in ["avx2", "avx512"]:
+ref = results["poly_f32_scalar"]
+for v in ["poly_f32_avx2", "poly_f32_avx512"]:
     if results[v] != ref:
-        print("MISMATCH: %s != scalar!" % v)
+        print("MISMATCH: %s != poly_f32_scalar!" % v)
     else:
-        print("%-8s matches scalar" % v)
+        print("%-20s matches poly_f32_scalar" % v)
 
 # --- Timing via wall clock (multiple runs, show variance) ---
 print()
@@ -83,7 +83,7 @@ if HAVE_PERF:
     unit = "cycles" if using_cycles else "ns"
     print()
     print("=== c2py23 built-in perf (%s, 100 iterations) ===" % unit)
-    variant_short = {"scalar": "poly_f32_scalar", "avx2": "poly_f32_avx2", "avx512": "poly_f32_avx512"}
+    variant_short = {"poly_f32_scalar": "poly_f32_scalar", "poly_f32_avx2": "poly_f32_avx2", "poly_f32_avx512": "poly_f32_avx512"}
     for v in variants:
         polysimd._rebind_poly(v)
         for _ in range(N_WARM):
