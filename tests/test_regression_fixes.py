@@ -20,7 +20,7 @@ from c2py23.parser import ModuleDef, FuncDef, PyParam, CParam, COverload, parse_
 from c2py23.generator import generate, _doc, _expr_to_source
 
 
-def test_passed():
+def _pass():
     print("PASS: %s" % sys._getframe(1).f_code.co_name.replace('test_', ''))
 
 
@@ -68,7 +68,7 @@ def test_B1_varargs_wrapper_no_kwargs():
         "VARARGS wrapper must not have kwargs param (UB): %s" % varargs_line)
     assert 'PyObject *self, PyObject *args' in varargs_line, (
         "VARARGS wrapper must have exactly 2 params, got: %s" % varargs_line)
-    test_passed()
+    _pass()
 
 
 def test_B3_unmatched_paren_raises():
@@ -80,7 +80,7 @@ def test_B3_unmatched_paren_raises():
     except ValueError as e:
         msg = str(e)
         assert "Unmatched '('" in msg, "Expected 'Unmatched ('' in error, got: %s" % msg
-    test_passed()
+    _pass()
 
 
 def test_B3_proper_paren_matching():
@@ -92,7 +92,7 @@ def test_B3_proper_paren_matching():
     assert name == "func", "Expected func, got %s" % name
     assert len(params) == 2, "Expected 2 params, got %d" % len(params)
     assert ret == "int", "Expected int return type, got %s" % ret
-    test_passed()
+    _pass()
 
 
 def test_B4_L_format_char_in_C_TYPES_INT():
@@ -116,7 +116,7 @@ def test_B4_L_format_char_in_C_TYPES_INT():
     # Fixed-width formats still map via _FORMAT_TO_CTYPE
     assert 'i' in _FORMAT_TO_CTYPE
     assert 'I' in _FORMAT_TO_CTYPE
-    test_passed()
+    _pass()
 
 
 def test_P4_coerce_warning_format():
@@ -141,7 +141,7 @@ def test_P4_coerce_warning_format():
         assert '0: int' not in msg, "Warning must not contain the swapped-arg bug pattern"
         assert 'map' in msg, "Warning must mention the context (map)"
 
-    test_passed()
+    _pass()
 
 
 def test_P5_trailing_newline():
@@ -177,7 +177,7 @@ def test_P5_trailing_newline():
     code = generate(mod)
     assert code.endswith('\n'), "Generated C must end with a newline"
     assert not code.endswith('\n\n'), "Generated C must end with exactly one newline"
-    test_passed()
+    _pass()
 
 
 def test_INT_MAX_check_in_generated_code():
@@ -216,7 +216,7 @@ def test_INT_MAX_check_in_generated_code():
     assert 'INT_MAX' in code, "Generated code must include INT_MAX overflow guard"
     assert 'buffer too large for int n' in code, (
         "Generated code must have overflow error message")
-    test_passed()
+    _pass()
 
 
 def test_INT_MAX_check_absent_when_no_int_n():
@@ -253,7 +253,7 @@ def test_INT_MAX_check_absent_when_no_int_n():
     code = generate(mod)
     assert 'buffer too large' not in code, (
         "INT_MAX guard must not appear when no n/length-derived int params")
-    test_passed()
+    _pass()
 
 
 def test_empty_expand():
@@ -270,7 +270,7 @@ def test_empty_expand():
     }
     expanded = _expand_func_template(raw_func, 'test.c2py')
     assert expanded == [], "Empty expand must produce empty list, got %s" % expanded
-    test_passed()
+    _pass()
 
 
 def test_default_raise_valid():
@@ -310,7 +310,7 @@ def test_default_raise_valid():
         "default_raise must emit PyExc_ValueError")
     assert 'no matching overload' in code, (
         "default_raise message must appear in generated C")
-    test_passed()
+    _pass()
 
 
 def test_optional_int_default_zero():
@@ -360,7 +360,7 @@ def test_optional_int_default_zero():
     assert 'int c_flags = 0;' in code, (
         "Optional int=0 must emit 'int c_flags = 0;', got: %s"
         % code[code.find('c_flags'):][:50] if 'c_flags' in code else 'no c_flags')
-    test_passed()
+    _pass()
 
 
 def test_outputs_with_gil_release():
@@ -412,7 +412,7 @@ def test_outputs_with_gil_release():
     # And the gil_release flag should be emitted
     assert '_c2py_gil_release_enabled' in code, (
         "GIL release must emit module-level flag")
-    test_passed()
+    _pass()
 
 
 def test_keyword_argument_rejection():
@@ -454,7 +454,7 @@ def test_keyword_argument_rejection():
         "METH_VARARGS functions must not use METH_KEYWORDS")
     assert 'METH_VARARGS' in code, (
         "Function must use METH_VARARGS flag")
-    test_passed()
+    _pass()
 
 
 def test_docstring_verification():
@@ -520,7 +520,7 @@ def test_docstring_verification():
             if func.default_raise:
                 assert func.default_raise in doc, "%s: missing default_raise" % func.name
 
-    test_passed()
+    _pass()
 
 
 def test_A_int64_output_tuple():
@@ -566,7 +566,7 @@ def test_A_int64_output_tuple():
         "int64_t output must have NULL check")
     assert 'Py_DECREF(_c2py_tup)' in code, (
         "int64_t output must have error cleanup")
-    test_passed()
+    _pass()
 
 
 def test_D_anchored_c_param_re():
@@ -593,7 +593,7 @@ def test_D_anchored_c_param_re():
     except ValueError:
         pass
 
-    test_passed()
+    _pass()
 
 
 def test_E_unsupported_return_type():
@@ -617,7 +617,7 @@ def test_E_unsupported_return_type():
             assert 'Unsupported return type' in str(e) or 'unsupported' in str(e).lower(), (
                 "Error should mention unsupported type, got: %s" % e)
 
-    test_passed()
+    _pass()
 
 
 def test_G_expression_escape_handling():
@@ -651,7 +651,7 @@ def test_G_expression_escape_handling():
     assert expr.value == 'hello"world"', (
         'Backslash-quote should decode to quote, got: %r' % expr.value)
 
-    test_passed()
+    _pass()
 
 
 def test_H_template_expand_non_string():
@@ -688,7 +688,7 @@ def test_H_template_expand_non_string():
     finally:
         os.unlink(fname)
 
-    test_passed()
+    _pass()
 
 
 def test_I_unsupported_return_error_message():
@@ -713,7 +713,7 @@ def test_I_unsupported_return_error_message():
         assert 'size_t' in msg or 'Unsupported' in msg, (
             "Error should mention the type, got: %s" % msg)
 
-    test_passed()
+    _pass()
 
 
 def test_checker_catches_broken_int64():
@@ -763,7 +763,7 @@ _good_impl(Py_buffer *buf)
     # Should not raise
     _verify_c_invariants(good_code)
 
-    test_passed()
+    _pass()
 
 
 def test_all_cases_compile():
@@ -776,7 +776,7 @@ def test_all_cases_compile():
     import sys as _sys
     if _sys.platform == 'win32':
         print("SKIP: test_all_cases_compile (gcc not guaranteed on Windows)")
-        test_passed()
+        _pass()
         return
 
     from c2py23.parser import load_c2py
@@ -822,7 +822,7 @@ def test_all_cases_compile():
         if ret != 0:
             assert False, "generated code for %s failed to compile" % case_name
 
-    test_passed()
+    _pass()
 
 
 def test_float_default_args():
@@ -888,7 +888,7 @@ functions:
     assert isinstance(e, FloatLit), "expected FloatLit, got %s" % type(e).__name__
     assert abs(e.value - 2.7e16) < 1e5
 
-    test_passed()
+    _pass()
 
 
 def test_return_types_allowed():
@@ -914,7 +914,7 @@ def test_return_types_allowed():
             assert "outputs:" in str(e), \
                 "expected outputs: hint, got: %s" % e
 
-    test_passed()
+    _pass()
 
 
 def test_float_expression_compiles():
@@ -948,16 +948,24 @@ functions:
     tmpf.close()
     runtime_dir = os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), 'c2py23', 'runtime')
-    ret = subprocess.call(
-        ['gcc', '-Wall', '-Werror', '-c',
-         '-I', runtime_dir,
-         '-o', '/dev/null',
-         tmpf.name],
-        timeout=30)
+    try:
+        ret = subprocess.call(
+            ['gcc', '-Wall', '-Werror', '-c',
+             '-I', runtime_dir,
+             '-o', '/dev/null',
+             tmpf.name],
+            timeout=30)
+    except TypeError:
+        # Python 2.7: subprocess.call does not support timeout=
+        ret = subprocess.call(
+            ['gcc', '-Wall', '-Werror', '-c',
+             '-I', runtime_dir,
+             '-o', '/dev/null',
+             tmpf.name])
     os.unlink(tmpf.name)
     assert ret == 0, "float expression wrapper failed to compile"
 
-    test_passed()
+    _pass()
 
 
 if __name__ == '__main__':

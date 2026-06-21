@@ -17,28 +17,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install c2py23
-        run: pip install -e . --quiet
-
-      - name: Build test modules
+      - name: Install c2py23 and test deps
         run: |
-          set -e
-          for f in tests/cases/*/*.c2py; do
-            echo "  Building: $f"
-            python -m c2py23.cli build "$f"
-          done
+          pip install -e . --quiet
+          pip install pytest numpy --quiet
 
-      - name: Run uniform tests
-        run: python tests/test_uniform.py
-
-      - name: Run regression tests
-        run: python tests/test_regression_fixes.py
-
-      - name: Run error path tests
-        run: python tests/test_error_paths.py
-
-      - name: Run leak tests
-        run: python tests/test_leaks.py
-
-      - name: Run lifecycle tests
-        run: python tests/test_lifecycle.py
+      - name: Run tests
+        run: pytest tests/ -v --ignore=tests/test_all.py --durations=10

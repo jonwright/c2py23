@@ -149,7 +149,7 @@ def run_apptainer(sif_file, command, capture_output=True, timeout=600):
         return 1, "", str(e)
 
 
-def test_python_version(python_version, sif_file):
+def run_python_version(python_version, sif_file):
     """Test c2py23 with a specific Python version inside a container."""
     print_header("Testing Python " + python_version)
 
@@ -242,7 +242,7 @@ def main():
 
         results = {}
         for python_version, sif_file in PYTHON_VERSIONS:
-            success = test_python_version(python_version, sif_file)
+            success = run_python_version(python_version, sif_file)
             results[python_version] = success
 
             if not success:

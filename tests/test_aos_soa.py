@@ -16,6 +16,7 @@ from __future__ import print_function
 import sys
 import os
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'transform'))
 import xfrm
@@ -45,19 +46,18 @@ def test_aos(n=4):
 
 
 def test_soa(n=4):
-    """Struct-of-arrays: (3,N) layout, F-contiguous by default."""
-    # Each column: [x, y, z]
+    """Struct-of-arrays: (3,N) layout, C-contiguous after transpose+copy."""
+    # Use C-contiguous (3,N) since slow_axis guard requires C layout
     arr = np.array([
         [1.0, 4.0, 7.0, 10.0],   # all x
         [2.0, 5.0, 8.0, 11.0],   # all y
         [3.0, 6.0, 9.0, 12.0],   # all z
-    ], dtype=np.float64, order='F')
+    ], dtype=np.float64)  # C-contiguous by default
     print("SoA input shape:", arr.shape)
     print("  C-contiguous:", arr.flags['C_CONTIGUOUS'])
-    print("  F-contiguous:", arr.flags['F_CONTIGUOUS'])
     print("  strides:", arr.strides)
 
-    out = np.zeros_like(arr, order='F')
+    out = np.zeros_like(arr)
     xfrm.transform(arr, out)
     print("  output:", out[:, :2].tolist(), "...")
     expected = arr * 2.0
@@ -92,35 +92,23 @@ def test_layout_conversion(n=4):
 
 
 def test_f_contiguous_dispatch(n=4):
-    """An F-contiguous (N,3) array is NOT C-contiguous.
-    c2py23 requires C-or-F contiguity.  The transform_aos kernel
-    reads row-major, so an F-contiguous (N,3) would read wrong
-    memory.  The wrapper accepts it (passes contiguity check)
-    because F-contiguous is allowed -- but the C code assumes C
-    layout, producing silent wrong results without a stride check.
-
-    Solution: add a checks: guard or use contiguous: C in params.
+    """An F-contiguous (3,N) array is rejected by slow_axis check.
+    The slow_axis == 0 check in checks: requires C-contiguous layout.
     """
     arr = np.array([
         [1.0, 4.0],
         [2.0, 5.0],
         [3.0, 6.0],
-    ], dtype=np.float64, order='F')  # (3,2) F-contiguous
+    ], dtype=np.float64, order='F')
     print("F-contiguous (3,2) demo:")
     print("  shape:", arr.shape)
     print("  C:", arr.flags['C_CONTIGUOUS'], "F:", arr.flags['F_CONTIGUOUS'])
     print("  strides:", arr.strides)
-    print("  (passes C-or-F contiguity check)")
 
     out = np.zeros_like(arr, order='F')
-    xfrm.transform(arr, out)
-    expected = arr * 2.0
-    ok = np.allclose(out, expected)
-    print("  result: %s" % ("correct" if ok else "WRONG (kernel assumed C layout)"))
-    # The F-contiguous SoA array IS in the right layout for transform_soa
-    # because the kernel's n=shape[1] matches the fast-varying axis
-    assert ok, "SoA F-contiguous should give correct results"
-    print("  PASS: F-contiguous SoA dispatch correct\n")
+    with pytest.raises(ValueError, match="slow_axis"):
+        xfrm.transform(arr, out)
+    print("  PASS: F-contiguous correctly rejected\n")
 
 
 if __name__ == '__main__':
