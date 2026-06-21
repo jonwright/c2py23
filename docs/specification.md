@@ -292,6 +292,51 @@ Both `buf.n` and `buf.len` are available; `n` returns the number of
 elements, `len` returns the byte length (matching the PEP 3118 `Py_buffer.len`
 field).
 
+#### Buffer Layout: slow_axis, fast_axis, slow_dim
+
+c2py23 requires every buffer to be dense -- either C-contiguous or
+F-contiguous.  The contiguity check rejects any buffer that is not
+one of the two.  For dense buffers, the slowest and fastest varying
+axes are always at the endpoints:
+
+| Layout | slow_axis | fast_axis | Example shape | strides |
+|--------|-----------|-----------|---------------|---------|
+| C-contiguous | `0` | `ndim-1` | (N, 3) | (24, 8) |
+| F-contiguous | `ndim-1` | `0` | (3, N) | (8, 24) |
+
+These are integers, not strings.  No Fortran terminology.
+
+`slow_dim` is shorthand for `shape[slow_axis]` -- the size of the
+free dimension that a C loop typically iterates over.
+
+**Usage pattern -- layout guard in checks:**
+
+When a kernel assumes a specific axis ordering, put the layout
+constraint in `checks:` so it applies to all overloads:
+
+```yaml
+checks:
+  - "points.slow_axis == 0"      # requires C-contiguous, no transpose
+c_overloads:
+  - when: "points.shape[1] == 3"  # shape-only dispatch
+  - when: "points.shape[0] == 3"
+```
+
+The `when:` conditions can then focus purely on shape.
+
+**Usage pattern -- using slow_dim for the loop bound:**
+
+A C kernel that operates on `float A[n][3]` needs `n` as the loop
+count.  For C-contiguous data, `n = shape[0]`.  For F-contiguous data,
+`n = shape[ndim-1]`.  `slow_dim` gives the correct `n` regardless:
+
+```yaml
+map: {a: "a.ptr", n: "a.slow_dim", out: "out.ptr"}
+```
+
+This works for any ndim -- `slow_dim` is always the size of the axis
+that the C loop iterates over.
+
 #### Quoting in map: and YAML values
 
 YAML interprets `.`, `[`, `(`, and spaces as syntax.  Values containing
