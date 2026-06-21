@@ -71,18 +71,22 @@ pointer, zero copies, different interpretation:
 
 ```c
 /* transform.c -- AoS vs SoA dispatch */
-void transform_aos(double *points, int n, double *out) {
+#include <stdint.h>
+
+void transform_aos(double *points, intptr_t n, double *out) {
     /* points[n][3] -- array of structs */
-    for (int i = 0; i < n; i++) {
+    int i;
+    for (i = 0; i < n; i++) {
         out[i*3+0] = points[i*3+0] * 2.0;
         out[i*3+1] = points[i*3+1] * 2.0;
         out[i*3+2] = points[i*3+2] * 2.0;
     }
 }
 
-void transform_soa(double *points, int n, double *out) {
+void transform_soa(double *points, intptr_t n, double *out) {
     /* points[3][n] -- struct of arrays */
-    for (int i = 0; i < n; i++) {
+    int i;
+    for (i = 0; i < n; i++) {
         out[0*n + i] = points[0*n + i] * 2.0;
         out[1*n + i] = points[1*n + i] * 2.0;
         out[2*n + i] = points[2*n + i] * 2.0;
@@ -96,6 +100,7 @@ Interface file:
 # transform.c2py
 module: xfrm
 source: [transform.c]
+timing: true
 
 functions:
   - py_sig: "transform(points: buffer, out: buffer) -> void"
@@ -104,6 +109,7 @@ functions:
       - "out.format == 'd'"
       - "out.n == points.n"
       - "points.ndim == 2"
+      - "points.slow_axis == 0"
     c_overloads:
       - sig: "transform_aos(double *points, intptr_t n, double *out)"
         map: {points: "points.ptr", n: "points.shape[0]", out: "out.ptr"}

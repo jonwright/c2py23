@@ -14,6 +14,7 @@ import pytest
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(PROJECT_DIR, "tests", "cases")
 EXAMPLES_DIR = os.path.join(PROJECT_DIR, "examples")
+RUNTIME_DIR = os.path.join(PROJECT_DIR, "c2py23", "runtime")
 
 # Exclude container orchestrators from test collection
 collect_ignore = ["test_all.py", "test_manylinux.py"]
@@ -27,6 +28,18 @@ def _module_name(c2py_path):
     return None
 
 
+def _runtime_mtime():
+    """Return the latest mtime of runtime source files (headers + runtime.c)."""
+    latest = 0.0
+    for name in os.listdir(RUNTIME_DIR):
+        fpath = os.path.join(RUNTIME_DIR, name)
+        if name.endswith((".h", ".c")) and os.path.isfile(fpath):
+            m = os.path.getmtime(fpath)
+            if m > latest:
+                latest = m
+    return latest
+
+
 def _dirty(c2py_path):
     module = _module_name(c2py_path)
     if module is None:
@@ -36,6 +49,8 @@ def _dirty(c2py_path):
         return True
     so_mtime = os.path.getmtime(so_file)
     if os.path.getmtime(c2py_path) > so_mtime:
+        return True
+    if _runtime_mtime() > so_mtime + 1:
         return True
     for name in sorted(os.listdir(os.path.dirname(c2py_path))):
         fpath = os.path.join(os.path.dirname(c2py_path), name)

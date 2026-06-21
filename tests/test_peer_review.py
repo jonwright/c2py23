@@ -38,13 +38,10 @@ def test_alias_slice():
     result = np.zeros(99, dtype=np.float64)
     try:
         arraysum.array_sum(a, b, a)  # output aliases input a
-        print("FAIL: slice alias should be rejected")
-        return False
+        raise AssertionError("FAIL: slice alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: slice alias detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: slice alias detected")
 
 
 def test_alias_reversed():
@@ -55,13 +52,10 @@ def test_alias_reversed():
     result = np.zeros(100, dtype=np.float64)
     try:
         arraysum.array_sum(a, b, a)  # output aliases input a
-        print("FAIL: reversed alias should be rejected")
-        return False
+        raise AssertionError("FAIL: reversed alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: reversed alias detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: reversed alias detected")
 
 
 def test_alias_memoryview():
@@ -72,13 +66,10 @@ def test_alias_memoryview():
     result = np.zeros(100, dtype=np.float64)
     try:
         arraysum.array_sum(a, b, a)  # output aliases input a
-        print("FAIL: memoryview alias should be rejected")
-        return False
+        raise AssertionError("FAIL: memoryview alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: memoryview alias detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: memoryview alias detected")
 
 
 def test_alias_view():
@@ -89,13 +80,10 @@ def test_alias_view():
     result = np.zeros(100, dtype=np.float64)
     try:
         arraysum.array_sum(a, b, a)  # output aliases input a
-        print("FAIL: view alias should be rejected")
-        return False
+        raise AssertionError("FAIL: view alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: view alias detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: view alias detected")
 
 
 def test_alias_broadcast():
@@ -106,13 +94,10 @@ def test_alias_broadcast():
     result = np.zeros(100, dtype=np.float64)
     try:
         arraysum.array_sum(a, a, a)  # output == input (simpler alias test)
-        print("FAIL: broadcast alias should be rejected")
-        return False
+        raise AssertionError("FAIL: broadcast alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: broadcast (self-alias) detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: broadcast (self-alias) detected")
 
 
 def test_alias_output_equals_input():
@@ -122,13 +107,10 @@ def test_alias_output_equals_input():
     
     try:
         arraysum.array_sum(a, b, a)  # result IS a
-        print("FAIL: output==input alias should be rejected")
-        return False
+        raise AssertionError("FAIL: output==input alias should be rejected")
     except ValueError as e:
-        if 'alias' in str(e):
-            print("PASS: output==input alias detected")
-            return True
-        raise
+        assert 'alias' in str(e), "Expected alias error, got: %s" % e
+        print("PASS: output==input alias detected")
 
 
 def test_no_false_positive():
@@ -142,7 +124,6 @@ def test_no_false_positive():
     expected = a + b
     assert np.allclose(result, expected)
     print("PASS: non-aliased buffers accepted")
-    return True
 
 
 def test_contiguity_strided():
@@ -156,13 +137,10 @@ def test_contiguity_strided():
     
     try:
         fillmod.fill(b, 1.0)
-        print("FAIL: strided array should be rejected")
-        return False
+        raise AssertionError("FAIL: strided array should be rejected")
     except ValueError as e:
-        if 'contiguous' in str(e).lower():
-            print("PASS: strided rejected:", e)
-            return True
-        raise
+        assert 'contiguous' in str(e).lower(), "Expected contiguous error, got: %s" % e
+        print("PASS: strided rejected:", e)
 
 
 def test_contiguity_reversed():
@@ -177,20 +155,17 @@ def test_contiguity_reversed():
         # Need to re-import since sys.path may have changed
         import fillmod
         fillmod.fill(b, 1.0)
-        print("FAIL: reversed array should be rejected")
-        return False
+        raise AssertionError("FAIL: reversed array should be rejected")
     except ValueError as e:
-        if 'contiguous' in str(e).lower():
-            print("PASS: reversed rejected:", e)
-            return True
-        raise
+        assert 'contiguous' in str(e).lower(), "Expected contiguous error, got: %s" % e
+        print("PASS: reversed rejected:", e)
 
 
 def test_contiguity_fortran_2d():
     """F-contiguous 2D arrays should be accepted."""
     if not IS_PY3:
         print("SKIP: 2D arrays require Python 3.x")
-        return True
+        return
     
     test_dir3 = os.path.join(os.path.dirname(__file__), 'cases', 'fill')
     sys.path.insert(0, test_dir3)
@@ -207,7 +182,6 @@ def test_contiguity_fortran_2d():
     fillmod.fill(af, 99.0)
     assert (af == 99.0).all()
     print("PASS: F-contiguous 2D accepted")
-    return True
 
 
 def main():
@@ -232,10 +206,11 @@ def main():
     failed = 0
     for name, fn in tests:
         try:
-            if fn():
-                passed += 1
-            else:
-                failed += 1
+            fn()
+            passed += 1
+        except (AssertionError, SystemExit) as e:
+            print("FAIL: %s - %s" % (name, e))
+            failed += 1
         except ImportError:
             print("SKIP: %s (module not available)" % name)
         except Exception as e:

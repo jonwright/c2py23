@@ -521,7 +521,7 @@ fillmod.fill(arr_d, 2.718)
 
 **C source** (`transform.c`):
 ```c
-void transform_aos(double *points, int n, double *out) {
+void transform_aos(double *points, intptr_t n, double *out) {
     /* points: [n, 3] -- array of structs */
     int i;
     for (i = 0; i < n; i++) {
@@ -534,7 +534,7 @@ void transform_aos(double *points, int n, double *out) {
     }
 }
 
-void transform_soa(double *points, int n, double *out) {
+void transform_soa(double *points, intptr_t n, double *out) {
     /* points: [3, n] -- struct of arrays */
     int i;
     for (i = 0; i < n; i++) {
@@ -552,6 +552,7 @@ void transform_soa(double *points, int n, double *out) {
 ```yaml
 module: xfrm
 source: [transform.c]
+timing: true
 
 functions:
   - py_sig: "transform(points: buffer, out: buffer) -> void"
@@ -560,11 +561,12 @@ functions:
       - "out.format == 'd'"
       - "out.n == points.n"
       - "points.ndim == 2"
+      - "points.slow_axis == 0"
     c_overloads:
-      - sig: "transform_aos(double *points, int n, double *out)"
+      - sig: "transform_aos(double *points, intptr_t n, double *out)"
         map: {points: "points.ptr", n: "points.shape[0]", out: "out.ptr"}
         when: "points.shape[1] == 3"
-      - sig: "transform_soa(double *points, int n, double *out)"
+      - sig: "transform_soa(double *points, intptr_t n, double *out)"
         map: {points: "points.ptr", n: "points.shape[1]", out: "out.ptr"}
         when: "points.shape[0] == 3"
     default_raise: "ValueError: expected [N,3] or [3,N] buffer"

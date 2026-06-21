@@ -56,10 +56,12 @@ def load_native(package_dir, module_name='_native', tag='c2py23'):
     """Load <module_name>.<tag>-<platform_key>.so from package_dir.
 
     Args:
-        package_dir: Absolute path to the package directory containing
-                     the .so files.
-        module_name: Base module name (default '_native').
-                     Must match the c2py23 YAML 'module:' field.
+    package_dir: Absolute path to the package directory containing
+                 the .so files.
+    module_name: Base module name (default '_native').
+                 Must match the c2py23 YAML 'module:' field.
+                 Use a unique name per package (e.g. '_mymodule')
+                 to avoid collisions in sys.modules.
         tag:         Tag string inserted in the filename (default 'c2py23').
 
     Returns:
@@ -107,6 +109,15 @@ def load_native(package_dir, module_name='_native', tag='c2py23'):
         spec = importlib.util.spec_from_file_location(
             module_name, _path, loader=loader)
         mod = importlib.util.module_from_spec(spec)
+        # Warn if overwriting an existing module in sys.modules.
+        # Using distinct module names per package (e.g. '_mymodule'
+        # instead of '_native') avoids collisions.
+        if module_name in sys.modules:
+            import warnings as _w
+            _w.warn(
+                "c2py_loader: overwriting existing module '%s' "
+                "in sys.modules. Use a unique module name."
+                % module_name)
         sys.modules[module_name] = mod
         loader.exec_module(mod)
         return mod
