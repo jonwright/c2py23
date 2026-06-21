@@ -216,15 +216,20 @@ class CBuilder:
                 self.emit('')
 
     def emit_contiguity_checks(self, buf_params):
-        """Emit contiguity validation for each buffer."""
+        """Emit contiguity validation for each buffer.
+
+        Also emits _c2py_slow_axis_buf_{name} -- the index of the slowest
+        varying axis (0 for C-contiguous, ndim-1 for F-contiguous).
+        Set to -1 if the buffer is not C or F contiguous (rejected anyway).
+        """
         if not buf_params:
             return
 
         for p in buf_params:
             name = p.name
             fmt = lambda s: s.format(name)
-            self.emit('    char *_c2py_contig_buf_{0} = "?";'.format(name))
-            self.emit('    (void)_c2py_contig_buf_{0};'.format(name))
+            self.emit('    int _c2py_slow_axis_buf_{0} = -1;'.format(name))
+            self.emit('    (void)_c2py_slow_axis_buf_{0};'.format(name))
             self.emit('    /* contiguity check: {0} */'.format(name))
             self.emit('    do {')
             self.emit('        int _ok = 1;')
@@ -238,7 +243,7 @@ class CBuilder:
             self.emit(fmt('                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}'))
             self.emit(fmt('                _expected *= buf_{0}->shape[_d];'))
             self.emit('            }')
-            self.emit('            if (_ok) {{ _c2py_contig_buf_{0} = "F"; break; }}'.format(name))
+            self.emit('            if (_ok) {{ _c2py_slow_axis_buf_{0} = (int)(buf_{0}->ndim - 1); break; }}'.format(name))
             self.emit('            /* check C-contiguous (row-major): last dim varies fastest */')
             self.emit('            _ok = 1;')
             self.emit(fmt('            _expected = buf_{0}->itemsize;'))
@@ -247,7 +252,7 @@ class CBuilder:
             self.emit(fmt('                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}'))
             self.emit(fmt('                _expected *= buf_{0}->shape[_d];'))
             self.emit('            }')
-            self.emit('            if (_ok) _c2py_contig_buf_{0} = "C";'.format(name))
+            self.emit('            if (_ok) _c2py_slow_axis_buf_{0} = 0;'.format(name))
             self.emit('        }')
             self.emit('        if (!_ok) {')
             self.emit('            PyErr_SetString(PyExc_ValueError,')
@@ -536,11 +541,14 @@ def _emit_impl_func(b, func, buf_params, scalar_params,
                                     timing, has_gil_release)
 
     b.emit_blank()
-    if func.default_raise:
-        b.emit('    /* all branches return (default_raise covers else) */')
-    else:
-        b.emit('    /* fallback: no overload matched */')
-        b.emit('    return NULL;')
+    b.emit('#ifdef _MSC_VER')
+    b.emit('__pragma(warning(push))')
+    b.emit('__pragma(warning(disable:4702)) /* unreachable code */')
+    b.emit('#endif')
+    b.emit('    return NULL;')
+    b.emit('#ifdef _MSC_VER')
+    b.emit('__pragma(warning(pop))')
+    b.emit('#endif')
     b.emit('}')
     b.emit_blank()
 

@@ -277,7 +277,8 @@ attributes and operators are available:
 | `buf.format` | `buf->format` | PEP 3118 format character |
 | `buf.ndim` | `buf->ndim` | Number of dimensions |
 | `buf.ptr` | `buf->buf` | Raw pointer (map: only) |
-| `buf.contiguous` | `_c2py_contig_buf_*` | `'C'`, `'F'`, or `'?'` — per-buffer layout |
+| `buf.slow_axis` | `_c2py_slow_axis_buf_*` | 0 (C-contiguous) or ndim-1 (F-contiguous) |
+| `buf.slow_dim` | `buf->shape[_c2py_slow_axis_buf_*]` | Size of the slow dimension |
 | integer literal | `42` | |
 | float literal | `3.14` | |
 | string literal | `"hello"` | |

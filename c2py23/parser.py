@@ -1199,8 +1199,10 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return obj + '->shape'
         elif attr == 'strides':
             return obj + '->strides'
-        elif attr == 'contiguous':
-            return '_c2py_contig_' + obj
+        elif attr == 'slow_axis':
+            return '_c2py_slow_axis_' + obj
+        elif attr == 'slow_dim':
+            return '{0}->shape[_c2py_slow_axis_{0}]'.format(obj)
         else:
             return obj + '->' + attr
 
