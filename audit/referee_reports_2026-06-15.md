@@ -33,28 +33,24 @@ and design items are noted below with their current status.
 | -- | Design | GIL restore before Python object construction | RESOLVED | GIL restored immediately after C call |
 | -- | Design | Output tuple leak on error path | RESOLVED | NULL-checked intermediates before `PyTuple_SetItem` |
 
-### Open Items
+## Current Status (2026-06-21)
 
-**B2 (MEDIUM):** `_c2py_dec_ref_manual` has a diagnostic on zero-refcount but
-does not call the destructor. This path is unreachable when the CPython C API
-is used correctly (all decrefs go through the interpreter's own machinery).
-A proper fix requires knowing `_Py_Dealloc`'s symbol name, which varies across
-CPython versions. Left as a diagnostic-only mitigation pending a more
-comprehensive approach (e.g., `GC_Unreachable` + deferred cleanup).
+All HIGH and MEDIUM items resolved.  LOW-severity items deferred:
 
-**P2 (LOW):** The `volatile` flag in `c2py_runtime_init()` serializes
-initialization under the GIL in standard builds. Free-threaded 3.14+ (P4 in
-PLAN.md) will require atomic initialization; deferred to that work item.
+| ID | Description | 2026-06-21 Status |
+|----|-------------|-------------------|
+| P3 | 32-bit Py_buffer sizes unverified | DEFERRED -- no 32-bit CI target |
+| D1 | `'l'`/`'L'` LP64-specific | DOCUMENTED -- PLY.md Outstanding |
+| P5 | Generator structural hardening | DEFERRED -- PLY.md Outstanding |
+| P5 | FT globals audit | DEFERRED -- PLY.md Outstanding |
 
-**P3 (LOW):** 32-bit `Py_buffer` sizes (52/44 bytes pre/post 3.12) are
-unverified. No 32-bit ABI test container exists. The project targets
-Linux-x86_64 primarily. Adding a 32-bit CI target (i386 container or
-ARM32) is deferred.
+Additional referee reports from 2026-06-20 resolved as a separate audit
+(`audit/20260620_resolved/`), completing 22 tasks across 2 reports.
 
-**D2 (Design):** Scientific notation (`1e-4`) and leading-dot (`.5`) float
-defaults are now supported. The `_PY_PARAM_RE` regex accepts `-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?`.
-Integer parameter defaults are validated separately against `^-?\d+$` to
-prevent `int = 1e5` from producing a confusing ValueError.
+### Where TODOs live
+
+PLAN.md under "Outstanding" tracks deferred items.  AGENTS.md under
+"Next Steps" tracks upcoming work.
 
 ### Test Coverage Added
 

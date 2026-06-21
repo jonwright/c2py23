@@ -274,7 +274,6 @@ Requires the snakepit SIF containers at `../snakepit/`.
 - `docs/specification.md` -- full grammar, worked examples, architecture
 - `docs/user_guide.md` -- thread safety guide and best practices
 - `docs/c2pypi-specification.md` -- wheel distribution design
-- `docs/referee_reports_2026-06-15.md` -- referee review reports with point-by-point response
 
 ## Limitations
 
