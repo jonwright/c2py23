@@ -181,7 +181,7 @@ c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int8_t" | "uint8_t" | "int16_t" | "uint16_t"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
           | "intptr_t" | "size_t" | "_Bool"
-c_ret ::= c_ctype
+c_ret ::= "void" | "int" | "float" | "double"
 ```
 
 If `-> c_ret` is omitted, the return type is `void`.
@@ -287,6 +287,8 @@ attributes and operators are available:
 | `not` | `!` | |
 | `==` / `!=` | `==` / `!=` | |
 | `<` / `>` / `<=` / `>=` | Same | |
+| `+` / `-` / `*` / `/` / `%` | Same | Arithmetic |
+| unary `+` / `-` | Same | |
 
 Both `buf.n` and `buf.len` are available; `n` returns the number of
 elements, `len` returns the byte length (matching the PEP 3118 `Py_buffer.len`

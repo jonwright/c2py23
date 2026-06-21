@@ -55,6 +55,9 @@ class Subscript(namedtuple('Subscript', ['obj', 'index'])):
 class IntLit(namedtuple('IntLit', ['value'])):
     pass
 
+class FloatLit(namedtuple('FloatLit', ['value'])):
+    pass
+
 class StrLit(namedtuple('StrLit', ['value'])):
     pass
 
@@ -560,7 +563,7 @@ class _ExprParser(object):
         if ch == "'" or ch == '"':
             return StrLit(self._parse_string())
         if ch.isdigit():
-            return IntLit(self._parse_integer())
+            return self._parse_number()
         if ch.isalpha() or ch == '_':
             return Var(self._parse_name())
         raise ValueError("Unexpected character '{}' in expression".format(ch))
@@ -583,6 +586,34 @@ class _ExprParser(object):
         if start == self.pos:
             raise ValueError("Expected identifier")
         return self.s[start:self.pos]
+
+    def _parse_number(self):
+        self._skip_ws()
+        start = self.pos
+        saw_dot = False
+        saw_exp = False
+        while self.pos < self.n:
+            ch = self.s[self.pos]
+            if ch.isdigit():
+                self.pos += 1
+                continue
+            if ch == '.' and not saw_dot and not saw_exp:
+                saw_dot = True
+                self.pos += 1
+                continue
+            if ch in ('e', 'E') and not saw_exp:
+                saw_exp = True
+                self.pos += 1
+                if self.pos < self.n and self.s[self.pos] in ('+', '-'):
+                    self.pos += 1
+                continue
+            break
+        if start == self.pos:
+            raise ValueError("Expected number")
+        s = self.s[start:self.pos]
+        if saw_dot or saw_exp:
+            return FloatLit(float(s))
+        return IntLit(int(s))
 
     def _parse_integer(self):
         self._skip_ws()
@@ -1139,6 +1170,8 @@ def _expr_to_source(expr):
         return _expr_to_source(expr.obj) + '[' + str(expr.index) + ']'
     elif isinstance(expr, IntLit):
         return str(expr.value)
+    elif isinstance(expr, FloatLit):
+        return _float_literal(expr.value)
     elif isinstance(expr, StrLit):
         return "'" + expr.value + "'"
     elif isinstance(expr, Compare):
@@ -1215,6 +1248,9 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
 
     elif isinstance(expr, IntLit):
         return str(expr.value)
+
+    elif isinstance(expr, FloatLit):
+        return _float_literal(expr.value)
 
     elif isinstance(expr, StrLit):
         return '"' + _escape_c_str(expr.value) + '"'

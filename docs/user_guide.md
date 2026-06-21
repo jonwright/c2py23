@@ -332,7 +332,7 @@ maximum portability:
 
 ```bash
 c2py23 generate mymodule.c2py -o wrapper.c
-gcc -shared -fPIC wrapper.c mymodule.c c2py_runtime.c -ldl -lm \
+gcc -shared -fPIC -I c2py23/runtime wrapper.c mymodule.c c2py_runtime.c \
     -o mymodule/_mymodule.c2py23-linux_x86_64.so
 python3 -m build
 ```

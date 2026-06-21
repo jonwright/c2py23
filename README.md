@@ -138,7 +138,7 @@ appropriate dimension via `map:`, and `when:` picks the C function.
 
 The generated wrapper for this example is committed at
 [`tests/cases/transform/xfrm_wrapper.c`](tests/cases/transform/xfrm_wrapper.c)
-(309 lines) and can be compiled without c2py23 installed:
+and can be compiled without c2py23 installed:
 
 ```bash
 gcc -shared -fPIC -I c2py23/runtime \
@@ -184,7 +184,7 @@ The compiler is auto-detected in `c2py23 build`.  Output extension is
 | Python type | C types |
 |-------------|---------|
 | `buffer` | `const T*` / `T*` for any integer or float C type below |
-| `int` | `int`, `int64_t` (auto-converted via `PyLong_FromLongLong`) |
+| `int` | `int` |
 | `float` | `float`, `double` |
 | Return `void` | C `void` function |
 | Return `int` | C `int` return |

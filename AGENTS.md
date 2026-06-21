@@ -170,6 +170,8 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
 - `c2py23/cli.py` -- Command-line interface (`c2py23 build`)
 - `c2py23/perf.py` -- ctypes-based performance data decoder
+- `c2py23/invariant_checker.py` -- Validates generated C code structure
+- `c2py23/c2py_loader.py` -- Multi-platform .so loader
 - `c2py23/runtime/c2py_runtime.h` -- Nimpy-style CPython type definitions and API macros
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`
 
@@ -186,9 +188,12 @@ YAML-based `.c2py` files define:
 - `source:` -- C source file(s)
 - `headers:` -- C header file(s) to include (optional)
 - `timing:` -- enable per-function perf timing (optional)
+- `free_threading:` -- declare module safe for 3.14t (optional)
+- `constants:` -- module-level integer constants (optional)
 - `functions:` -- list of wrapped functions with:
   - `py_sig:` -- Python signature
   - `expand:` -- template expansion with `${VAR}` substitution (optional)
+  - `params:` -- per-parameter descriptions (optional)
   - `checks:` -- pre-conditions (optional)
   - `gil_release:` -- release the GIL during C calls (optional, per-function)
   - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:`, `name:`, `variants:`, `group:` (optional)

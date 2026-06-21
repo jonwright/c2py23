@@ -78,6 +78,9 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
   `.so` loader; `py3-none-any` wheel tag; multi-platform `.so` coexistence;
   cross-tested on all snakepit containers.
 
+- **Manylinux2014 cross-testing (2026-06-20)** — `test_manylinux.py` build-once
+  strategy across 6 manylinux Pythons and 11 cross-container test targets.
+
 - **P2: Windows port (2026-06-20)** -- `GetModuleHandle`/`GetProcAddress` runtime
   via `python3.dll` with versioned fallback; MSVC and MinGW build paths in `cli.py`;
   LLP64 format handling (`sizeof(long)` itemsize check, `'L'`/`'l'` dispatch);

@@ -825,6 +825,141 @@ def test_all_cases_compile():
     test_passed()
 
 
+def test_float_default_args():
+    """Verify float literals parse as default arg values: 3.14, 1.6e-7, 2.7E+16."""
+    from c2py23.parser import _parse_py_sig
+    import tempfile, os, yaml
+
+    c2py_src = """
+module: _ftest
+source: [dummy.c]
+functions:
+""" + """\
+  - py_sig: "scale(data: buffer, factor: float = 3.14) -> void"
+    c_overloads:
+      - sig: "scale(const double *data, intptr_t n, double factor) -> void"
+        map: {data: "data.ptr", n: "data.n", factor: factor}
+  - py_sig: "exp_decay(data: buffer, rate: float = 1.6e-7) -> void"
+    c_overloads:
+      - sig: "decay(const double *data, intptr_t n, double rate) -> void"
+        map: {data: "data.ptr", n: "data.n", rate: rate}
+  - py_sig: "scale_big(data: buffer, factor: float = 2.7E+16) -> void"
+    c_overloads:
+      - sig: "scale_big(const double *data, intptr_t n, double factor) -> void"
+        map: {data: "data.ptr", n: "data.n", factor: factor}
+"""
+
+    tmpf = tempfile.NamedTemporaryFile(suffix='.c2py', mode='w', delete=False)
+    tmpf.write(c2py_src)
+    tmpf.close()
+    try:
+        mod = load_c2py(tmpf.name)
+    finally:
+        os.unlink(tmpf.name)
+
+    f_scale = mod.functions[0]
+    f_decay = mod.functions[1]
+    f_big = mod.functions[2]
+
+    p_scale = f_scale.py_params[1]
+    p_decay = f_decay.py_params[1]
+    p_big = f_big.py_params[1]
+
+    assert p_scale.default == 3.14, "default not 3.14, got %s" % p_scale.default
+    assert p_decay.default == 1.6e-7, "default not 1.6e-7, got %s" % p_decay.default
+    assert p_big.default == 2.7e16, "default not 2.7e16, got %s" % p_big.default
+
+    assert isinstance(p_scale.default, float)
+    assert isinstance(p_decay.default, float)
+    assert isinstance(p_big.default, float)
+
+    # Verify float literals in when: expressions
+    from c2py23.parser import parse_expr
+    from c2py23.parser import FloatLit
+    e = parse_expr("3.14")
+    assert isinstance(e, FloatLit), "expected FloatLit, got %s" % type(e).__name__
+    assert e.value == 3.14, "got %s" % e.value
+
+    e = parse_expr("1.6e-7")
+    assert isinstance(e, FloatLit), "expected FloatLit, got %s" % type(e).__name__
+    assert abs(e.value - 1.6e-7) < 1e-20
+
+    e = parse_expr("2.7E+16")
+    assert isinstance(e, FloatLit), "expected FloatLit, got %s" % type(e).__name__
+    assert abs(e.value - 2.7e16) < 1e5
+
+    test_passed()
+
+
+def test_return_types_allowed():
+    """Verify void/int/float/double are valid return types; others need outputs:."""
+    from c2py23.parser import _parse_c_sig
+
+    # Direct returns: only void, int, float, double
+    for ctype, ok in [("void", True), ("int", True), ("float", True),
+                       ("double", True)]:
+        name, params, ret = _parse_c_sig(
+            "%s func(const double *a)" % ctype, "<test>")
+        assert ret == ctype
+
+    # Other C types must use outputs:
+    for ctype in ("int8_t", "uint8_t", "int16_t", "uint16_t",
+                  "int32_t", "uint32_t", "int64_t", "uint64_t",
+                  "char", "intptr_t", "size_t"):
+        try:
+            name, params, ret = _parse_c_sig(
+                "%s func(const double *a)" % ctype, "<test>")
+            assert False, "should have rejected %s" % ctype
+        except ValueError as e:
+            assert "outputs:" in str(e), \
+                "expected outputs: hint, got: %s" % e
+
+    test_passed()
+
+
+def test_float_expression_compiles():
+    """Verify a .c2py with float literal in when: compiles."""
+    from c2py23.parser import load_c2py
+    from c2py23.generator import generate
+    import tempfile, os, subprocess
+
+    src = """module: _ftest
+source: [dummy.c]
+functions:
+  - py_sig: "fn(a: buffer) -> int"
+    checks:
+      - "a.format == 'd'"
+    c_overloads:
+      - sig: "fn(const double *a, intptr_t n) -> int"
+        map: {a: "a.ptr", n: "a.n"}
+        when: "a.n > 0 and a.itemsize == 8"
+"""
+    tmpf = tempfile.NamedTemporaryFile(suffix='.c2py', mode='w', delete=False)
+    tmpf.write(src)
+    tmpf.close()
+    try:
+        mod = load_c2py(tmpf.name)
+    finally:
+        os.unlink(tmpf.name)
+    code = generate(mod)
+    # Must compile with -Wall -Werror
+    tmpf = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
+    tmpf.write(code.encode('ascii'))
+    tmpf.close()
+    runtime_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'c2py23', 'runtime')
+    ret = subprocess.call(
+        ['gcc', '-Wall', '-Werror', '-c',
+         '-I', runtime_dir,
+         '-o', '/dev/null',
+         tmpf.name],
+        timeout=30)
+    os.unlink(tmpf.name)
+    assert ret == 0, "float expression wrapper failed to compile"
+
+    test_passed()
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):
