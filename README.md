@@ -193,60 +193,11 @@ The wrapper never dereferences `void*` -- it is a pure address passthrough.
 - No copies or transpositions -- zero-copy, C functions operate on buffers in-place
 - No numpy required -- `ctypes` arrays, `memoryview`, `bytearray`, and anything supporting PEP 3118 works
 
-> **Warning for Python 3.14t (free-threaded) users:** By default, c2py23 modules
-> re-enable the GIL globally on load (safe default). Set `free_threading: true` in
-> your `.c2py` file to opt into true free-threading -- but only after verifying
-> your C code is thread-safe. See `docs/user_guide.md` for a guide to thread-safe
-> C patterns.
-
-## Features
-
-The `.c2py` YAML interface defines Python signatures, C overloads, and dispatch conditions.
-The generator emits a single-file C99 wrapper with no heap allocations.
-
-- **Buffer protocol** with format dispatch (`float` vs `double` vs `int32_t`), arithmetic checks (`a.n >= b.n + 2`), and C/F-contiguity enforcement; `buf.contiguous == 'C'` or `'F'` for per-buffer layout guards
-- **Overload dispatch** by buffer type, shape, CPU features (AVX2/AVX-512/NEON), or arbitrary `when:` conditions; variant dispatch with function-pointer or switch-case selection
-- **Variant API** — `_rebind_<name>()` for runtime variant selection, `_variants_<name>()` for enumeration, `default: false` to exclude benchmark-only variants from auto-dispatch
-- **Template expansion** (`expand:` with `${VAR}` substitution) for generating typed variants
-- **GIL release** (`gil_release: true`) per-function for parallel C calls
-- **Free-threading support** (`free_threading: true`) for Python 3.14t+
-- **Output scalars** (`outputs:`) return-by-pointer parameters as Python tuple values
-- **Optional parameters** with defaults, custom docstrings, `default_raise:` error messages
-- **Opaque pointers** (`void*` from Python `int`) for user-managed memory (GPU, custom allocators)
-- **Per-function timing** via `clock_gettime` (default) or CPU cycle counters (`rdtsc`/`CNTVCT_EL0`/`mftb`), per-variant perf metadata (`variant`, `group_idx`, `variant_name`)
-- **ASan support** via `c2py23 build --asan`
-- **Separate generate/compile** steps for meson/cmake/setuptools integration
-- **Wheel packaging** — multi-platform `py3-none-any` wheels via `c2py_loader` naming convention
-- **Windows support** — MSVC and MinGW, `.pyd` output, `GetModuleHandle`/`GetProcAddress` runtime
-- **Python 2.7 fallback** — `PyObject_AsReadBuffer`/`PyObject_AsWriteBuffer` when PEP 3118 is unavailable
-
-## Supported Python Versions
-
-| Version | Linux (Apptainer) | Windows (GitHub Actions) |
-|---------|-------------------|--------------------------|
-| 2.7.18 | 13/14 pass, 1 skip | 14/14 pass |
-| 3.6.15 | 14/14 pass | 14/14 pass |
-| 3.7.17 | 14/14 pass | 14/14 pass |
-| 3.8.10 | 14/14 pass | 14/14 pass |
-| 3.9.13 | 14/14 pass | 14/14 pass |
-| 3.10.x | 14/14 pass | 14/14 pass |
-| 3.11.x | 14/14 pass | 14/14 pass |
-| 3.12.x | 14/14 pass | 14/14 pass |
-| 3.13.14 | 14/14 pass | 14/14 pass |
-| 3.14.6 | 14/14 pass | 14/14 pass |
-| 3.14.0t | 14/14 pass | -- (no FT builds on CI) |
-| 3.15.x | 14/14 pass (ubuntu26.04) | guarded (no binary wheels yet) |
-| 3.15.0t | -- | guarded (no binary wheels yet) |
-
-CI: Linux via Apptainer containers (snakepit), Windows via GitHub Actions
-(MSVC on `windows-latest`, Python 2.7/3.13/3.14).
-
-Python 3.15+ on Windows and 3.16+ on all platforms are **rejected** at
-module-load time with a diagnostic explaining how to add support.
-
-Additional tests in `test_peer_review.py` (alias + contiguity, 11 tests, requires numpy),
-`test_error_paths.py` (refcount stability, 5 tests), and
-`test_regression_fixes.py` (codegen validation, 23 tests).
+**Warning for Python 3.14t (free-threaded) users:** By default, c2py23 modules
+re-enable the GIL globally on load (safe default). Set `free_threading: true` in
+your `.c2py` file to opt into true free-threading -- but only after verifying
+your C code is thread-safe. See `docs/user_guide.md` for a guide to thread-safe
+C patterns.
 
 ## Examples
 
@@ -315,50 +266,7 @@ c2py23 build --asan module.c2py
 
 Requires the snakepit SIF containers at `../snakepit/`.
 
-## File Structure
 
-```
-c2py23/
-  c2py23/                     # Python package (parser, generator, CLI, perf, loader)
-    c2py_loader.py              # Multi-platform .so loader (explicit-filename convention)
-    invariant_checker.py        # Validate generated C code structure
-    runtime/                    # C runtime (nimpy loader, API table, CPU feature headers)
-      c2py_runtime.h            # Core type definitions and API macros
-      c2py_runtime.c            # Runtime loader (dlopen/dlsym)
-      c2py_amd64.h              # x86_64 CPU feature flags
-      c2py_arm64.h              # ARM64 CPU feature flags
-      c2py_ppc64.h              # POWER CPU feature flags
-  examples/                     # Worked examples with wrappers
-    kissfft_wrap/               # KissFFT wrapper (real + complex FFT)
-    lz4_wrap/                   # LZ4 compression wrapper
-    simd_dispatch/              # SIMD dispatch demo (Makefile/meson/cmake/setuptools)
-    threading_bench/            # Threading benchmark (GIL release, free-threading, OpenMP)
-    wheel_demo/                 # Minimal py3-none-any wheel demo
-    meson_demo/                 # Wheel built with meson.build
-    cmake_demo/                 # Wheel built with CMakeLists.txt
-  tests/
-    cases/                      # Test cases (C source + .c2py interface)
-    run_tests.sh                # Build + test for one Python version
-    test_uniform.py             # 2.7-3.14 compatible test runner (14 tests)
-    test_all.py                 # Orchestrator across snakepit containers
-    test_manylinux.py           # Build-once cross-test strategy (manylinux2014)
-    test_leaks.py               # Memory stress test (valgrind compatible)
-    test_peer_review.py         # Alias + contiguity enforcement tests (10 tests, requires numpy)
-    test_error_paths.py         # Refcount stability on error paths (5 tests)
-    test_regression_fixes.py    # Parser/generator unit tests (23 tests)
-    test_lifecycle.py           # Re-import, concurrent import, subinterpreter tests
-    check_abi.c                 # Linux ABI introspection tool
-    check_abi_win.c             # Windows ABI introspection tool
-    abi_diag.py                 # Python-side ABI diagnostic (ctypes format chars)
-    abi_check_win.py            # Windows C ABI checker (compile + run)
-    populate_abi_matrix.py      # Collect ABI data from all containers
-    abi_matrix.json             # Py_buffer/PyObject layout across versions
-  docs/                         # Specification, grammar, and user guide
-    specification.md            # Full grammar, architecture, runtime internals
-    user_guide.md               # Thread safety guide and best practices
-    c2pypi-specification.md     # Wheel distribution design (future c2pypi project)
-  PLAN.md                     # Future work and roadmap
-```
 
 ## Documentation
 
