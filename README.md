@@ -136,6 +136,21 @@ xfrm.transform(mv_soa, mv_out2)  # shape[0]==3 -> transform_soa, n=shape[1]=4
 The wrapper never transposes or copies data.  `n` is computed from the
 appropriate dimension via `map:`, and `when:` picks the C function.
 
+The generated wrapper for this example is committed at
+[`tests/cases/transform/xfrm_wrapper.c`](tests/cases/transform/xfrm_wrapper.c)
+(309 lines) and can be compiled without c2py23 installed:
+
+```bash
+gcc -shared -fPIC -I c2py23/runtime \
+    tests/cases/transform/xfrm_wrapper.c \
+    tests/cases/transform/transform.c \
+    c2py23/runtime/c2py_runtime.c \
+    -ldl -lm -o xfrm.so
+```
+
+A git pre-commit hook (`.githooks/pre-commit`) regenerates the wrapper
+when the generator, parser, runtime, or transform source files change.
+
 ### Two-Step Workflow (generate then compile)
 
 For build system integration, c2py23 supports a split workflow:

@@ -2,6 +2,7 @@
 *.so
 *.o
 tests/cases/*/*_wrapper.c
+!tests/cases/transform/*_wrapper.c
 
 # Python
 __pycache__/

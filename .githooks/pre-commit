@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit hook: regenerate transform wrapper when source files change.
+#
+# Files that trigger a rebuild:
+#   c2py23/parser.py  c2py23/generator.py  c2py23/runtime/*.h  c2py23/runtime/*.c
+#   tests/cases/transform/transform.c2py  tests/cases/transform/transform.c
+set -e
+
+WRAPPER="tests/cases/transform/xfrm_wrapper.c"
+TRIGGERS=(
+    c2py23/parser.py
+    c2py23/generator.py
+    c2py23/runtime/c2py_runtime.h
+    c2py23/runtime/c2py_runtime.c
+    tests/cases/transform/transform.c2py
+    tests/cases/transform/transform.c
+)
+
+# Check if any trigger file is in the staging area
+REBUILD=0
+for f in "${TRIGGERS[@]}"; do
+    if git diff --cached --name-only | grep -q "^$f$"; then
+        REBUILD=1
+        break
+    fi
+done
+# Also rebuild if the wrapper itself is being staged (manual edit)
+if git diff --cached --name-only | grep -q "^$WRAPPER\$"; then
+    REBUILD=0
+fi
+
+if [ "$REBUILD" -eq 1 ]; then
+    echo "[pre-commit] Rebuilding $WRAPPER..."
+    python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \
+        -o "$WRAPPER"
+    git add "$WRAPPER"
+    echo "[pre-commit] $WRAPPER regenerated and staged."
+fi

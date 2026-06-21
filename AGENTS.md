@@ -139,6 +139,20 @@ Populate ABI matrix:
 python3 tests/populate_abi_matrix.py
 ```
 
+Regenerate the committed example wrapper (pre-commit hook runs automatically):
+```bash
+python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \
+    -o tests/cases/transform/xfrm_wrapper.c
+```
+
+## Committed Example Wrapper
+
+`tests/cases/transform/xfrm_wrapper.c` is committed to git as a reference
+example (shape dispatch, 2D buffers, `slow_axis` guard).  A pre-commit
+hook (`.githooks/pre-commit`) regenerates it when generator, parser,
+runtime, or transform source files change.  It can be compiled without
+c2py23 installed -- see the README for the gcc command.
+
 ## Supported Python Versions
 
 - **debian10.sif**: Python 3.6
