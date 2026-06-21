@@ -1,0 +1,17 @@
+include LICENSE
+include README.md
+include pyproject.toml
+include setup.py
+
+recursive-include c2py23 *.py *.h *.c
+prune c2py23/__pycache__
+exclude c2py23/generator_reference.py.archived
+
+prune audit/20260620_resolved
+
+prune tests/test_venv_3.12
+prune tests/test_workspace
+
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store

@@ -46,3 +46,4 @@ examples/threading_bench/*.so
 # Audit output (generated Markdown for LLM/human review)
 /audit/*.md
 /audit/wrappers/
+/audit/20260620_resolved/
