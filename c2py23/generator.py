@@ -1134,9 +1134,7 @@ def _emit_check(b, check, buf_params, scalar_params):
 
 # ---- Check emission and diagnostics ----
 def _emit_default_raise_body(b, default_raise, buf_params=None):
-    """Emit the body of a default raise block.
-    When buf_params is provided, append each buffer's actual format char
-    to the error message so the user can diagnose dispatch failures."""
+    """Emit the body of a default raise block."""
     if ':' in default_raise:
         exc_type, msg = default_raise.split(':', 1)
         exc_type = exc_type.strip()
@@ -1145,25 +1143,7 @@ def _emit_default_raise_body(b, default_raise, buf_params=None):
         exc_type = 'TypeError'
         msg = default_raise
     exc_name = 'PyExc_' + exc_type
-    if buf_params:
-        fmt_parts = []
-        for p in buf_params:
-            fmt_parts.append(
-                "buf '{}' format='%s'".format(_escape_c_str(p.name)))
-        msg += ' ('
-        msg += ', '.join(fmt_parts)
-        msg += ')'
-        b.emit('        {')
-        b.emit('            char _c2py_err[256];')
-        fmt_args = ', '.join(
-            'buf_{0}->format ? buf_{0}->format : "(null)"'.format(p.name)
-            for p in buf_params)
-        b.emit('            snprintf(_c2py_err, sizeof(_c2py_err), "{}", {});'.format(
-            _escape_c_str(msg), fmt_args))
-        b.emit('            PyErr_SetString(' + exc_name + ', _c2py_err);')
-        b.emit('        }')
-    else:
-        b.emit('        PyErr_SetString(' + exc_name + ', "{}");'.format(_escape_c_str(msg)))
+    b.emit('        PyErr_SetString(' + exc_name + ', "{}");'.format(_escape_c_str(msg)))
     b.emit('        return NULL;')
 
 

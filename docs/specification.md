@@ -261,6 +261,54 @@ checks:
   - "a.n == result.n"
 ```
 
+#### Expression Grammar
+
+All `checks:` and `when:` expressions are compiled to C. The following
+attributes and operators are available:
+
+| Expression | C equivalent | Notes |
+|---|---|---|
+| `buf.n` | `buf->len / buf->itemsize` | Element count |
+| `buf.len` | `buf->len` | Byte length (PEP 3118 field) |
+| `buf.shape[N]` | `buf->shape[N]` | Array dimension sizes |
+| `buf.strides[N]` | `buf->strides[N]` | Byte strides per dimension |
+| `buf.itemsize` | `buf->itemsize` | Bytes per element |
+| `buf.format` | `buf->format` | PEP 3118 format character |
+| `buf.ndim` | `buf->ndim` | Number of dimensions |
+| `buf.ptr` | `buf->buf` | Raw pointer (map: only) |
+| integer literal | `42` | |
+| float literal | `3.14` | |
+| string literal | `"hello"` | |
+| `and` / `or` | `&&` / `\|\|` | Short-circuit |
+| `not` | `!` | |
+| `==` / `!=` | `==` / `!=` | |
+| `<` / `>` / `<=` / `>=` | Same | |
+
+Both `buf.n` and `buf.len` are available; `n` returns the number of
+elements, `len` returns the byte length (matching the PEP 3118 `Py_buffer.len`
+field).
+
+#### Quoting in map: and YAML values
+
+YAML interprets `.`, `[`, `(`, and spaces as syntax.  Values containing
+these characters MUST be quoted:
+
+```yaml
+map: {ng: "gv.shape[0]"}     # quoted -- . and [ are YAML special
+map: {ptr: "buf.ptr"}        # quoted -- . is YAML special
+map: {tol: tol}               # no quotes -- bare scalar
+```
+
+The rule: bare YAML values (scalars, ints) need no quotes; any value
+containing `.`, `[`, `(`, or whitespace must be quoted.
+
+#### Variant Ordering
+
+Variant dispatch respects declaration order. The first variant whose
+`when:` condition matches wins auto-dispatch. Both Python 3.7+ dicts and
+PyYAML `safe_load` preserve insertion order. If ordering matters for
+correctness, use `default:` markers (see Dispatch section).
+
 ### Default Raise
 
 `default_raise:` specifies the error raised when no overload matches:
