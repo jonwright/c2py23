@@ -201,6 +201,9 @@ def test_arraysum_alias_detection_refcounts():
 
 def test_zero_length_buffer():
     """Zero-length buffer must be accepted (no div-by-zero, no segfault)."""
+    if sys.version_info[0] < 3:
+        print("SKIP: zero-length buffer (Python 2.7 old buffer protocol differs)")
+        return
     sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
     import arraysum
 
