@@ -119,6 +119,11 @@ def _check_one_wrapper(lines, start_lineno):
             in_cleanup = True
             continue
 
+        # Also detect cleanup by the release pattern when label is absent
+        if not in_cleanup and re.match(
+                r'\s*if\s*\(\s*(acq_\w+)\s*\)\s*c2py_release_buffer\(&(buf_\w+)\);', line):
+            in_cleanup = True
+
         m = re.match(r'.*if\s*\(\s*c2py_acquire_buffer\(([^,]+),\s*&(buf_\w+),', line)
         if m:
             buf_name = m.group(2)

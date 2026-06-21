@@ -39,6 +39,7 @@ class CBuilder:
         self._in_cleanup = False
         self._impl_has_gil_release = False
         self._gil_restore_before_py = True  # invariant marker
+        self._has_goto_cleanup = False
 
     # -- Low-level emit --
 
@@ -81,6 +82,7 @@ class CBuilder:
             self.emit('        return NULL;')
         else:
             self.emit('        goto cleanup;')
+            self._has_goto_cleanup = True
         self.emit('    {0} = 1;'.format(acq_flag))
         self._acquired.append(buf_var)
 
@@ -88,7 +90,8 @@ class CBuilder:
         self._in_cleanup = True
         if not self._acquired:
             return
-        self.emit('cleanup:')
+        if self._has_goto_cleanup:
+            self.emit('cleanup:')
         for buf_var in reversed(self._acquired):
             acq_flag = self._acq_name(buf_var)
             self.emit(
@@ -202,11 +205,13 @@ class CBuilder:
                 self.emit('        (char*)buf_{0}.buf < (char*)buf_{1}.buf + buf_{1}.len) {{'.format(wn, other))
                 self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
                 self.emit('        goto cleanup;')
+                self._has_goto_cleanup = True
                 self.emit('    }')
                 self.emit('    if ((char*)buf_{0}.buf >= (char*)buf_{1}.buf && '.format(other, wn))
                 self.emit('        (char*)buf_{0}.buf < (char*)buf_{1}.buf + buf_{1}.len) {{'.format(other, wn))
                 self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
                 self.emit('        goto cleanup;')
+                self._has_goto_cleanup = True
                 self.emit('    }')
                 self.emit('')
 
