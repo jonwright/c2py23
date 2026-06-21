@@ -59,7 +59,8 @@ def _build_one(c2py_path):
             if isinstance(stderr, bytes):
                 stderr = stderr.decode("utf-8", errors="replace")
             msg += "\n" + stderr
-        pytest.fail(msg)
+        print(msg, file=sys.stderr)
+        sys.exit(1)
 
 
 def _collect_c2py_files(base_dir):
