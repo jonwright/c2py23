@@ -1183,6 +1183,8 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return obj + '->shape'
         elif attr == 'strides':
             return obj + '->strides'
+        elif attr == 'contiguous':
+            return '_c2py_contig_' + obj
         else:
             return obj + '->' + attr
 

@@ -11,7 +11,7 @@ functions:
     c_overloads:
       - sig: "transform_aos(double *points, intptr_t n, double *out)"
         map: {points: "points.ptr", n: "points.shape[0]", out: "out.ptr"}
-        when: "points.shape[1] == 3"
+        when: "points.shape[1] == 3 and points.contiguous == 'C'"
       - sig: "transform_soa(double *points, intptr_t n, double *out)"
         map: {points: "points.ptr", n: "points.shape[1]", out: "out.ptr"}
         when: "points.shape[0] == 3"

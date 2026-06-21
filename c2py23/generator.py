@@ -218,33 +218,36 @@ class CBuilder:
         for p in buf_params:
             name = p.name
             fmt = lambda s: s.format(name)
+            self.emit('    char *_c2py_contig_buf_{0} = "?";'.format(name))
+            self.emit('    (void)_c2py_contig_buf_{0};'.format(name))
             self.emit('    /* contiguity check: {0} */'.format(name))
             self.emit('    do {')
             self.emit('        int _ok = 1;')
-            self.emit('        if (buf_{0}.strides == NULL && buf_{0}.ndim <= 1) break;'.format(name))
-            self.emit(fmt('        if (buf_{0}.ndim >= 1) {{'))
-            self.emit(fmt('            Py_ssize_t _expected = buf_{0}.itemsize;'))
+            self.emit('        if (buf_{0}->strides == NULL && buf_{0}->ndim <= 1) break;'.format(name))
+            self.emit(fmt('        if (buf_{0}->ndim >= 1) {{'))
+            self.emit(fmt('            Py_ssize_t _expected = buf_{0}->itemsize;'))
             self.emit('            int _d;')
             self.emit('            /* check F-contiguous (column-major): first dim varies fastest */')
-            self.emit(fmt('            for (_d = 0; _d < buf_{0}.ndim; _d++) {{'))
-            self.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-            self.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-            self.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+            self.emit(fmt('            for (_d = 0; _d < buf_{0}->ndim; _d++) {{'))
+            self.emit(fmt('                if (buf_{0}->strides[_d] < 0) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                _expected *= buf_{0}->shape[_d];'))
             self.emit('            }')
-            self.emit('            if (_ok) break;')
+            self.emit('            if (_ok) {{ _c2py_contig_buf_{0} = "F"; break; }}'.format(name))
             self.emit('            /* check C-contiguous (row-major): last dim varies fastest */')
             self.emit('            _ok = 1;')
-            self.emit(fmt('            _expected = buf_{0}.itemsize;'))
-            self.emit(fmt('            for (_d = buf_{0}.ndim - 1; _d >= 0; _d--) {{'))
-            self.emit(fmt('                if (buf_{0}.strides[_d] < 0) {{ _ok = 0; break; }}'))
-            self.emit(fmt('                if (buf_{0}.strides[_d] != _expected) {{ _ok = 0; break; }}'))
-            self.emit(fmt('                _expected *= buf_{0}.shape[_d];'))
+            self.emit(fmt('            _expected = buf_{0}->itemsize;'))
+            self.emit(fmt('            for (_d = buf_{0}->ndim - 1; _d >= 0; _d--) {{'))
+            self.emit(fmt('                if (buf_{0}->strides[_d] < 0) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}'))
+            self.emit(fmt('                _expected *= buf_{0}->shape[_d];'))
             self.emit('            }')
+            self.emit('            if (_ok) _c2py_contig_buf_{0} = "C";'.format(name))
             self.emit('        }')
             self.emit('        if (!_ok) {')
             self.emit('            PyErr_SetString(PyExc_ValueError,')
             self.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
-            self.emit('            goto cleanup;')
+            self.emit('            return NULL;')
             self.emit('        }')
             self.emit('    } while(0);')
             self.emit('')
@@ -456,6 +459,9 @@ def _emit_impl_func(b, func, buf_params, scalar_params,
     b.emit('static PyObject*')
     b.emit('_{0}_impl({1})'.format(name, ', '.join(params_c)))
     b.emit('{')
+
+    # Contiguity checks (inside impl so when: conditions can use them)
+    b.emit_contiguity_checks(buf_params)
 
     if timing:
         b.emit('    int _c2py_do_time = _c2py_timing_enabled;')
@@ -1235,9 +1241,6 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
 
     # Restrict checks
     b.emit_restrict_checks(buf_params, func)
-
-    # Contiguity checks
-    b.emit_contiguity_checks(buf_params)
 
     # Call impl (with timing ticks around it)
     impl_args = []
