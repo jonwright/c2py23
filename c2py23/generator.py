@@ -372,6 +372,14 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
     b.emit('/* ---- Variant dispatch for {0} ---- */'.format(name))
     b.emit_blank()
 
+    def _perf_meta(gi, vi, v):
+        """Emit perf struct metadata for a variant."""
+        c_name = v.c_name or v.sig_str.split('(')[0].strip().split()[-1]
+        pf = '_perf_{0}__{1}'.format(name, c_name)
+        b.emit('        {0}.variant = {1};'.format(pf, vi))
+        b.emit('        {0}.group_idx = {1};'.format(pf, gi))
+        b.emit('        {0}.variant_name = "{1}";'.format(pf, v.name))
+
     for gi, (i, ol) in enumerate(groups):
         gname = ol.group_name or 'group{0}'.format(gi)
         b.emit(
@@ -393,8 +401,9 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
                 when_c = _expr_to_c(v.when_expr, buf_params, scalar_params, None)
                 b.emit('    if ({0}) {{'.format(when_c))
                 b.emit(
-                    '        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}"; '
-                    'return;'.format(name, gi, vi, v.name))
+                    '        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(name, gi, vi, v.name))
+                _perf_meta(gi, vi, v)
+                b.emit('        return;')
                 b.emit('    }')
         # Find the last default:true variant for fallback
         last_default_vi = -1
@@ -411,6 +420,7 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
         b.emit(
             '    _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(
                 name, gi, last_default_vi, last_default_name))
+        _perf_meta(gi, last_default_vi, ol.variants[last_default_vi])
         b.emit('}')
         b.emit_blank()
 
@@ -436,13 +446,14 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params):
     for gi, (i, ol) in enumerate(groups):
         gname = ol.group_name or 'group{0}'.format(gi)
         for vi, v in enumerate(ol.variants):
-            b.emit(
-                '    if (!strcmp(target, "{0}")) {{'.format(v.name))
-            b.emit(
-                '        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(
-                    name, gi, vi, v.name))
-            b.emit('        Py_RETURN_NONE;')
-            b.emit('    }')
+                b.emit(
+                    '    if (!strcmp(target, "{0}")) {{'.format(v.name))
+                b.emit(
+                    '        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(
+                        name, gi, vi, v.name))
+                _perf_meta(gi, vi, v)
+                b.emit('        Py_RETURN_NONE;')
+                b.emit('    }')
     b.emit_blank()
     b.emit('    C2PY.Err_SetString(C2PY.exc_ValueError, "unknown variant");')
     b.emit('    return NULL;')
