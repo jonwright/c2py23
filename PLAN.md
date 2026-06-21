@@ -46,23 +46,16 @@ SIMD flags and compiler selection remain in the user's build system
 
 ## Outstanding (low-priority)
 
-### Generator structural hardening (P5)
-
-The generator emits C via hundreds of `out.append(...)` calls building a string
-list. This is prone to logical errors: a re-order can miss a cleanup, GIL
-save/restore, or null-check. The existing regression tests (23 tests in
-`test_regression_fixes.py`) cover known bug patterns but do not verify
-invariant-level properties. A future improvement could add a structural
-invariant checker that walks the generated C and validates properties
-(e.g. every buffer acquire has matching release, every GIL save has matching
-restore, every error path releases all acquired buffers). See
-`audit/20260620/workplan.md` Task O for discussion.
-
 ### FT globals audit (P5)
 
 Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
 `_gil_release_*`, variant `_var_*` globals for atomic safety under
 free-threading. Low priority since FT is opt-in.
+
+### 32-bit CI
+
+No 32-bit CI target (i386/ARM32).  Reject 32-bit builds at module import
+with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
 
 ---
 
@@ -73,8 +66,13 @@ free-threading. Low priority since FT is opt-in.
   `name` enforced to match C function name from `sig`; per-variant perf
   metadata (`variant`, `group_idx`, `variant_name`).
 
-- **Buffer layout guard (2026-06-21)** — `buf.contiguous` expression
-  returning `'C'`, `'F'`, or `'?'` for per-buffer layout constraints.
+- **Buffer layout guard (2026-06-21)** — `buf.slow_axis`, `buf.fast_axis`,
+  `buf.slow_dim` expressions; contiguity check enforces C-or-F density;
+  `slow_axis == 0` in `checks:` guards against transposed layouts.
+
+- **Generator structural hardening (2026-06-21)** — `c2py23/invariant_checker.py`
+  validates brace balance, buffer acquire/release pairs, output scalar NULL-checks,
+  GIL save/restore pairing, and cleanup path invariants.  Runs during `generate()`.
 
 - **Wheel packaging (2026-06-20)** — `c2py_loader` explicit-filename
   `.so` loader; `py3-none-any` wheel tag; multi-platform `.so` coexistence;

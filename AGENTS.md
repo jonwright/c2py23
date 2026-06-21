@@ -224,84 +224,23 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 
 ## Next Steps
 
-### P2: Windows Port
-
-**Status: Completed (2026-06-20).**
-
-Key work items completed:
-1. Runtime: `GetModuleHandle`/`GetProcAddress` via `python3.dll` (versioned fallback)
-2. Build system: MSVC (`/LD /Fe`) and MinGW (`-shared -o`) paths in `cli.py`
-3. ABI matrix: `sizeof(long)=4` on Windows, `c_uint32` maps to `'L'` format
-4. CI: GitHub Actions `windows-latest`, Python 2.7/3.13/3.14, 14/14 pass
-5. Platform-sized format chars: `'l'`/`'L'` auto-generate `sizeof(long)` itemsize check
-6. Buffer length type: `intptr_t` (pointer-width on all platforms)
-7. MSVC quirks handled: `inline` -> `__inline`, `##__VA_ARGS__` guard, `sscanf_s`,
-   `C2PY_EXPORT`/`__declspec(dllexport)`, C4152 pragma suppression
-
-Remaining Windows work:
-- ABI matrix: populate `abi_matrix.json` with Windows-x86_64 entries
-- PyPI CI: cross-compile Windows wheels on GitHub Actions
-- Free-threading: no x64 FT builds available via setup-python
-
 ### P3: aarch64 / ppc64le
 
-**Status: CPU detection implemented.  No CI yet.  Requires QEMU + Apptainer.**
-
-The runtime has full CPU feature detection for ARM64 (`getauxval`,
-`mrs`, `c2py_arm64.h`) and POWER (`getauxval`, `mftb`, `c2py_ppc64.h`).
-No testing on real hardware.  Approach: QEMU user-mode emulation
-inside an Apptainer container, similar to existing manylinux2014 strategy.
+CPU detection implemented in runtime (ARM64/POWER headers).
+No CI yet.  Requires QEMU + Apptainer containers.
 
 ### P4: PyPI Distribution
 
-**Status: Designed -- loader and demos implemented, manylinux cross-testing complete.**
+Loader and wheel demos complete (see `docs/user_guide.md` Packaging section).
+Next: GitHub Actions CI to build multi-platform wheels and publish to PyPI.
 
-Next: GitHub Actions CI to build multi-platform wheels (Linux x86_64,
-Windows x64, eventually aarch64/ppc64le) and upload to PyPI via trusted
-publishing.
+### P5: Low Priority
 
-The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
-convention that solves the multi-architecture wheel problem:
+- Generator structural hardening: invariant checker for generated C code
+- FT globals audit: atomic safety review for free-threading
+- 32-bit CI: add i386/ARM32 test container
 
-    _mymodule.c2py23-linux_x86_64.so
-    _mymodule.c2py23-linux_aarch64.so
-    _mymodule.c2py23-linux_ppc64le.so
-    _mymodule.c2py23-win_amd64.pyd
-    _mymodule.c2py23-darwin_arm64.so
-
-The .so is loaded by explicit filename via `ExtensionFileLoader` (3.x) or
-`imp.load_dynamic` (2.7).  No `EXTENSION_SUFFIXES` monkeypatching, no
-`sys.path` hacking.
-
-The wheel is tagged `py3-none-any` (setuptools `bdist_wheel.get_tag()`
-override).  Multiple platform-specific .so files coexist in one wheel.
-pip installs the same .whl on any arch; the loader picks the right .so.
-
-See `examples/wheel_demo/` for a complete working example.
-
-The convention follows the ctypes peer model: ship platform-specific .so,
-load by explicit name, Python version does not enter the filename.
-Python 2.7 users install from sdist (the wheel is py3-tagged).
-
-SIMD flags and compiler selection remain in the user's build system
-(Makefile, meson, CMake, etc.) -- not in pyproject.toml.
-
-## Recently Completed
-
-- P2: **Windows port** -- `GetModuleHandle`/`GetProcAddress` runtime, MSVC/MinGW build,
-  LLP64 format handling (`sizeof(long)` itemsize check), CI on GitHub Actions
-  (Python 2.7, 3.13, 3.14), 14/14 uniform tests pass
-- P1: SIMD dispatch / CPU feature detection (CPUID x86_64, getauxval ARM64/POWER)
-- P3: Reviewer response (addressed all three referee reports)
-- P4: Free-threaded Python 3.14+ support (dual PyModuleDef, FT ABI detection)
-- Issue #5: Biased refcounting on Python 3.14 standard (PEP 763) -- test guard update
-- `pthread_once` init, `_Py_IsGILEnabled()` FT detection fallback, test runner timeouts
-- `intptr_t`/`size_t` added to supported C types, buffer length parameters
-  converted from `int` to `intptr_t` for large-buffer safety
-- `C2PY_EXPORT` / `__declspec(dllexport)` for Windows .pyd export table
-- `default_raise` diagnostics: actual buffer format included in error message
-
-See `PLAN.md` Completed section for full details.
+All status tracked in `PLAN.md` Outstanding section.
 
 ## Contributing Guidelines
 
@@ -431,14 +370,8 @@ When adding support for a new Python version (e.g., 3.16):
 
 ### README.md
 When adding a new feature, test case, or changing the public API:
-1. Update the "Features" list if a new capability is added
-2. Update the "Supported Types" table if new types are supported
-3. Update the "File Structure" diagram if files/directories are added/removed
-4. Verify the test count in "Supported Python Versions":
-   ```bash
-   python3 -c "import tests.test_uniform; print(len([t for t in dir(tests.test_uniform) if t.startswith('test_')]))"
-   ```
-5. Update the "Limitations" section when removing or adding restrictions
+1. Update the "Supported Types" table if new types are supported
+2. Update the "Limitations" section when removing or adding restrictions
 
 ### AGENTS.md
 When completing a task listed in "Next Steps":

@@ -1,0 +1,44 @@
+name: Linux CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install c2py23
+        run: pip install -e . --quiet
+
+      - name: Build test modules
+        run: |
+          set -e
+          for f in tests/cases/*/*.c2py; do
+            echo "  Building: $f"
+            python -m c2py23.cli build "$f"
+          done
+
+      - name: Run uniform tests
+        run: python tests/test_uniform.py
+
+      - name: Run regression tests
+        run: python tests/test_regression_fixes.py
+
+      - name: Run error path tests
+        run: python tests/test_error_paths.py
+
+      - name: Run leak tests
+        run: python tests/test_leaks.py
+
+      - name: Run lifecycle tests
+        run: python tests/test_lifecycle.py
