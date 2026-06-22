@@ -445,7 +445,6 @@ def _derive_array_checks(param_name, array_dims):
     Example: for param 'gv' with dims [None, 3]:
       -> ['gv.slow_axis == 0', 'gv.ndim == 2', 'gv.shape[1] == 3']
     """
-    import warnings as _w
     checks = []
     ndim = len(array_dims)
 
@@ -466,7 +465,7 @@ def _derive_array_checks(param_name, array_dims):
 
     # Warn for all-fixed symmetric shapes (transpose risk)
     if all_fixed and len(set(array_dims)) == 1 and len(array_dims) >= 2:
-        _w.warn(
+        warnings.warn(
             "Parameter '%s' has symmetric dimensions %s. "
             "Verify the buffer data is in C-contiguous row-major order "
             "(the auto-check %s.slow_axis == 0 ensures C layout, "
