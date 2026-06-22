@@ -727,15 +727,21 @@ def test_array_dims_dedup_with_user_checks():
 
 def test_array_dims_variant_sigs():
     """Variant sigs with array dims must generate auto-checks."""
-    from c2py23.parser import load_c2py
-    import os
+    from c2py23.parser import parse_expr, FuncDef, PyParam, CParam
+    from c2py23.parser import COverload, CVariant, ModuleDef, load_c2py
+    from c2py23.generator import generate
 
-    yaml_src = """
+    # Build a module with variant sigs using array dims, going through
+    # the full parse pipeline via a yaml string.
+    import yaml
+    raw = yaml.safe_load("""
 module: test_arr
 source: [dummy.c]
 headers: []
 functions:
   - py_sig: "process(data: buffer) -> void"
+    checks:
+      - "data.format == 'f'"
     c_overloads:
       - when: "data.format == 'f'"
         map: {arr: "data.ptr", n: "data.shape[0]"}
@@ -745,21 +751,14 @@ functions:
             when: "true"
           - sig: "void proc_scalar(const double arr[][3], int n)"
     default_raise: "TypeError: unsupported format"
-"""
-    tmp_path = os.path.join(os.path.dirname(__file__),
-                             '_test_variant_arr.c2py')
-    try:
-        with open(tmp_path, 'w') as f:
-            f.write(yaml_src)
-        mod = load_c2py(tmp_path)
-        for func in mod.functions:
-            assert len(func.checks) >= 3, (
-                "Variant sig array dims should generate >= 3 auto-checks, "
-                "got %d for '%s'" % (len(func.checks), func.name))
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
+""")
+    # Use the internal parse function directly
+    from c2py23.parser import _expand_func_template
+    funcs = _expand_func_template(raw['functions'][0], '<string>')
+    for func in funcs:
+        assert len(func.checks) >= 4, (
+            "Variant sig array dims should generate >= 3 auto-checks (plus user 'format' check), "
+            "got %d for '%s': %s" % (len(func.checks), func.name, func.checks))
     _pass()
 
 
