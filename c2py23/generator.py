@@ -274,7 +274,16 @@ class CBuilder:
 # ---------------------------------------------------------------------------
 
 def _make_decl_string(ret, name, params):
-    parts = [p.ctype + ' ' + p.name for p in params]
+    """Build extern declaration, handling array-typed parameters."""
+    parts = []
+    for p in params:
+        if p.array_dims:
+            # Format: const double (*param_name)[3] for [][3]
+            base = ('const ' if p.is_const else '') + p.base_type
+            inner = ''.join('[%s]' % d for d in p.array_dims[1:])
+            parts.append('%s (*%s)%s' % (base, p.name, inner))
+        else:
+            parts.append(p.ctype + ' ' + p.name)
     return 'extern {} {}({});'.format(
         ret if ret != 'void' else 'void', name, ', '.join(parts))
 

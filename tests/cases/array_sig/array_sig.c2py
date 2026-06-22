@@ -1,0 +1,13 @@
+module: arraymod
+source: [array_sig.c]
+
+functions:
+  - py_sig: "sum_rows(data: buffer) -> float"
+    c_overloads:
+      - sig: "double sum_rows(const double gv[][3], intptr_t ng)"
+        map: {gv: "data.ptr", ng: "data.shape[0]"}
+
+  - py_sig: "sum_33(data: buffer) -> float"
+    c_overloads:
+      - sig: "double sum_33(const double ubi[3][3])"
+        map: {ubi: "data.ptr"}

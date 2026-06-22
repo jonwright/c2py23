@@ -505,6 +505,30 @@ def test_address():
     print("PASS: address")
 
 
+def test_array_sig():
+    """Test array dimension notation in C sig (gv[][3], ubi[3][3])."""
+    if not IS_PY3:
+        print("SKIP: array_sig (2D memoryview requires Python 3.x)")
+        return
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'array_sig'))
+    import arraymod
+    import ctypes as ct
+
+    # sum_rows: gv[][3] -> AoS layout, C-contiguous, shape [ng, 3]
+    arr = (ct.c_double * 6)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+    mv = memoryview(arr).cast('B').cast('d', [2, 3])
+    r = arraymod.sum_rows(mv)
+    assert abs(r - 21.0) < 0.001, "sum_rows([2,3]) = %s, expected 21.0" % r
+
+    # sum_33: ubi[3][3] -> fixed 3x3, C-contiguous
+    arr2 = (ct.c_double * 9)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
+    mv2 = memoryview(arr2).cast('B').cast('d', [3, 3])
+    r2 = arraymod.sum_33(mv2)
+    assert abs(r2 - 45.0) < 0.001, "sum_33([3,3]) = %s, expected 45.0" % r2
+
+    print("PASS: array_sig")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -523,6 +547,7 @@ def main():
         ("typedispatch", test_typedispatch),
         ("gil_release", test_gil_release),
         ("address", test_address),
+        ("array_sig", test_array_sig),
     ]
     passed = 0
     failed = 0

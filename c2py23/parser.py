@@ -79,9 +79,13 @@ class PyParam(namedtuple('PyParam', ['name', 'pytype', 'default'])):
     required params, or a numeric value for optional int/float params."""
     pass
 
-class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is_pointer'])):
-    """ctype is the full C type string, base_type is the element type"""
-    pass
+class CParam(namedtuple('CParam', ['name', 'ctype', 'base_type', 'is_const', 'is_pointer', 'array_dims'])):
+    """ctype is the full C type string, base_type is the element type.
+    array_dims is a list of dimension values (strings or None for [])
+    from C array notation like gv[][3] (-> [None, '3']).
+    None means the parameter was declared with plain * pointer notation."""
+    def __new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims=None):
+        return super(CParam, cls).__new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims)
 
 class COverload(namedtuple('_COverload', ['sig_str', 'params', 'return_type', 'map_exprs', 'when_expr', 'name', 'group_name', 'variants', 'c_name'])):
     """A C function overload alternative or a dispatch group.
@@ -378,19 +382,99 @@ def _parse_c_params(params_str):
         part = part.strip()
         if not part:
             continue
+        # Extract array dimension suffixes like [3], [][3], [M][N][K]
+        array_dims = []
+        while part.endswith(']'):
+            close = part.rfind(']')
+            open_br = part.rfind('[', 0, close)
+            if open_br == -1:
+                raise ValueError(
+                    "Cannot parse C param '{}': unmatched ']'".format(part))
+            dim_str = part[open_br + 1:close].strip()
+            array_dims.insert(0, dim_str if dim_str else None)
+            part = part[:open_br].strip()
         m = _C_PARAM_RE.match(part)
         if not m:
             raise ValueError("Cannot parse C param '{}'".format(part))
         base_type = m.group(1)
         name = m.group(2)
         is_const = 'const' in part
-        is_pointer = '*' in part
-        if is_pointer:
+        is_pointer = '*' in part or bool(array_dims)
+        if array_dims:
+            # Build ctype for casts: const double (*)[3] for [][3]
+            inner_dims = array_dims[1:]  # first dim absorbed into pointer
+            ctype = ('const ' if is_const else '') + base_type
+            if inner_dims:
+                ctype += ' (*)' + ''.join('[' + d + ']' for d in inner_dims)
+            else:
+                ctype += ' *'
+        elif is_pointer:
             ctype = ('const ' if is_const else '') + base_type + ' *'
         else:
             ctype = base_type
-        params.append(CParam(name, ctype, base_type, is_const, is_pointer))
+        params.append(CParam(name, ctype, base_type, is_const, is_pointer,
+                             array_dims or None))
     return params
+
+
+def _cparam_to_bufname(cp, ol, py_params):
+    """Map a C parameter name to its Python buffer name via map: expressions.
+    
+    For the common case `{gv: 'data.ptr'}`, C param `gv` maps to buffer `data`.
+    Falls back to the C param name if no buffer mapping found.
+    """
+    if ol is None or ol.map_exprs is None:
+        return cp.name
+    expr = ol.map_exprs.get(cp.name)
+    if expr is None:
+        return cp.name
+    # Check for `buf_name.ptr` pattern
+    if isinstance(expr, Attr) and expr.attr == 'ptr' and isinstance(expr.obj, Var):
+        for pp in py_params:
+            if pp.name == expr.obj.name and pp.pytype == 'buffer':
+                return expr.obj.name
+    return cp.name
+
+
+def _derive_array_checks(param_name, array_dims):
+    """Generate checks from array dimension notation in C sig.
+
+    Returns a list of check expression strings.
+    Emits warnings for all-fixed symmetric shapes.
+
+    Example: for param 'gv' with dims [None, 3]:
+      -> ['gv.slow_axis == 0', 'gv.ndim == 2', 'gv.shape[1] == 3']
+    """
+    import warnings as _w
+    checks = []
+    ndim = len(array_dims)
+
+    # C-contiguous required for row-major array access
+    checks.append("%s.slow_axis == 0" % param_name)
+
+    # Dimensionality check
+    if ndim > 1:
+        checks.append("%s.ndim == %d" % (param_name, ndim))
+
+    # Shape checks for each fixed dimension
+    all_fixed = True
+    for i, dim in enumerate(array_dims):
+        if dim is None:
+            all_fixed = False
+        else:
+            checks.append("%s.shape[%d] == %s" % (param_name, i, dim))
+
+    # Warn for all-fixed symmetric shapes (transpose risk)
+    if all_fixed and len(set(array_dims)) == 1 and len(array_dims) >= 2:
+        _w.warn(
+            "Parameter '%s' has symmetric dimensions %s. "
+            "Verify the buffer data is in C-contiguous row-major order "
+            "(the auto-check %s.slow_axis == 0 ensures C layout, "
+            "but does NOT detect transposed data in symmetric shapes)." %
+            (param_name, array_dims, param_name))
+
+    return checks
+
 
 # ---------------------------------------------------------------------------
 # Expression parser
@@ -864,6 +948,18 @@ def _parse_func(raw, path):
     if doc is not None:
         doc = _check_ascii(doc, 'doc', path)
     gil_release = bool(raw.get('gil_release', False))
+
+    # Derive auto-checks from array dimension notation in overload signatures
+    # Map C param names to buffer names via map: expressions
+    seen_auto = set()
+    for ol in overloads:
+        for cp in (ol.params or []):
+            if cp.array_dims:
+                buf_name = _cparam_to_bufname(cp, ol, py_params)
+                for ac in _derive_array_checks(buf_name, cp.array_dims):
+                    if ac not in seen_auto:
+                        checks.append(_parse_check_value(ac, path))
+                        seen_auto.add(ac)
 
     # Parse optional params: block (human-readable per-parameter descriptions)
     params = raw.get('params', {})

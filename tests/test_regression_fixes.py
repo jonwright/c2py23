@@ -626,12 +626,46 @@ def test_D_anchored_c_param_re():
     except ValueError:
         pass
 
-    # Array-like suffix must raise ValueError
-    try:
-        _parse_c_params("double *ptr[]")
-        assert False, "Expected ValueError for array suffix"
-    except ValueError:
-        pass
+    # Array-like suffix is now valid (array dimension notation)
+    params = _parse_c_params("double *ptr[]")
+    assert len(params) == 1
+    assert params[0].name == 'ptr'
+    assert params[0].array_dims == [None]  # empty []
+
+    _pass()
+
+
+def test_array_dims_auto_checks():
+    """Array dimension notation must derive correct auto-checks."""
+    from c2py23.parser import _derive_array_checks, _parse_c_params
+
+    # gv[][3]: variable rows, 3 cols -> slow_axis==0, ndim==2, shape[1]==3
+    checks = _derive_array_checks('gv', [None, '3'])
+    assert 'gv.slow_axis == 0' in checks
+    assert 'gv.ndim == 2' in checks
+    assert 'gv.shape[1] == 3' in checks
+    assert len(checks) == 3
+
+    # ubi[3][3]: fixed 3x3
+    checks = _derive_array_checks('ubi', ['3', '3'])
+    assert 'ubi.slow_axis == 0' in checks
+    assert 'ubi.ndim == 2' in checks
+    assert 'ubi.shape[0] == 3' in checks
+    assert 'ubi.shape[1] == 3' in checks
+    assert len(checks) == 4  # slow_axis, ndim, shape[0], shape[1]
+
+    # arr[][][5]: 3D, innermost fixed
+    checks = _derive_array_checks('arr', [None, None, '5'])
+    assert 'arr.slow_axis == 0' in checks
+    assert 'arr.ndim == 3' in checks
+    assert 'arr.shape[2] == 5' in checks
+    assert len(checks) == 3
+
+    # arr[]: 1D variable
+    checks = _derive_array_checks('arr', [None])
+    assert 'arr.slow_axis == 0' in checks
+    assert 'arr.ndim == 2' not in checks  # 1D, no ndim constraint
+    assert len(checks) == 1
 
     _pass()
 

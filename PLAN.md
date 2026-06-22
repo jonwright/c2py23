@@ -165,7 +165,7 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
   - V: update P4 wheel entry with concrete open design questions
 - **Lifecycle tests:** 10 new tests covering re-import cycles (3), concurrent imports (2),
   exception path stress (3), and subinterpreters (2, documenting known limitation).
-  All 74 tests pass.
+  All 87 tests pass.
 - **Subinterpreter limitation documented** in README.md Limitations section.
 
 ### Reviewer Response
