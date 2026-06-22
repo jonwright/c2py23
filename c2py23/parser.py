@@ -417,15 +417,15 @@ def _parse_c_params(params_str):
     return params
 
 
-def _cparam_to_bufname(cp, ol, py_params):
+def _cparam_to_bufname(cp, map_exprs, py_params):
     """Map a C parameter name to its Python buffer name via map: expressions.
     
     For the common case `{gv: 'data.ptr'}`, C param `gv` maps to buffer `data`.
     Falls back to the C param name if no buffer mapping found.
     """
-    if ol is None or ol.map_exprs is None:
+    if map_exprs is None:
         return cp.name
-    expr = ol.map_exprs.get(cp.name)
+    expr = map_exprs.get(cp.name)
     if expr is None:
         return cp.name
     # Check for `buf_name.ptr` pattern
@@ -951,15 +951,30 @@ def _parse_func(raw, path):
 
     # Derive auto-checks from array dimension notation in overload signatures
     # Map C param names to buffer names via map: expressions
+    # Pre-populate seen set with user-written check sources (dedup across
+    # both auto-vs-auto and auto-vs-user).
     seen_auto = set()
-    for ol in overloads:
-        for cp in (ol.params or []):
+    for c in checks:
+        s = _expr_to_source(c)
+        if s:
+            seen_auto.add(s)
+
+    def _add_auto_checks_from(cparams, map_exprs):
+        for cp in cparams:
             if cp.array_dims:
-                buf_name = _cparam_to_bufname(cp, ol, py_params)
+                buf_name = _cparam_to_bufname(cp, map_exprs, py_params)
                 for ac in _derive_array_checks(buf_name, cp.array_dims):
                     if ac not in seen_auto:
                         checks.append(_parse_check_value(ac, path))
                         seen_auto.add(ac)
+
+    for ol in overloads:
+        if ol.params is not None:
+            _add_auto_checks_from(ol.params, ol.map_exprs)
+        elif ol.variants is not None:
+            for v in ol.variants:
+                if v.params:
+                    _add_auto_checks_from(v.params, ol.map_exprs)
 
     # Parse optional params: block (human-readable per-parameter descriptions)
     params = raw.get('params', {})

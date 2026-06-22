@@ -166,8 +166,8 @@ c2py23 auto-generates buffer validation checks from the dimensions:
 sig: "double sum_rows(const double gv[][3], intptr_t ng)"
 ```
 
-This produces checks `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3`
-at build time.  See the [specification](docs/specification.md) for details.
+This produces checks `data.slow_axis == 0`, `data.ndim == 2`, `data.shape[1] == 3`
+for a `map: {gv: "data.ptr"}` mapping.  See the [specification](docs/specification.md) for details.
 
 ### Two-Step Workflow (generate then compile)
 

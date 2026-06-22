@@ -667,6 +667,98 @@ def test_array_dims_auto_checks():
     assert 'arr.ndim == 2' not in checks  # 1D, no ndim constraint
     assert len(checks) == 1
 
+    # arr[5]: 1D fixed -> shape[0] == 5, no ndim check
+    checks = _derive_array_checks('arr', ['5'])
+    assert 'arr.slow_axis == 0' in checks
+    assert 'arr.shape[0] == 5' in checks
+    assert 'arr.ndim == 2' not in checks
+    assert len(checks) == 2
+
+    _pass()
+
+
+def test_array_dims_symmetric_warning():
+    """Symmetric fixed dimensions [3][3] must emit a warning."""
+    import warnings
+    from c2py23.parser import _derive_array_checks
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _derive_array_checks('ubi', ['3', '3'])
+        assert len(w) == 1, "Expected 1 warning for symmetric [3][3]"
+        assert 'symmetric' in str(w[0].message)
+        assert 'transposed' in str(w[0].message)
+
+    # Non-symmetric (different dims) must NOT warn
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _derive_array_checks('gv', [None, '3'])
+        assert len(w) == 0, "Expected no warning for non-symmetric [][3]"
+
+    # 1D fixed must NOT warn (only symmetric IF multi-dim and all equal)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        _derive_array_checks('arr', ['5'])
+        assert len(w) == 0, "Expected no warning for 1D fixed [5]"
+
+    _pass()
+
+
+def test_array_dims_dedup_with_user_checks():
+    """Auto-checks must not duplicate user-written checks."""
+    from c2py23.parser import load_c2py
+    import os
+
+    # The existing array_sig.c2py has sum_1d_fixed with user check
+    # "data.format == 'd'" and auto-generated checks from arr[5].
+    # This test verifies no duplicate check expressions.
+    c2py_path = os.path.join(os.path.dirname(__file__),
+                              'cases', 'array_sig', 'array_sig.c2py')
+    mod = load_c2py(c2py_path)
+    for func in mod.functions:
+        expr_strings = set(str(c) for c in func.checks)
+        user_count = sum(1 for c in func.checks)
+        assert len(expr_strings) == user_count, (
+            "Duplicate checks in '%s': %d unique but %d total" %
+            (func.name, len(expr_strings), user_count))
+
+    _pass()
+
+
+def test_array_dims_variant_sigs():
+    """Variant sigs with array dims must generate auto-checks."""
+    from c2py23.parser import load_c2py
+    import tempfile, os
+
+    yaml_src = """
+module: test_arr
+source: [dummy.c]
+headers: []
+
+functions:
+  - py_sig: "process(data: buffer) -> void"
+    c_overloads:
+      - when: "data.format == 'f'"
+        map: {arr: "data.ptr", n: "data.shape[0]"}
+        group: float
+        variants:
+          - sig: "void proc_sse(const double arr[][3], int n)"
+            when: "true"
+          - sig: "void proc_scalar(const double arr[][3], int n)"
+    default_raise: "TypeError: unsupported format"
+"""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.c2py', delete=False) as f:
+        f.write(yaml_src)
+        tmp_path = f.name
+    try:
+        mod = load_c2py(tmp_path)
+        for func in mod.functions:
+            assert len(func.checks) >= 3, (
+                "Variant sig array dims should generate >= 3 auto-checks, "
+                "got %d for '%s'" % (len(func.checks), func.name))
+    finally:
+        os.unlink(tmp_path)
+
     _pass()
 
 

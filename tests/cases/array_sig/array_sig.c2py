@@ -11,3 +11,15 @@ functions:
     c_overloads:
       - sig: "double sum_33(const double ubi[3][3])"
         map: {ubi: "data.ptr"}
+
+  - py_sig: "sum_1d_fixed(data: buffer) -> float"
+    checks:
+      - "data.format == 'd'"
+    c_overloads:
+      - sig: "double sum_1d_fixed(const double arr[5])"
+        map: {arr: "data.ptr"}
+
+  - py_sig: "sum_3d(data: buffer) -> float"
+    c_overloads:
+      - sig: "double sum_3d(const double blk[][5][5], intptr_t nblk)"
+        map: {blk: "data.ptr", nblk: "data.shape[0]"}

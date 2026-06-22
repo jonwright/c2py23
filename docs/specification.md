@@ -214,7 +214,7 @@ to the Python buffer param via `map:` expressions (typically
 
 | C sig parameter | Auto-generated checks |
 |-----------------|-----------------------|
-| `double arr[5]` | `arr.slow_axis == 0` (C-contiguous), `arr.n == 5` |
+| `double arr[5]` | `arr.slow_axis == 0` (C-contiguous), `arr.shape[0] == 5` |
 | `double gv[][3]` | `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3` |
 | `double ubi[3][3]` | `ubi.slow_axis == 0`, `ubi.ndim == 2`, `ubi.shape[0] == 3`, `ubi.shape[1] == 3` |
 | `double blk[][5][5]` | `blk.slow_axis == 0`, `blk.ndim == 3`, `blk.shape[2] == 5` |
@@ -237,9 +237,9 @@ to the Python buffer param via `map:` expressions (typically
 **Interaction with user `checks:`:**
 
 Auto-derived checks are appended to the function's `checks:` block.
-If the user writes the same check expression explicitly, it appears
-only once (duplicates are removed).  User-written checks and
-auto-checks are combined; the function fails if any check fails.
+If the user writes the same check expression explicitly, it is not
+duplicated (the set of auto-checks is deduplicated against user-written
+checks).
 
 ### Map Expressions
 

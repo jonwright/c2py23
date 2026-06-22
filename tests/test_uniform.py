@@ -506,7 +506,7 @@ def test_address():
 
 
 def test_array_sig():
-    """Test array dimension notation in C sig (gv[][3], ubi[3][3])."""
+    """Test array dimension notation in C sig (gv[][3], ubi[3][3], arr[5], blk[][5][5])."""
     if not IS_PY3:
         print("SKIP: array_sig (2D memoryview requires Python 3.x)")
         return
@@ -525,6 +525,35 @@ def test_array_sig():
     mv2 = memoryview(arr2).cast('B').cast('d', [3, 3])
     r2 = arraymod.sum_33(mv2)
     assert abs(r2 - 45.0) < 0.001, "sum_33([3,3]) = %s, expected 45.0" % r2
+
+    # sum_1d_fixed: arr[5] -> 1D C-contiguous, exactly 5 elements
+    arr3 = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
+    r3 = arraymod.sum_1d_fixed(arr3)
+    assert abs(r3 - 15.0) < 0.001, "sum_1d_fixed = %s, expected 15.0" % r3
+
+    # sum_3d: blk[][5][5] -> shape [nblk, 5, 5], C-contiguous
+    arr4 = (ct.c_double * 50)(*range(1, 51))
+    mv3 = memoryview(arr4).cast('B').cast('d', [2, 5, 5])
+    r4 = arraymod.sum_3d(mv3)
+    expected = sum(range(1, 51))
+    assert abs(r4 - expected) < 0.001, "sum_3d = %s, expected %s" % (r4, expected)
+
+    # Wrong shape rejection: gv[][3] needs shape[-1] == 3, reject shape[2][4]
+    bad_arr = (ct.c_double * 8)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
+    bad_mv = memoryview(bad_arr).cast('B').cast('d', [2, 4])
+    try:
+        arraymod.sum_rows(bad_mv)
+        assert False, "sum_rows should reject shape[1] != 3"
+    except ValueError:
+        pass
+
+    # Wrong element count for 1D fixed: arr[5] needs exactly 5 elements
+    short_arr = (ct.c_double * 3)(1.0, 2.0, 3.0)
+    try:
+        arraymod.sum_1d_fixed(short_arr)
+        assert False, "sum_1d_fixed should reject n != 5"
+    except ValueError:
+        pass
 
     print("PASS: array_sig")
 
