@@ -157,6 +157,18 @@ gcc -shared -fPIC -I c2py23/runtime \
 A git pre-commit hook (`.githooks/pre-commit`) regenerates the wrapper
 when the generator, parser, runtime, or transform source files change.
 
+### Array Dimension Notation in `sig:`
+
+C function parameters can use array syntax instead of flat pointers.
+c2py23 auto-generates buffer validation checks from the dimensions:
+
+```yaml
+sig: "double sum_rows(const double gv[][3], intptr_t ng)"
+```
+
+This produces checks `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3`
+at build time.  See the [specification](docs/specification.md) for details.
+
 ### Two-Step Workflow (generate then compile)
 
 For build system integration, c2py23 supports a split workflow:

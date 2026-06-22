@@ -176,7 +176,8 @@ interpreting the pointer; the wrapper performs no reads or writes through it.
 
 ```
 c_sig ::= c_name "(" [c_param ("," c_param)*] ")" ["->" c_ret]
-c_param ::= ["const"] c_ctype ["*"] name
+c_param ::= ["const"] c_ctype ( "*" name
+                               | name ( "[" int "]" | "[]" )+ )
 c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int8_t" | "uint8_t" | "int16_t" | "uint16_t"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
@@ -186,12 +187,59 @@ c_ret ::= "void" | "int" | "float" | "double"
 
 If `-> c_ret` is omitted, the return type is `void`.
 
+When a parameter uses array notation (`name[3]`, `name[]`, `name[][3]`),
+c2py23 automatically derives buffer validation checks (see
+**Auto-derived Checks** below).  Without array notation (`*name`),
+no automatic shape validation is performed.
+
 Examples of valid C signatures:
 ```
-array_sum(const double *a, const double *b, double *result, int n) -> int
+array_sum(const double *a, const double *b, const double *result, int n) -> int
 fill_f(float *arr, int n, float value) -> void
 dot(const double *a, const double *b, int n) -> double
+sum_rows(const double gv[][3], intptr_t ng) -> double          # AoS: gv[ng][3]
+sum_33(const double ubi[3][3]) -> double                       # fixed 3x3 matrix
+process_blocks(const double blk[][5][5], intptr_t nblk) -> int # 3D: blocks of 5x5
 ```
+
+#### Auto-derived Checks
+
+When a C parameter uses array dimension syntax (`name[N]`, `name[N][M]`,
+`name[]`, `name[][N]`, etc.), c2py23 automatically generates checks
+to verify the Python buffer at runtime.  The C param name is mapped
+to the Python buffer param via `map:` expressions (typically
+`buf_name.ptr`).
+
+**Generated checks for each pattern:**
+
+| C sig parameter | Auto-generated checks |
+|-----------------|-----------------------|
+| `double arr[5]` | `arr.slow_axis == 0` (C-contiguous), `arr.n == 5` |
+| `double gv[][3]` | `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3` |
+| `double ubi[3][3]` | `ubi.slow_axis == 0`, `ubi.ndim == 2`, `ubi.shape[0] == 3`, `ubi.shape[1] == 3` |
+| `double blk[][5][5]` | `blk.slow_axis == 0`, `blk.ndim == 3`, `blk.shape[2] == 5` |
+
+**Key points:**
+
+- `slow_axis == 0` is always emitted — row-major (C-contiguous) access is
+  required for array-indexed C functions.  F-contiguous buffers are rejected.
+- `ndim == D` is emitted for multi-dimensional arrays (D >= 2).
+- `shape[i] == N` is emitted for every dimension where a fixed size is given.
+- Variable dimensions (`[]`) produce no shape constraint.
+- **Symmetric shapes**: when ALL dimensions are fixed and identical (e.g.
+  `[3][3]`), a compile-time warning is emitted.  The `slow_axis == 0` check
+  ensures C-contiguous order, but a transposed matrix with the same shape
+  and strides cannot be detected automatically.
+- **No `*pointer` notation**: when the C sig uses `double *arr` (no array
+  coordinates), c2py23 performs no automatic shape validation.  The user is
+  responsible for writing explicit `checks:`.
+
+**Interaction with user `checks:`:**
+
+Auto-derived checks are appended to the function's `checks:` block.
+If the user writes the same check expression explicitly, it appears
+only once (duplicates are removed).  User-written checks and
+auto-checks are combined; the function fails if any check fails.
 
 ### Map Expressions
 

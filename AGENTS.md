@@ -198,6 +198,8 @@ YAML-based `.c2py` files define:
   - `checks:` -- pre-conditions (optional)
   - `gil_release:` -- release the GIL during C calls (optional, per-function)
   - `c_overloads:` -- ordered list of C function alternatives with `sig:`, `map:`, `when:`, `outputs:`, `name:`, `variants:`, `group:`, `doc:` (optional)
+    `sig:` supports array dimension notation (`const double gv[][3]`, `double arr[5]`),
+    which auto-generates buffer shape/contiguity checks.
   - `default_raise:` -- error when no overload matches (optional)
   - `doc:` -- custom docstring (optional)
 
