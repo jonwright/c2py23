@@ -439,8 +439,12 @@ def _cparam_to_bufname(cp, map_exprs, py_params):
 def _derive_array_checks(param_name, array_dims):
     """Generate checks from array dimension notation in C sig.
 
+    The generated checks enforce C-contiguous layout (slow_axis == 0),
+    dimensionality (ndim), and per-dimension fixed sizes (shape[i] == N).
+    C-contiguous layout is required because the C function uses native
+    row-major array indexing (arr[i][j]) and c2py23 never copies data.
+
     Returns a list of check expression strings.
-    Emits warnings for all-fixed symmetric shapes.
 
     Example: for param 'gv' with dims [None, 3]:
       -> ['gv.slow_axis == 0', 'gv.ndim == 2', 'gv.shape[1] == 3']
@@ -456,21 +460,9 @@ def _derive_array_checks(param_name, array_dims):
         checks.append("%s.ndim == %d" % (param_name, ndim))
 
     # Shape checks for each fixed dimension
-    all_fixed = True
     for i, dim in enumerate(array_dims):
-        if dim is None:
-            all_fixed = False
-        else:
+        if dim is not None:
             checks.append("%s.shape[%d] == %s" % (param_name, i, dim))
-
-    # Warn for all-fixed symmetric shapes (transpose risk)
-    if all_fixed and len(set(array_dims)) == 1 and len(array_dims) >= 2:
-        warnings.warn(
-            "Parameter '%s' has symmetric dimensions %s. "
-            "Verify the buffer data is in C-contiguous row-major order "
-            "(the auto-check %s.slow_axis == 0 ensures C layout, "
-            "but does NOT detect transposed data in symmetric shapes)." %
-            (param_name, array_dims, param_name))
 
     return checks
 

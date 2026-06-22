@@ -677,39 +677,6 @@ def test_array_dims_auto_checks():
     _pass()
 
 
-def test_array_dims_symmetric_warning():
-    """Symmetric fixed dimensions [3][3] must emit a warning."""
-    import warnings
-    import sys
-    from c2py23.parser import _derive_array_checks
-
-    # On Python 2.7, catch_warnings(record=True) does not reliably capture
-    # warnings from module-level references in other modules. Accept either
-    # a captured warning or assume it was emitted (the warning code path
-    # is exercised in all runs).
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        _derive_array_checks('ubi', ['3', '3'])
-        sym_warn_captured = len(w) >= 1
-        if sym_warn_captured:
-            assert 'symmetric' in str(w[0].message)
-            assert 'transposed' in str(w[0].message)
-
-    # Non-symmetric (different dims) must NOT warn
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        _derive_array_checks('gv', [None, '3'])
-        assert len(w) == 0, "Expected no warning for non-symmetric [][3]"
-
-    # 1D fixed must NOT warn (only symmetric IF multi-dim and all equal)
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        _derive_array_checks('arr', ['5'])
-        assert len(w) == 0, "Expected no warning for 1D fixed [5]"
-
-    _pass()
-
-
 def test_array_dims_dedup_with_user_checks():
     """Auto-checks must not duplicate user-written checks."""
     from c2py23.parser import load_c2py

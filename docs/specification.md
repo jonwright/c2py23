@@ -221,15 +221,17 @@ to the Python buffer param via `map:` expressions (typically
 
 **Key points:**
 
-- `slow_axis == 0` is always emitted — row-major (C-contiguous) access is
-  required for array-indexed C functions.  F-contiguous buffers are rejected.
+- `slow_axis == 0` is always emitted -- the C function indexes with
+  `arr[i][j]` which assumes row-major memory layout.  c2py23 never
+  copies or transposes data; the buffer layout must match the C code's
+  expectation exactly.
+- In numpy terms: `x` (C-contiguous) passes `slow_axis == 0`; `x.T`
+  (F-contiguous) is always rejected.  If your C code expects a
+  transposed arrangement, pass a C-contiguous buffer that is already
+  in that order, or use a separate C overload with SoA indexing.
 - `ndim == D` is emitted for multi-dimensional arrays (D >= 2).
 - `shape[i] == N` is emitted for every dimension where a fixed size is given.
 - Variable dimensions (`[]`) produce no shape constraint.
-- **Symmetric shapes**: when ALL dimensions are fixed and identical (e.g.
-  `[3][3]`), a compile-time warning is emitted.  The `slow_axis == 0` check
-  ensures C-contiguous order, but a transposed matrix with the same shape
-  and strides cannot be detected automatically.
 - **No `*pointer` notation**: when the C sig uses `double *arr` (no array
   coordinates), c2py23 performs no automatic shape validation.  The user is
   responsible for writing explicit `checks:`.

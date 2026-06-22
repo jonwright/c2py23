@@ -155,7 +155,7 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
     /* check: points.slow_axis == 0 */
     if (!((_c2py_slow_axis_buf_points) == (0))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.slow_axis == 0 (got %ld vs %ld)", (long)(_c2py_slow_axis_buf_points), (long)(0));
+        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.slow_axis == 0 (got %ld). Buffer must be C-contiguous (use slow_axis=0 or [][] notation).", (long)(_c2py_slow_axis_buf_points));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
@@ -220,14 +220,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -280,14 +280,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }

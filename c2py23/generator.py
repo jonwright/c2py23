@@ -1167,12 +1167,25 @@ def _make_compare_diag(compare, buf_params, scalar_params):
     # Generic numeric comparison: show both sides as int
     if _is_simple_expr(left) and _is_simple_expr(right):
         escaped_src = _escape_c_str(source)
-        lines = [
-            'char _c2py_err[256];',
-            'snprintf(_c2py_err, sizeof(_c2py_err), '
-            '"check failed: {0} (got %ld vs %ld)",'
-            ' (long)({1}), (long)({2}));'.format(escaped_src, left_c, right_c)
-        ]
+        # Detect slow_axis == 0 (from array-dim notation or user checks)
+        # and add a clarifying message about C-contiguous requirement.
+        if (isinstance(left, Attr) and left.attr == 'slow_axis'
+                and op == '==' and isinstance(right, IntLit)
+                and right.value == 0):
+            lines = [
+                'char _c2py_err[256];',
+                'snprintf(_c2py_err, sizeof(_c2py_err), '
+                '"check failed: %s (got %%ld). '
+                'Buffer must be C-contiguous (use slow_axis=0 or [][] notation).",'
+                ' (long)(%s));' % (escaped_src, left_c)
+            ]
+        else:
+            lines = [
+                'char _c2py_err[256];',
+                'snprintf(_c2py_err, sizeof(_c2py_err), '
+                '"check failed: %s (got %%ld vs %%ld)",'
+                ' (long)(%s), (long)(%s));' % (escaped_src, left_c, right_c)
+            ]
         return lines
 
     return None
