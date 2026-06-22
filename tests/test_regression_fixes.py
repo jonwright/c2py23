@@ -728,13 +728,12 @@ def test_array_dims_dedup_with_user_checks():
 def test_array_dims_variant_sigs():
     """Variant sigs with array dims must generate auto-checks."""
     from c2py23.parser import load_c2py
-    import tempfile, os
+    import os
 
     yaml_src = """
 module: test_arr
 source: [dummy.c]
 headers: []
-
 functions:
   - py_sig: "process(data: buffer) -> void"
     c_overloads:
@@ -747,17 +746,19 @@ functions:
           - sig: "void proc_scalar(const double arr[][3], int n)"
     default_raise: "TypeError: unsupported format"
 """
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.c2py', delete=False) as f:
-        f.write(yaml_src)
-        tmp_path = f.name
+    tmp_path = os.path.join(os.path.dirname(__file__),
+                             '_test_variant_arr.c2py')
     try:
+        with open(tmp_path, 'w') as f:
+            f.write(yaml_src)
         mod = load_c2py(tmp_path)
         for func in mod.functions:
             assert len(func.checks) >= 3, (
                 "Variant sig array dims should generate >= 3 auto-checks, "
                 "got %d for '%s'" % (len(func.checks), func.name))
     finally:
-        os.unlink(tmp_path)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     _pass()
 

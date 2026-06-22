@@ -48,3 +48,4 @@ examples/threading_bench/*.so
 /audit/*.md
 /audit/wrappers/
 /audit/20260620_resolved/
+_test_*
