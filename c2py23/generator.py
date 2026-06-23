@@ -55,6 +55,10 @@ class CBuilder:
     def get_code(self):
         return '\n'.join(self.lines) + '\n'
 
+    def extend(self, other):
+        """Merge another CBuilder's output into this one."""
+        self.lines.extend(other.lines)
+
     # -- Buffer management in wrapper --
 
     def declare_buffer(self, name):
@@ -345,10 +349,14 @@ def generate(module_def):
                     'static int _gil_release_{0} = 1;'.format(func.name))
         b.emit_blank()
 
-    # Per-function emission
+    # Per-function emission (each function gets its own CBuilder to
+    # prevent state leaks -- _has_goto_cleanup, _acquired, _gil_depth
+    # all start fresh for each function).
     for func in module_def.functions:
-        _emit_function(b, func, module_def.name,
+        fb = CBuilder()
+        _emit_function(fb, func, module_def.name,
                                module_def.timing, has_gil_release)
+        b.extend(fb)
 
     # Module init
     _emit_module_init(b, module_def, has_free_threading,
