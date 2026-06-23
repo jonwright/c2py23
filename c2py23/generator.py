@@ -98,6 +98,7 @@ class CBuilder:
                 '    if ({0}) c2py_release_buffer(&{1});'.format(
                     acq_flag, buf_var))
         self._acquired = []
+        self._has_goto_cleanup = False
 
     def _acq_name(self, buf_var):
         return 'acq_' + buf_var.replace('buf_', '', 1)
