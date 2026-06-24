@@ -722,6 +722,8 @@ def _emit_c_call(b, ol, buf_params, scalar_params,
             if ctype in ('int', 'int8_t', 'int16_t', 'int32_t',
                          'uint8_t', 'uint16_t', 'uint32_t', 'int64_t', 'uint64_t'):
                 emitl('int {0} = 0;'.format(var_name))
+            elif ctype in ('float',):
+                emitl('float {0} = 0.0f;'.format(var_name))
             else:
                 emitl('double {0} = 0.0;'.format(var_name))
 
