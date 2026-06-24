@@ -17,9 +17,12 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
+#include <sys/auxv.h> /* Linux: getauxval for CPU feature detection on ARM64/POWER */
+#include <pthread.h>
 #else
 #include <dlfcn.h>
-#include <sys/auxv.h> /* Linux-specific: getauxval for CPU feature detection on ARM64/POWER */
 #include <pthread.h>
 #endif
 
@@ -48,9 +51,11 @@ static CRITICAL_SECTION _c2py_init_cs;
 static BOOL _c2py_init_cs_ready = FALSE;
 #endif
 
-/* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ---- */
+/* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ----
+ * Always defined (unconditionally) so that a .c2py file can include
+ * any mix of arch headers without link errors.  On non-matching
+ * architectures the values remain 0. */
 
-#ifdef __x86_64__
 int c2py_amd64_mmx = 0;
 int c2py_amd64_sse = 0;
 int c2py_amd64_sse2 = 0;
@@ -69,9 +74,7 @@ int c2py_amd64_bmi1 = 0;
 int c2py_amd64_bmi2 = 0;
 int c2py_amd64_popcnt = 0;
 int c2py_amd64_lzcnt = 0;
-#endif
 
-#if defined(__aarch64__) || defined(__arm64__)
 int c2py_arm64_fp = 0;
 int c2py_arm64_asimd = 0;
 int c2py_arm64_aes = 0;
@@ -81,17 +84,21 @@ int c2py_arm64_sha2 = 0;
 int c2py_arm64_crc32 = 0;
 int c2py_arm64_sve = 0;
 int c2py_arm64_sve2 = 0;
-#endif
 
-#if defined(__powerpc64__) || defined(__powerpc__)
 int c2py_ppc64_altivec = 0;
 int c2py_ppc64_vsx = 0;
 int c2py_ppc64_power8 = 0;
 int c2py_ppc64_power9 = 0;
-#endif
 
-/* Tick source frequency in Hz, detected once at runtime init.
- * Declared extern in c2py_runtime.h so generated code can read it. */
+/* Tick source: 0 = wall clock (default), 1 = CPU cycle counter */
+int _c2py_use_cycle_counter = 0;
+
+/* Detected cycle counter frequency, or 0 if unknown (probed at init).
+ * When _c2py_use_cycle_counter is toggled, the active frequency is
+ * copied to c2py_tick_frequency_hz. */
+uint64_t c2py_cycle_counter_frequency_hz = 0;
+
+/* Active tick source frequency in Hz, declared extern in c2py_runtime.h. */
 uint64_t c2py_tick_frequency_hz = 0;
 
 /* On Windows GetProcAddress returns a function-pointer type;
@@ -160,7 +167,7 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 
 static void _c2py_probe_cpu_features(void)
 {
-#ifdef __x86_64__
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
     unsigned int eax1, ebx1, ecx1, edx1;
     unsigned int eax7, ebx7, ecx7, edx7;
     unsigned int eax81, ebx81, ecx81, edx81;
@@ -290,11 +297,16 @@ static void _c2py_probe_cpu_features(void)
 #endif
 
 /* ---- Tick source frequency detection ---- */
-#if !defined(C2PY_USE_CYCLE_COUNTER)
+
+    /* Default: wall clock returns nanoseconds, frequency is 1e9 Hz.
+     * Cycle counter frequency is probed separately below and stored
+     * in c2py_cycle_counter_frequency_hz; it is only used when the
+     * caller toggles _c2py_use_cycle_counter to 1. */
     c2py_tick_frequency_hz = 1000000000ULL;
-#else
-    /* C2PY_USE_CYCLE_COUNTER: detect arch cycle counter frequency */
-#if defined(__x86_64__) || defined(__i386__)
+
+    /* Always attempt to detect CPU cycle counter frequency.
+     * On platforms without a readable cycle counter this remains 0. */
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
     {
 #if defined(_MSC_VER)
         int info[4];
@@ -306,16 +318,15 @@ static void _c2py_probe_cpu_features(void)
             unsigned int ebx = (unsigned int)info[1];
             unsigned int ecx = (unsigned int)info[2];
             if (ebx != 0 && eax != 0 && ecx != 0) {
-                c2py_tick_frequency_hz = (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
+                c2py_cycle_counter_frequency_hz =
+                    (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
                 got_freq = 1;
             }
         }
-        /* No /proc/cpuinfo fallback on Windows;
-         * use QueryPerformanceFrequency if available. */
         if (!got_freq) {
             LARGE_INTEGER qpf;
             if (QueryPerformanceFrequency(&qpf) && qpf.QuadPart > 0) {
-                c2py_tick_frequency_hz = (uint64_t)qpf.QuadPart;
+                c2py_cycle_counter_frequency_hz = (uint64_t)qpf.QuadPart;
             }
         }
 #else
@@ -328,19 +339,20 @@ static void _c2py_probe_cpu_features(void)
                 : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
                 : "a"(0x15));
             if (ebx != 0 && eax != 0 && ecx != 0) {
-                c2py_tick_frequency_hz = (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
+                c2py_cycle_counter_frequency_hz =
+                    (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
                 got_freq = 1;
             }
         }
         if (!got_freq) {
-            /* Fallback: parse /proc/cpuinfo (works on Intel, AMD, etc.) */
             FILE *f = fopen("/proc/cpuinfo", "r");
             if (f) {
                 char line[256];
                 while (fgets(line, sizeof(line), f)) {
                     double mhz;
                     if (sscanf(line, "cpu MHz : %lf", &mhz) == 1) {
-                        c2py_tick_frequency_hz = (uint64_t)(mhz * 1000000.0 + 0.5);
+                        c2py_cycle_counter_frequency_hz =
+                            (uint64_t)(mhz * 1000000.0 + 0.5);
                         break;
                     }
                 }
@@ -354,43 +366,41 @@ static void _c2py_probe_cpu_features(void)
         uint64_t freq;
         __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
         if (freq != 0) {
-            c2py_tick_frequency_hz = freq;
+            c2py_cycle_counter_frequency_hz = freq;
         }
     }
 #elif defined(__powerpc64__) || defined(__powerpc__)
     {
-        /* On POWER the timebase frequency is typically 512 MHz but varies.
-         * Try /proc/device-tree/cpus/timebase-frequency first. */
 #ifdef _WIN32
-        c2py_tick_frequency_hz = 0;
+        c2py_cycle_counter_frequency_hz = 0;
 #else
         FILE *f = fopen("/proc/device-tree/cpus/timebase-frequency", "r");
         if (f) {
             unsigned char buf[8] = {0};
             size_t r = fread(buf, 1, 8, f);
             fclose(f);
-            /* Big-endian 32-bit or 64-bit integer */
             if (r == 4) {
-                c2py_tick_frequency_hz = ((uint64_t)buf[0] << 24) |
-                                         ((uint64_t)buf[1] << 16) |
-                                         ((uint64_t)buf[2] << 8)  |
-                                          (uint64_t)buf[3];
+                c2py_cycle_counter_frequency_hz =
+                    ((uint64_t)buf[0] << 24) |
+                    ((uint64_t)buf[1] << 16) |
+                    ((uint64_t)buf[2] << 8)  |
+                     (uint64_t)buf[3];
             } else if (r >= 8) {
-                c2py_tick_frequency_hz = ((uint64_t)buf[0] << 56) |
-                                         ((uint64_t)buf[1] << 48) |
-                                         ((uint64_t)buf[2] << 40) |
-                                         ((uint64_t)buf[3] << 32) |
-                                         ((uint64_t)buf[4] << 24) |
-                                         ((uint64_t)buf[5] << 16) |
-                                         ((uint64_t)buf[6] << 8)  |
-                                          (uint64_t)buf[7];
+                c2py_cycle_counter_frequency_hz =
+                    ((uint64_t)buf[0] << 56) |
+                    ((uint64_t)buf[1] << 48) |
+                    ((uint64_t)buf[2] << 40) |
+                    ((uint64_t)buf[3] << 32) |
+                    ((uint64_t)buf[4] << 24) |
+                    ((uint64_t)buf[5] << 16) |
+                    ((uint64_t)buf[6] << 8)  |
+                     (uint64_t)buf[7];
             }
         }
 #endif /* _WIN32 */
     }
 #endif
-    /* If detection failed, c2py_tick_frequency_hz remains 0. */
-#endif
+    /* If detection failed, c2py_cycle_counter_frequency_hz remains 0. */
 }
 
 

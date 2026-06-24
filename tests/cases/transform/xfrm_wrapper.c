@@ -32,6 +32,42 @@ __c2py_ticks_to_ns(PyObject *self, PyObject *args) {
         c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));
 }
 
+/* Python-callable: select tick source ("clock" or "cycle").
+ * Returns (old_freq_hz, new_freq_hz) tuple. */
+static PyObject*
+__c2py_set_tick_source(PyObject *self, PyObject *args) {
+    const char *source = NULL;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "s", &source))
+        return NULL;
+
+    uint64_t old_freq = c2py_tick_frequency_hz;
+    uint64_t new_freq;
+    int new_mode;
+
+    if (source != NULL && strcmp(source, "cycle") == 0) {
+        new_mode = 1;
+        new_freq = c2py_cycle_counter_frequency_hz;
+        if (new_freq == 0) {
+            PyErr_SetString(PyExc_RuntimeError,
+                "cycle counter frequency not detected on this platform");
+            return NULL;
+        }
+    } else {
+        new_mode = 0;
+        new_freq = 1000000000ULL;
+    }
+
+    _c2py_use_cycle_counter = new_mode;
+    c2py_tick_frequency_hz = new_freq;
+
+    PyObject *tup = PyTuple_New(2);
+    if (tup == NULL) return NULL;
+    PyTuple_SetItem(tup, 0, PyLong_FromUnsignedLongLong(old_freq));
+    PyTuple_SetItem(tup, 1, PyLong_FromUnsignedLongLong(new_freq));
+    return tup;
+}
+
 /* ---- Perf accessor functions (no ctypes needed) ---- */
 
 /* Fill a uint64 array with perf fields from the given pointer. */
@@ -404,6 +440,8 @@ static PyMethodDef _methods_varargs[] = {
      "get timing enabled flag"},
     {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled, METH_VARARGS,
      "set timing enabled flag"},
+    {"_c2py_set_tick_source", (PyCFunction)__c2py_set_tick_source, METH_VARARGS,
+     "set tick source (\"clock\" or \"cycle\")"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -423,6 +461,8 @@ static PyMethodDef _methods_fastcall[] = {
      "get timing enabled flag"},
     {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled, METH_VARARGS,
      "set timing enabled flag"},
+    {"_c2py_set_tick_source", (PyCFunction)__c2py_set_tick_source, METH_VARARGS,
+     "set tick source (\"clock\" or \"cycle\")"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -467,6 +507,8 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     }
 
     if (module != NULL) {
+        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
         PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
@@ -483,6 +525,8 @@ C2PY_EXPORT void initxfrm(void) {
     PyObject *module = C2PY.InitModule_2_7("xfrm",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
+        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
         PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",

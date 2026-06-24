@@ -248,8 +248,14 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 
 ### P3: aarch64 / ppc64le
 
-CPU detection implemented in runtime (ARM64/POWER headers).
-No CI yet.  Requires QEMU + Apptainer containers.
+aarch64 CI added (ubuntu-24.04-arm native runner). CPU feature flags
+defined unconditionally for cross-arch portability. Cycle counter
+is now a runtime selector (`_c2py_set_tick_source()`), not a compile-
+time define.  ppc64le still needs CI.
+
+**Migration note**: `-DC2PY_USE_CYCLE_COUNTER` build flag is a no-op.
+To use the cycle counter, call `mod._c2py_set_tick_source("cycle")`
+at runtime.  Default mode (`"clock"`) matches the old default.
 
 ### P4: PyPI Distribution
 

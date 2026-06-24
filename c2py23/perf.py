@@ -14,9 +14,12 @@ Usage::
     stats = read_perf(my_timed_module.wsum)
     print(stats)
 
-    # With C2PY_USE_CYCLE_COUNTER, provide the frequency:
-    stats = read_perf(my_timed_module.wsum,
-                      freq_hz=my_timed_module._c2py_tick_frequency())
+    # Switch to CPU cycle counter at runtime (rdtsc/CNTVCT_EL0/mftb):
+    my_timed_module._c2py_set_tick_source("cycle")
+    stats = read_perf(my_timed_module.wsum)
+
+    # Switch back to wall clock:
+    my_timed_module._c2py_set_tick_source("clock")
 
     # Read the currently-selected variant's timing:
     stats = read_perf(my_timed_module.poly, variant=True)
