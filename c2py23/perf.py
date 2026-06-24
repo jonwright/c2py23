@@ -102,10 +102,10 @@ def read_perf(func, freq_hz=None, variant=None):
     variant : None, True, or str, optional
         Which perf counter to read:
 
-        - ``None`` (default) — wrapper-overhead counter
-        - ``True`` — the currently-selected variant (functions with
+        - ``None`` (default) -- wrapper-overhead counter
+        - ``True`` -- the currently-selected variant (functions with
           variant groups only; falls back to wrapper overhead otherwise)
-        - ``str`` — a named overload, e.g. ``"weighted_sum"`` for the
+        - ``str`` -- a named overload, e.g. ``"weighted_sum"`` for the
           counter ``_c2py_ol_ptr_wsum__weighted_sum``
 
     Returns
