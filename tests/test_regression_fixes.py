@@ -677,6 +677,57 @@ def test_array_dims_auto_checks():
     _pass()
 
 
+def test_array_1d_fixed_extern_decl():
+    """#19: 1D fixed-dim params must emit 'double t[3]' not 'double (*t)'."""
+    from c2py23.parser import FuncDef, PyParam, CParam
+    from c2py23.parser import COverload, ModuleDef, load_c2py
+    from c2py23.generator import generate
+
+    mod = ModuleDef(
+        name='test_1d_fixed_extern',
+        sources=['dummy.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='sum_fixed',
+                py_params=[PyParam('data', 'buffer', None)],
+                return_type='float',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='float sum_fixed(const float arr[5])',
+                    params=[CParam('arr', 'const float *', 'float',
+                                   True, True, ['5'])],
+                    return_type='float',
+                    map_exprs={},
+                    when_expr=None,
+                    name='sum_fixed',
+                    group_name=None,
+                    variants=None,
+                    c_name='sum_fixed',
+                )],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    code = generate(mod)
+
+    # Must have correct array notation in extern declaration
+    assert 'extern float sum_fixed(const float arr[5]);' in code, (
+        "1D fixed array param must emit array notation, got:\n%s" %
+        '\n'.join(l for l in code.split('\n') if 'extern' in l))
+
+    # Must NOT have pointer-to-scalar form
+    assert '(*arr)' not in code, (
+        "1D fixed array param must NOT emit pointer-to-scalar (*arr)")
+
+    _pass()
+
+
 def test_array_dims_dedup_with_user_checks():
     """Auto-checks must not duplicate user-written checks."""
     from c2py23.parser import load_c2py
