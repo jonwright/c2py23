@@ -53,18 +53,19 @@ else
     INDEX_HTML=$(curl -k -s "$SILX/" 2>/dev/null || true)
 fi
 
-NUMPY_WHL=$(echo "$INDEX_HTML" | grep -oP 'href="\K[^"]*numpy-[^"]*cp312[^"]*ppc64le[^"]*\.whl' | head -1 || true)
+NUMPY_WHL=$(echo "$INDEX_HTML" | grep -oP 'href="\K\.?/?[^"]*numpy-[^"]*cp312[^"]*ppc64le[^"]*\.whl' | head -1 | sed 's|^\./||' || true)
 
 if [ -n "$NUMPY_WHL" ]; then
     echo "  found: $NUMPY_WHL"
+    NUMPY_DST="/tmp/$NUMPY_WHL"
     if [ "$DOWNLOADER" = "wget" ]; then
-        wget --no-check-certificate -q "$SILX/$NUMPY_WHL" -O /tmp/numpy.whl 2>/dev/null || true
+        wget --no-check-certificate -q "$SILX/$NUMPY_WHL" -O "$NUMPY_DST" 2>/dev/null || true
     else
-        curl -k -s "$SILX/$NUMPY_WHL" -o /tmp/numpy.whl 2>/dev/null || true
+        curl -k -s "$SILX/$NUMPY_WHL" -o "$NUMPY_DST" 2>/dev/null || true
     fi
-    if [ -f /tmp/numpy.whl ]; then
-        pip install /tmp/numpy.whl --quiet
-        rm -f /tmp/numpy.whl
+    if [ -f "$NUMPY_DST" ]; then
+        pip install "$NUMPY_DST" --quiet
+        rm -f "$NUMPY_DST"
         echo "  numpy installed"
     else
         echo "  WARNING: download failed"
