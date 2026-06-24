@@ -1657,13 +1657,7 @@ def _emit_constants(b, mod):
             b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
             b.emit('            PyLong_FromLong({}));'.format(cvalue))
     if mod.timing:
-        # Backward-compat raw pointer attrs (deprecated, still used by old code)
-        b.emit('        PyObject_SetAttrString(module, "_c2py_timing_enabled",')
-        b.emit('            PyLong_FromVoidPtr(&_c2py_timing_enabled));')
         for func in mod.functions:
-            b.emit('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
-            b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
-            # New _c2py_ prefixed attrs (used by perf.py)
             b.emit('        PyObject_SetAttrString(module, "_c2py_perf_ptr_{0}",'.format(func.name))
             b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
             for ol in func.overloads:
@@ -1673,15 +1667,11 @@ def _emit_constants(b, mod):
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                         perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
-                        b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
-                        b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                         b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
                         b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                     perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
-                    b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
-                    b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                     b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
                     b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
     if has_gil:
@@ -1695,8 +1685,8 @@ def _emit_constants(b, mod):
 
 # ---- Module support ----
 def _emit_perf_accessors(b):
-    """Emit Python-callable C functions: _c2py_perf_read, _perf_meta,
-    _perf_reset, _c2py_get_enabled, _c2py_set_enabled."""
+    """Emit Python-callable C functions: _c2py_perf_read, _c2py_perf_meta,
+    _c2py_perf_reset, _c2py_perf_get_enabled, _c2py_perf_set_enabled."""
     b.emit('/* ---- Perf accessor functions (no ctypes needed) ---- */')
     b.emit('')
     b.emit('/* Fill a uint64 array with perf fields from the given pointer. */')
