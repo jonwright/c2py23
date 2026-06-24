@@ -169,7 +169,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/parser.py` -- Parses `.c2py` YAML interface files into a ModuleDef AST
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
 - `c2py23/cli.py` -- Command-line interface (`c2py23 build`)
-- `c2py23/perf.py` -- ctypes-based performance data decoder
+- `c2py23/perf.py` -- ctypes-free performance data decoder (uses generated C accessors)
 - `c2py23/invariant_checker.py` -- Validates generated C code structure
 - `c2py23/c2py_loader.py` -- Multi-platform .so loader
 - `c2py23/__init__.py` -- Package init and version string

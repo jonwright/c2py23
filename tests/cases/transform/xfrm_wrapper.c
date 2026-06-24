@@ -467,18 +467,10 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     }
 
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_timing_enabled",
-            PyLong_FromVoidPtr(&_c2py_timing_enabled));
-        PyObject_SetAttrString(module, "_perf_transform",
-            PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
-        PyObject_SetAttrString(module, "_perf_transform__transform_aos",
-            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
-        PyObject_SetAttrString(module, "_perf_transform__transform_soa",
-            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
@@ -491,18 +483,10 @@ C2PY_EXPORT void initxfrm(void) {
     PyObject *module = C2PY.InitModule_2_7("xfrm",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_timing_enabled",
-            PyLong_FromVoidPtr(&_c2py_timing_enabled));
-        PyObject_SetAttrString(module, "_perf_transform",
-            PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
-        PyObject_SetAttrString(module, "_perf_transform__transform_aos",
-            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
-        PyObject_SetAttrString(module, "_perf_transform__transform_soa",
-            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }

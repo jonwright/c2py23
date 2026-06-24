@@ -136,7 +136,7 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 - Py_buffer size detection (dynamic, version-based)
 - Py_IncRef fallback for pre-3.12 (manual refcount incr)
 - `or` operator in when/checks conditions
-- Per-function perf timing with ctypes decode
+- Per-function perf timing with C accessor functions (ctypes-free decode)
 - `__array_struct__` evaluated and removed
 - Buffer struct layout mismatch fixed
 - `-Wall -Werror` clean on all generated code
