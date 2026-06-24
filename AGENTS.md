@@ -253,6 +253,10 @@ defined unconditionally for cross-arch portability. Cycle counter
 is now a runtime selector (`_c2py_set_tick_source()`), not a compile-
 time define.  ppc64le still needs CI.
 
+**Migration note**: `-DC2PY_USE_CYCLE_COUNTER` build flag is a no-op.
+To use the cycle counter, call `mod._c2py_set_tick_source("cycle")`
+at runtime.  Default mode (`"clock"`) matches the old default.
+
 ### P4: PyPI Distribution
 
 Loader and wheel demos complete (see `docs/user_guide.md` Packaging section).
