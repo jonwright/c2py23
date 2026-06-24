@@ -265,6 +265,47 @@ All status tracked in `PLAN.md` Outstanding section.
 
 ## Contributing Guidelines
 
+**The `main` branch is protected.** All changes go through pull requests.
+LLM agents push to branches, CI runs automatically, a human reviews and merges
+via the GitHub website admin override. No direct pushes to `main`.
+
+### Branch protection rules
+
+| Rule | Value |
+|------|-------|
+| Require PR before merging | yes |
+| Require 1 approval | yes |
+| Dismiss stale reviews on new commits | yes |
+| Require last push approval | yes |
+| Administrators can bypass | yes |
+| Allow squash merging | only option |
+| Allow merge/rebase commits | no |
+| Disallow force pushes | yes |
+| Disallow deletions | yes |
+
+### LLM agent workflow
+
+1. Create a branch: `git checkout -b issue-NN main`
+2. Make changes, commit, push to the branch
+3. Open a PR from `issue-NN` -> `main`
+4. CI runs automatically on the branch
+5. A human reviews and approves on the GitHub website
+6. Human merges via admin override (squash merge)
+
+PR template is at `.github/PULL_REQUEST_TEMPLATE.md`.
+
+### LLM token access
+
+The LLM agent uses a fine-grained PAT with:
+- `contents: write` (restricted to non-`main` branches)
+- `pull_requests: write`
+- `workflows: write`
+- No `administration` permission
+
+The human uses a classic `repo`-scoped token for admin tasks.
+
+### Code guidelines
+
 1. **Always use 7-bit ASCII encoding** -- no unicode characters
 2. **Maintain Python 2.7 compatibility** in all Python files
 3. **Never include `<Python.h>`** in any C file
