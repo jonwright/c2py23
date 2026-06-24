@@ -27,6 +27,7 @@ Usage::
 from __future__ import print_function
 
 import array
+import sys
 
 
 # ---- Layout constants for the uint64 buffer ----
@@ -42,6 +43,22 @@ _I_T_WRAP_MIN    = 8
 _I_T_WRAP_MAX    = 9
 _I_T_WRAP_TOTAL  = 10
 _N_FIELDS        = 11
+
+
+def _get_mod(func):
+    """Return the module that owns *func*.
+
+    On Python 3.x, C function objects expose ``func.__self__`` directly.
+    On Python 2.7, ``PyCFunction`` has no ``__self__``, so we fall back
+    to ``func.__module__`` and look it up in ``sys.modules``.
+    """
+    mod = getattr(func, '__self__', None)
+    if mod is not None:
+        return mod
+    modname = getattr(func, '__module__', None)
+    if modname:
+        return sys.modules[modname]
+    return None
 
 
 def _to_ns(ticks, freq_hz):
@@ -69,7 +86,7 @@ def _get_perf_ptr(func, variant=None):
         Raw pointer value (Python int).
     """
     name = func.__name__
-    mod = func.__self__
+    mod = _get_mod(func)
 
     if variant is True:
         attr = '_c2py_active_ptr_' + name
@@ -125,7 +142,7 @@ def read_perf(func, freq_hz=None, variant=None):
     if ptr == 0:
         return {"call_count": 0}
 
-    mod = func.__self__
+    mod = _get_mod(func)
 
     buf = array.array('Q', [0] * _N_FIELDS)
     mod._c2py_perf_read(ptr, buf)
@@ -192,7 +209,7 @@ def reset_perf(func, variant=None):
     ptr = _get_perf_ptr(func, variant)
     if ptr == 0:
         return
-    mod = func.__self__
+    mod = _get_mod(func)
     mod._c2py_perf_reset(ptr)
 
 
@@ -202,10 +219,11 @@ def get_enabled(func):
     Parameters
     ----------
     func : callable
-        Any wrapper function or the module itself from a timing-enabled
-        module.  The module is found via ``func.__self__``.
+        Any wrapper function from a timing-enabled module.  The module
+        is found via ``func.__self__`` (Python 3) or ``func.__module__``
+        (Python 2.7).
     """
-    mod = func.__self__
+    mod = _get_mod(func)
     return mod._c2py_perf_get_enabled()
 
 
@@ -219,5 +237,5 @@ def set_enabled(func, value):
     value : int
         1 to enable, 0 to disable.
     """
-    mod = func.__self__
+    mod = _get_mod(func)
     mod._c2py_perf_set_enabled(int(value))
