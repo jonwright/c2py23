@@ -234,7 +234,7 @@ def reset_perf(func, variant=None):
     mod._c2py_perf_reset(ptr)
 
 
-def get_enabled(func):
+def read_enabled(func):
     """Return 1 if per-call timing is enabled, 0 otherwise.
 
     Parameters

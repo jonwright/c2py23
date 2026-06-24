@@ -232,7 +232,7 @@ def test_constants():
 
 def test_timing():
     """Test performance timing feature (no ctypes)."""
-    from c2py23.perf import read_perf, get_enabled, set_enabled
+    from c2py23.perf import read_perf, read_enabled, set_enabled
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'timing'))
     import timedmod
@@ -261,10 +261,10 @@ def test_timing():
     assert ov['wrap_dur_ns'] == 0
 
     # Test toggle off
-    enabled = get_enabled(timedmod.wsum)
+    enabled = read_enabled(timedmod.wsum)
     assert enabled == 1
     set_enabled(timedmod.wsum, 0)
-    assert get_enabled(timedmod.wsum) == 0
+    assert read_enabled(timedmod.wsum) == 0
 
     timedmod.wsum(arr, 1.0)
     py2 = read_perf(timedmod.wsum)
