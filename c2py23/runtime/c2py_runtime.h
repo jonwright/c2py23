@@ -310,6 +310,7 @@ typedef struct {
 
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
+    PyObject* (*GetAttrString)(PyObject*, const char*);
 
     /* Pointer-to-int conversion (for exposing perf struct addresses) */
     PyObject* (*Long_FromVoidPtr)(void*);
@@ -361,6 +362,7 @@ extern c2py_api_t C2PY;
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
+#define PyObject_GetAttrString(o, n)   C2PY.GetAttrString((PyObject*)(o), (n))
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
@@ -662,6 +664,32 @@ static inline void c2py_perf_reset(c2py_perf_t *p)
         p->t_c_min = UINT64_MAX;
         p->t_wrap_min = UINT64_MAX;
     }
+}
+
+/* Copy all uint64_t fields from a c2py_perf_t into a caller-provided
+ * array.  buf must have room for 11 elements:
+ *   [0] call_count,     [1] t_enter,        [2] t_pre_c,
+ *   [3] t_post_c,       [4] t_exit,
+ *   [5] t_c_min,        [6] t_c_max,        [7] t_c_total,
+ *   [8] t_wrap_min,     [9] t_wrap_max,     [10] t_wrap_total
+ *
+ * The variant, group_idx, and variant_name fields are NOT included
+ * here (they are not uint64_t).  Use c2py_perf_t members directly
+ * for those, or a separate helper. */
+static inline void c2py_perf_extract_u64(const c2py_perf_t *p,
+                                         uint64_t *buf)
+{
+    buf[0] = p->call_count;
+    buf[1] = p->t_enter;
+    buf[2] = p->t_pre_c;
+    buf[3] = p->t_post_c;
+    buf[4] = p->t_exit;
+    buf[5] = p->t_c_min;
+    buf[6] = p->t_c_max;
+    buf[7] = p->t_c_total;
+    buf[8] = p->t_wrap_min;
+    buf[9] = p->t_wrap_max;
+    buf[10] = p->t_wrap_total;
 }
 
 /* ------------------------------------------------------------------ */

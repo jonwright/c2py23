@@ -735,6 +735,8 @@ static void _c2py_runtime_init_once(void)
     /* --- Object attribute access --- */
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
     if (C2PY.SetAttrString == NULL) return;
+    RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
+    if (C2PY.GetAttrString == NULL) return;
 
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
