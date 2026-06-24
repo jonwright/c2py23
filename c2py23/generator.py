@@ -283,10 +283,12 @@ def _make_decl_string(ret, name, params):
     parts = []
     for p in params:
         if p.array_dims:
-            # Format: const double (*param_name)[3] for [][3]
             base = ('const ' if p.is_const else '') + p.base_type
-            inner = ''.join('[%s]' % d for d in p.array_dims[1:])
-            parts.append('%s (*%s)%s' % (base, p.name, inner))
+            if len(p.array_dims) == 1:
+                parts.append('%s %s[%s]' % (base, p.name, p.array_dims[0]))
+            else:
+                inner = ''.join('[%s]' % d for d in p.array_dims[1:])
+                parts.append('%s (*%s)%s' % (base, p.name, inner))
         else:
             parts.append(p.ctype + ' ' + p.name)
     return 'extern {} {}({});'.format(

@@ -333,12 +333,13 @@ extern c2py_api_t C2PY;
 #define PyBuffer_Release(b)            C2PY.ReleaseBuffer(b)
 
 /* MSVC traditional preprocessor auto-removes the comma before an empty
- * __VA_ARGS__; GCC/Clang require the ## token-paste to do so. */
+ * __VA_ARGS__; GCC/Clang require the ## token-paste to do so.
+ * MSVC 2022+ (conformant preprocessor) behaves like GCC and also needs ##. */
 #ifdef _MSC_VER
-#define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), __VA_ARGS__)
+#define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
 #define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), __VA_ARGS__)
-#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), __VA_ARGS__)
+    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
+#define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #else
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
 #define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
@@ -647,6 +648,19 @@ static inline void c2py_perf_record_call(c2py_perf_t *p,
     } else {
         if (c_dur < p->t_c_min) p->t_c_min = c_dur;
         if (c_dur > p->t_c_max) p->t_c_max = c_dur;
+    }
+}
+
+/* Zero a c2py_perf_t struct, resetting all counters to their
+ * initial state.  Safe to call with timing enabled or disabled. */
+static inline void c2py_perf_reset(c2py_perf_t *p)
+{
+    if (p != NULL) {
+        memset(p, 0, sizeof(c2py_perf_t));
+        p->variant = -1;       /* unset */
+        p->group_idx = -1;     /* flat */
+        p->t_c_min = UINT64_MAX;
+        p->t_wrap_min = UINT64_MAX;
     }
 }
 

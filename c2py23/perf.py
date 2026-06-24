@@ -122,6 +122,28 @@ def read_perf(ptr_int, freq_hz=None):
     return result
 
 
+def reset_perf(ptr_int):
+    """Zero a c2py_perf_t struct, resetting all counters.
+
+    Call this between benchmark batches to get clean per-batch stats
+    without needing to toggle timing on/off.
+
+    Parameters
+    ----------
+    ptr_int : int
+        Raw pointer to the c2py_perf_t struct (e.g. module._perf_myfunc).
+    """
+    if ptr_int == 0:
+        return
+    ctypes.memset(ptr_int, 0, ctypes.sizeof(_c2py_perf_t))
+    # Restore sentinel values for min tracking
+    p = _c2py_perf_t.from_address(ptr_int)
+    p.variant = -1
+    p.group_idx = -1
+    p.t_c_min = 2**64 - 1
+    p.t_wrap_min = 2**64 - 1
+
+
 def read_enabled(enabled_ptr_int):
     """Read the _c2py_timing_enabled flag."""
     if enabled_ptr_int == 0:
