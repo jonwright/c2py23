@@ -578,6 +578,7 @@ def test_simd_dispatch():
     arch = platform.machine()
     sse2_perf = read_perf(m.fill, variant="fill_sse2")
     neon_perf = read_perf(m.fill, variant="fill_neon")
+    altivec_perf = read_perf(m.fill, variant="fill_altivec")
     scalar_perf = read_perf(m.fill, variant="fill_scalar")
 
     if arch in ('x86_64', 'AMD64'):
@@ -585,6 +586,8 @@ def test_simd_dispatch():
             "SSE2 should be dispatched on x86_64")
         assert neon_perf['call_count'] == 0, (
             "NEON should not dispatch on x86_64")
+        assert altivec_perf['call_count'] == 0, (
+            "Altivec should not dispatch on x86_64")
         assert scalar_perf['call_count'] == 0, (
             "Scalar should not dispatch on x86_64 when SSE2 available")
     elif arch in ('aarch64', 'arm64'):
@@ -592,8 +595,19 @@ def test_simd_dispatch():
             "NEON should be dispatched on aarch64")
         assert sse2_perf['call_count'] == 0, (
             "SSE2 should not dispatch on aarch64")
+        assert altivec_perf['call_count'] == 0, (
+            "Altivec should not dispatch on aarch64")
         assert scalar_perf['call_count'] == 0, (
             "Scalar should not dispatch on aarch64 when NEON available")
+    elif arch in ('ppc64le', 'ppc64'):
+        assert altivec_perf['call_count'] >= 1, (
+            "Altivec should be dispatched on ppc64le")
+        assert sse2_perf['call_count'] == 0, (
+            "SSE2 should not dispatch on ppc64le")
+        assert neon_perf['call_count'] == 0, (
+            "NEON should not dispatch on ppc64le")
+        assert scalar_perf['call_count'] == 0, (
+            "Scalar should not dispatch on ppc64le when Altivec available")
 
     print("PASS: simd_dispatch")
 

@@ -38,3 +38,17 @@ void fill_neon(float *buf, int n, float val) {
 #else
 void fill_neon(float *buf, int n, float val) { fill_scalar(buf, n, val); }
 #endif
+
+#ifdef __powerpc64__
+#include <altivec.h>
+void fill_altivec(float *buf, int n, float val) {
+    vector float v = vec_splats(val);
+    int i;
+    for (i = 0; i + 3 < n; i += 4)
+        vec_st(v, 0, buf + i);
+    for (; i < n; i++)
+        buf[i] = val;
+}
+#else
+void fill_altivec(float *buf, int n, float val) { fill_scalar(buf, n, val); }
+#endif
