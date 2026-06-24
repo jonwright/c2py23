@@ -1,12 +1,12 @@
 #!/bin/bash
 # ppc64le-test.sh - run c2py23 test suite on a ppc64le machine
-# Prerequisites: gcc, python3 (>= 3.12), git, wget or curl
+# Prerequisites: gcc, python3 (>= 3.11), git, wget or curl
 # Usage: bash ppc64le-test.sh
 
 set -euo pipefail
 
 REPO_URL="https://github.com/jonwright/c2py23.git"
-BRANCH="main"
+BRANCH="issue-25"
 SILX="https://www.silx.org/pub/wheelhouse"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -53,7 +53,7 @@ else
     INDEX_HTML=$(curl -k -s "$SILX/" 2>/dev/null || true)
 fi
 
-NUMPY_WHL=$(echo "$INDEX_HTML" | grep -oP 'href="\K\.?/?[^"]*numpy-[^"]*cp312[^"]*ppc64le[^"]*\.whl' | head -1 | sed 's|^\./||' || true)
+NUMPY_WHL=$(echo "$INDEX_HTML" | grep -oP 'href="\K\.?/?[^"]*numpy-[^"]*cp311[^"]*ppc64le[^"]*\.whl' | head -1 | sed 's|^\./||' || true)
 
 if [ -n "$NUMPY_WHL" ]; then
     echo "  found: $NUMPY_WHL"
