@@ -728,6 +728,61 @@ def test_array_1d_fixed_extern_decl():
     _pass()
 
 
+def test_array_1d_unbounded_extern_decl():
+    """#20: 1D unbounded params must emit 'double omega[]' not 'double omega[None]'."""
+    from c2py23.parser import CParam, FuncDef, PyParam
+    from c2py23.parser import COverload, ModuleDef
+    from c2py23.generator import generate
+
+    mod = ModuleDef(
+        name='test_1d_unbounded',
+        sources=['dummy.c'],
+        headers=[],
+        functions=[
+            FuncDef(
+                name='compute_geometry',
+                py_params=[PyParam('data', 'buffer', None)],
+                return_type='void',
+                checks=[],
+                overloads=[COverload(
+                    sig_str='void compute_geometry(const double xlylzl[][3], const double omega[])',
+                    params=[
+                        CParam('xlylzl', 'const double (*)[3]', 'double',
+                               True, True, [None, '3']),
+                        CParam('omega', 'const double *', 'double',
+                               True, True, [None]),
+                    ],
+                    return_type='void',
+                    map_exprs={},
+                    when_expr=None,
+                    name='compute_geometry',
+                    group_name=None,
+                    variants=None,
+                    c_name='compute_geometry',
+                )],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    code = generate(mod)
+
+    # Must have correct array notation for unbounded 1D
+    assert 'const double omega[]' in code, (
+        "1D unbounded array must emit 'omega[]', got:\n%s" %
+        '\n'.join(l for l in code.split('\n') if 'omega' in l))
+
+    # Must NOT have [None] leaked from Python
+    assert '[None]' not in code, (
+        "Generated C code must not contain Python None literal")
+
+    _pass()
+
+
 def test_array_dims_dedup_with_user_checks():
     """Auto-checks must not duplicate user-written checks."""
     from c2py23.parser import load_c2py

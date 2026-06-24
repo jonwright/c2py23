@@ -280,14 +280,18 @@ class CBuilder:
 
 def _make_decl_string(ret, name, params):
     """Build extern declaration, handling array-typed parameters."""
+    def _dim(d):
+        """Format one array dimension: None -> [] , otherwise -> [N]."""
+        return '[]' if d is None else '[%s]' % d
+
     parts = []
     for p in params:
         if p.array_dims:
             base = ('const ' if p.is_const else '') + p.base_type
             if len(p.array_dims) == 1:
-                parts.append('%s %s[%s]' % (base, p.name, p.array_dims[0]))
+                parts.append('%s %s%s' % (base, p.name, _dim(p.array_dims[0])))
             else:
-                inner = ''.join('[%s]' % d for d in p.array_dims[1:])
+                inner = ''.join(_dim(d) for d in p.array_dims[1:])
                 parts.append('%s (*%s)%s' % (base, p.name, inner))
         else:
             parts.append(p.ctype + ' ' + p.name)
@@ -417,6 +421,7 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
         b.emit('        {0}.variant = {1};'.format(pf, vi))
         b.emit('        {0}.group_idx = {1};'.format(pf, gi))
         b.emit('        {0}.variant_name = "{1}";'.format(pf, v.name))
+        b.emit('        _active_perf_{0} = &{1};'.format(name, pf))
 
     for gi, (i, ol) in enumerate(groups):
         gname = ol.group_name or 'group{0}'.format(gi)
@@ -915,6 +920,26 @@ def _emit_module_init(b, module_def, has_free_threading,
             '    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns,'
             ' METH_VARARGS,')
         b.emit('     "convert (ticks, freq_hz) to nanoseconds"},')
+        b.emit(
+            '    {"_c2py_perf_read", (PyCFunction)_c2py_perf_read,'
+            ' METH_VARARGS,')
+        b.emit('     "read perf data into uint64 buffer"},')
+        b.emit(
+            '    {"_c2py_perf_meta", (PyCFunction)_c2py_perf_meta,'
+            ' METH_VARARGS,')
+        b.emit('     "get perf metadata tuple"},')
+        b.emit(
+            '    {"_c2py_perf_reset", (PyCFunction)_c2py_perf_reset,'
+            ' METH_VARARGS,')
+        b.emit('     "reset perf counter"},')
+        b.emit(
+            '    {"_c2py_perf_get_enabled", (PyCFunction)_c2py_perf_get_enabled,'
+            ' METH_VARARGS,')
+        b.emit('     "get timing enabled flag"},')
+        b.emit(
+            '    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled,'
+            ' METH_VARARGS,')
+        b.emit('     "set timing enabled flag"},')
     b.emit('    {NULL, NULL, 0, NULL}')
     b.emit('};')
     b.emit('')
@@ -943,6 +968,26 @@ def _emit_module_init(b, module_def, has_free_threading,
             '    {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns,'
             ' METH_VARARGS,')
         b.emit('     "convert (ticks, freq_hz) to nanoseconds"},')
+        b.emit(
+            '    {"_c2py_perf_read", (PyCFunction)_c2py_perf_read,'
+            ' METH_VARARGS,')
+        b.emit('     "read perf data into uint64 buffer"},')
+        b.emit(
+            '    {"_c2py_perf_meta", (PyCFunction)_c2py_perf_meta,'
+            ' METH_VARARGS,')
+        b.emit('     "get perf metadata tuple"},')
+        b.emit(
+            '    {"_c2py_perf_reset", (PyCFunction)_c2py_perf_reset,'
+            ' METH_VARARGS,')
+        b.emit('     "reset perf counter"},')
+        b.emit(
+            '    {"_c2py_perf_get_enabled", (PyCFunction)_c2py_perf_get_enabled,'
+            ' METH_VARARGS,')
+        b.emit('     "get timing enabled flag"},')
+        b.emit(
+            '    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled,'
+            ' METH_VARARGS,')
+        b.emit('     "set timing enabled flag"},')
     b.emit('    {NULL, NULL, 0, NULL}')
     b.emit('};')
     b.emit('')
@@ -1602,7 +1647,8 @@ def _derive_param_info(param_name, checks, overloads):
 # ---- Module support ----
 def _emit_constants(b, mod):
     """Emit PyObject_SetAttrString calls for module-level integer constants,
-    timing perf struct pointers, and GIL release flags."""
+    timing perf struct pointers (deprecated raw attrs + new _c2py_ attrs),
+    and GIL release flags."""
     has_gil = any(f.gil_release for f in mod.functions)
     if not mod.constants and not mod.timing and not has_gil:
         return
@@ -1611,22 +1657,32 @@ def _emit_constants(b, mod):
             b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
             b.emit('            PyLong_FromLong({}));'.format(cvalue))
     if mod.timing:
+        # Backward-compat raw pointer attrs (deprecated, still used by old code)
         b.emit('        PyObject_SetAttrString(module, "_c2py_timing_enabled",')
         b.emit('            PyLong_FromVoidPtr(&_c2py_timing_enabled));')
         for func in mod.functions:
             b.emit('        PyObject_SetAttrString(module, "_perf_{0}",'.format(func.name))
             b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
+            # New _c2py_ prefixed attrs (used by perf.py)
+            b.emit('        PyObject_SetAttrString(module, "_c2py_perf_ptr_{0}",'.format(func.name))
+            b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
             for ol in func.overloads:
                 if ol.variants:
+                    b.emit('        PyObject_SetAttrString(module, "_c2py_active_ptr_{0}",'.format(func.name))
+                    b.emit('            PyLong_FromVoidPtr((void*)&_active_perf_{0}));'.format(func.name))
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split('(')[0].strip().split()[-1]
                         perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
                         b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
                         b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                        b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                        b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                     perf_name = '_perf_{0}__{1}'.format(func.name, c_name)
                     b.emit('        PyObject_SetAttrString(module, "{}",'.format(perf_name))
+                    b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
+                    b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
                     b.emit('            PyLong_FromVoidPtr(&{}));'.format(perf_name))
     if has_gil:
         b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
@@ -1638,8 +1694,92 @@ def _emit_constants(b, mod):
 
 
 # ---- Module support ----
+def _emit_perf_accessors(b):
+    """Emit Python-callable C functions: _c2py_perf_read, _perf_meta,
+    _perf_reset, _c2py_get_enabled, _c2py_set_enabled."""
+    b.emit('/* ---- Perf accessor functions (no ctypes needed) ---- */')
+    b.emit('')
+    b.emit('/* Fill a uint64 array with perf fields from the given pointer. */')
+    b.emit('static PyObject*')
+    b.emit('_c2py_perf_read(PyObject *self, PyObject *args) {')
+    b.emit('    unsigned long long ptr_val;')
+    b.emit('    Py_buffer buf;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "Kw*", &ptr_val, &buf))')
+    b.emit('        return NULL;')
+    b.emit('    if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {')
+    b.emit('        PyErr_SetString(PyExc_ValueError,')
+    b.emit('            "buffer too small for perf data (need 11 uint64)");')
+    b.emit('        return NULL;')
+    b.emit('    }')
+    b.emit('    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,')
+    b.emit('                           (uint64_t*)buf.buf);')
+    b.emit('    PyBuffer_Release(&buf);')
+    b.emit('    Py_RETURN_NONE;')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Return (variant, group_idx, variant_name) metadata tuple. */')
+    b.emit('static PyObject*')
+    b.emit('_c2py_perf_meta(PyObject *self, PyObject *args) {')
+    b.emit('    unsigned long long ptr_val;')
+    b.emit('    c2py_perf_t *p;')
+    b.emit('    PyObject *tuple;')
+    b.emit('    const char *vn;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
+    b.emit('        return NULL;')
+    b.emit('    p = (c2py_perf_t*)(uintptr_t)ptr_val;')
+    b.emit('    tuple = PyTuple_New(3);')
+    b.emit('    if (!tuple) return NULL;')
+    b.emit('    PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)p->variant));')
+    b.emit('    PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)p->group_idx));')
+    b.emit('    vn = p->variant_name;')
+    b.emit('    if (!vn) vn = "";')
+    b.emit('    if (C2PY.version_major >= 3) {')
+    b.emit('        PyTuple_SetItem(tuple, 2, C2PY.Unicode_FromString(vn));')
+    b.emit('    } else {')
+    b.emit('        PyTuple_SetItem(tuple, 2, C2PY.String_FromString(vn));')
+    b.emit('    }')
+    b.emit('    return tuple;')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Reset a perf counter to initial state. */')
+    b.emit('static PyObject*')
+    b.emit('_c2py_perf_reset(PyObject *self, PyObject *args) {')
+    b.emit('    unsigned long long ptr_val;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
+    b.emit('        return NULL;')
+    b.emit('    c2py_perf_reset((c2py_perf_t*)(uintptr_t)ptr_val);')
+    b.emit('    Py_RETURN_NONE;')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Read timing enabled flag (0 or 1). */')
+    b.emit('static PyObject*')
+    b.emit('_c2py_perf_get_enabled(PyObject *self, PyObject *args) {')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, ""))')
+    b.emit('        return NULL;')
+    b.emit('    return PyLong_FromLong((long)_c2py_timing_enabled);')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Set timing enabled flag. */')
+    b.emit('static PyObject*')
+    b.emit('_c2py_perf_set_enabled(PyObject *self, PyObject *args) {')
+    b.emit('    int val;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "i", &val))')
+    b.emit('        return NULL;')
+    b.emit('    _c2py_timing_enabled = val;')
+    b.emit('    Py_RETURN_NONE;')
+    b.emit('}')
+    b.emit('')
+
+
+# ---- Module support ----
 def _emit_timing_decls(b, mod):
-    """Emit global timing declarations: enabled flag, perf structs, tick API."""
+    """Emit global timing declarations: enabled flag, perf structs, tick API,
+    perf accessor functions (read, meta, reset)."""
     b.emit('/* ---- Performance timing ---- */')
     b.emit('static int _c2py_timing_enabled = 1;')
     b.emit('')
@@ -1653,6 +1793,15 @@ def _emit_timing_decls(b, mod):
             else:
                 c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split('(')[0].strip().split()[-1]
                 b.emit('static c2py_perf_t _perf_{0}__{1};'.format(func.name, c_name))
+    # Active-overload pointers (updated by resolve for variant groups)
+    has_any_variants = any(
+        any(ol.variants for ol in f.overloads) for f in mod.functions)
+    if has_any_variants:
+        for func in mod.functions:
+            has_variants = any(ol.variants for ol in func.overloads)
+            if has_variants:
+                b.emit('static c2py_perf_t * _active_perf_{0} = &_perf_{0};'.format(
+                    func.name))
     b.emit('')
     b.emit('/* Python-callable: return tick source frequency in Hz */')
     b.emit('static PyObject*')
@@ -1674,6 +1823,8 @@ def _emit_timing_decls(b, mod):
     b.emit('        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));')
     b.emit('}')
     b.emit('')
+    # Perf accessor functions
+    _emit_perf_accessors(b)
 
 
 # ---- Docstring generation ----

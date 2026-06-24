@@ -32,6 +32,83 @@ __c2py_ticks_to_ns(PyObject *self, PyObject *args) {
         c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));
 }
 
+/* ---- Perf accessor functions (no ctypes needed) ---- */
+
+/* Fill a uint64 array with perf fields from the given pointer. */
+static PyObject*
+_c2py_perf_read(PyObject *self, PyObject *args) {
+    unsigned long long ptr_val;
+    Py_buffer buf;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "Kw*", &ptr_val, &buf))
+        return NULL;
+    if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
+        PyErr_SetString(PyExc_ValueError,
+            "buffer too small for perf data (need 11 uint64)");
+        return NULL;
+    }
+    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,
+                           (uint64_t*)buf.buf);
+    PyBuffer_Release(&buf);
+    Py_RETURN_NONE;
+}
+
+/* Return (variant, group_idx, variant_name) metadata tuple. */
+static PyObject*
+_c2py_perf_meta(PyObject *self, PyObject *args) {
+    unsigned long long ptr_val;
+    c2py_perf_t *p;
+    PyObject *tuple;
+    const char *vn;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "K", &ptr_val))
+        return NULL;
+    p = (c2py_perf_t*)(uintptr_t)ptr_val;
+    tuple = PyTuple_New(3);
+    if (!tuple) return NULL;
+    PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)p->variant));
+    PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)p->group_idx));
+    vn = p->variant_name;
+    if (!vn) vn = "";
+    if (C2PY.version_major >= 3) {
+        PyTuple_SetItem(tuple, 2, C2PY.Unicode_FromString(vn));
+    } else {
+        PyTuple_SetItem(tuple, 2, C2PY.String_FromString(vn));
+    }
+    return tuple;
+}
+
+/* Reset a perf counter to initial state. */
+static PyObject*
+_c2py_perf_reset(PyObject *self, PyObject *args) {
+    unsigned long long ptr_val;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "K", &ptr_val))
+        return NULL;
+    c2py_perf_reset((c2py_perf_t*)(uintptr_t)ptr_val);
+    Py_RETURN_NONE;
+}
+
+/* Read timing enabled flag (0 or 1). */
+static PyObject*
+_c2py_perf_get_enabled(PyObject *self, PyObject *args) {
+    (void)self;
+    if (!PyArg_ParseTuple(args, ""))
+        return NULL;
+    return PyLong_FromLong((long)_c2py_timing_enabled);
+}
+
+/* Set timing enabled flag. */
+static PyObject*
+_c2py_perf_set_enabled(PyObject *self, PyObject *args) {
+    int val;
+    (void)self;
+    if (!PyArg_ParseTuple(args, "i", &val))
+        return NULL;
+    _c2py_timing_enabled = val;
+    Py_RETURN_NONE;
+}
+
 /* -------------------------------------------- */
 /* Wrapper for: transform */
 /* -------------------------------------------- */
@@ -317,6 +394,16 @@ static PyMethodDef _methods_varargs[] = {
      "return tick source frequency in Hz"},
     {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
      "convert (ticks, freq_hz) to nanoseconds"},
+    {"_c2py_perf_read", (PyCFunction)_c2py_perf_read, METH_VARARGS,
+     "read perf data into uint64 buffer"},
+    {"_c2py_perf_meta", (PyCFunction)_c2py_perf_meta, METH_VARARGS,
+     "get perf metadata tuple"},
+    {"_c2py_perf_reset", (PyCFunction)_c2py_perf_reset, METH_VARARGS,
+     "reset perf counter"},
+    {"_c2py_perf_get_enabled", (PyCFunction)_c2py_perf_get_enabled, METH_VARARGS,
+     "get timing enabled flag"},
+    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled, METH_VARARGS,
+     "set timing enabled flag"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -326,6 +413,16 @@ static PyMethodDef _methods_fastcall[] = {
      "return tick source frequency in Hz"},
     {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
      "convert (ticks, freq_hz) to nanoseconds"},
+    {"_c2py_perf_read", (PyCFunction)_c2py_perf_read, METH_VARARGS,
+     "read perf data into uint64 buffer"},
+    {"_c2py_perf_meta", (PyCFunction)_c2py_perf_meta, METH_VARARGS,
+     "get perf metadata tuple"},
+    {"_c2py_perf_reset", (PyCFunction)_c2py_perf_reset, METH_VARARGS,
+     "reset perf counter"},
+    {"_c2py_perf_get_enabled", (PyCFunction)_c2py_perf_get_enabled, METH_VARARGS,
+     "get timing enabled flag"},
+    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled, METH_VARARGS,
+     "set timing enabled flag"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -374,9 +471,15 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
             PyLong_FromVoidPtr(&_c2py_timing_enabled));
         PyObject_SetAttrString(module, "_perf_transform",
             PyLong_FromVoidPtr(&_perf_transform));
+        PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
+            PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_perf_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
+            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
         PyObject_SetAttrString(module, "_perf_transform__transform_soa",
+            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
+        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
     return module;
@@ -392,9 +495,15 @@ C2PY_EXPORT void initxfrm(void) {
             PyLong_FromVoidPtr(&_c2py_timing_enabled));
         PyObject_SetAttrString(module, "_perf_transform",
             PyLong_FromVoidPtr(&_perf_transform));
+        PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
+            PyLong_FromVoidPtr(&_perf_transform));
         PyObject_SetAttrString(module, "_perf_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
+            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
         PyObject_SetAttrString(module, "_perf_transform__transform_soa",
+            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
+        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
 }
