@@ -61,6 +61,27 @@ def _get_mod(func):
     return None
 
 
+def _make_perf_buf():
+    """Return a writable buffer with room for _N_FIELDS uint64 values.
+
+    On Python 3.3+ we use ``array.array('Q')`` which supports direct
+    indexing and 8-byte elements.  On Python 2.7 the ``'Q'`` typecode
+    is unavailable; we use ``bytearray`` instead and decode elements
+    via ``struct.unpack_from``.
+    """
+    if hasattr(array, 'typecodes') and 'Q' in array.typecodes:
+        return array.array('Q', [0] * _N_FIELDS)
+    return bytearray(_N_FIELDS * 8)
+
+
+def _read_buf(buf, idx):
+    """Read the uint64 value at position *idx* from a perf buffer."""
+    if isinstance(buf, array.array):
+        return buf[idx]
+    import struct
+    return struct.unpack_from('<Q', str(buf), idx * 8)[0]
+
+
 def _to_ns(ticks, freq_hz):
     """Convert tick count to nanoseconds, guarding against freq_hz == 0."""
     if freq_hz == 0 or freq_hz is None:
@@ -144,21 +165,21 @@ def read_perf(func, freq_hz=None, variant=None):
 
     mod = _get_mod(func)
 
-    buf = array.array('Q', [0] * _N_FIELDS)
+    buf = _make_perf_buf()
     mod._c2py_perf_read(ptr, buf)
     variant_val, group_idx, vname = mod._c2py_perf_meta(ptr)
 
-    n = buf[_I_CALL_COUNT]
-    t_enter   = buf[_I_T_ENTER]
-    t_pre_c   = buf[_I_T_PRE_C]
-    t_post_c  = buf[_I_T_POST_C]
-    t_exit    = buf[_I_T_EXIT]
-    t_c_min   = buf[_I_T_C_MIN]
-    t_c_max   = buf[_I_T_C_MAX]
-    t_c_total = buf[_I_T_C_TOTAL]
-    t_w_min   = buf[_I_T_WRAP_MIN]
-    t_w_max   = buf[_I_T_WRAP_MAX]
-    t_w_total = buf[_I_T_WRAP_TOTAL]
+    n = _read_buf(buf, _I_CALL_COUNT)
+    t_enter   = _read_buf(buf, _I_T_ENTER)
+    t_pre_c   = _read_buf(buf, _I_T_PRE_C)
+    t_post_c  = _read_buf(buf, _I_T_POST_C)
+    t_exit    = _read_buf(buf, _I_T_EXIT)
+    t_c_min   = _read_buf(buf, _I_T_C_MIN)
+    t_c_max   = _read_buf(buf, _I_T_C_MAX)
+    t_c_total = _read_buf(buf, _I_T_C_TOTAL)
+    t_w_min   = _read_buf(buf, _I_T_WRAP_MIN)
+    t_w_max   = _read_buf(buf, _I_T_WRAP_MAX)
+    t_w_total = _read_buf(buf, _I_T_WRAP_TOTAL)
 
     c_dur = t_post_c - t_pre_c
     wrap_dur = (t_pre_c - t_enter) + (t_exit - t_post_c) \
