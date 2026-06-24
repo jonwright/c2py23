@@ -77,13 +77,16 @@ for v in variants:
 
 # --- Built-in perf ---
 if HAVE_PERF:
-    # Determine tick source: default clock_gettime gives ns, CPU cycle counter gives cycles
     freq_hz = polysimd._c2py_tick_frequency()
     using_cycles = (freq_hz != 0 and freq_hz != 1000000000)
     unit = "cycles" if using_cycles else "ns"
     print()
     print("=== c2py23 built-in perf (%s, 100 iterations) ===" % unit)
-    variant_short = {"poly_f32_scalar": "poly_f32_scalar", "poly_f32_avx2": "poly_f32_avx2", "poly_f32_avx512": "poly_f32_avx512"}
+    variant_short = {
+        "poly_f32_scalar": "poly_f32_scalar",
+        "poly_f32_avx2": "poly_f32_avx2",
+        "poly_f32_avx512": "poly_f32_avx512",
+    }
     for v in variants:
         polysimd._rebind_poly(v)
         for _ in range(N_WARM):
@@ -91,17 +94,13 @@ if HAVE_PERF:
         for _ in range(N_ITER):
             polysimd.poly(a, b, out)
 
-        perf_key = '_perf_poly__' + variant_short[v]
-        ptr = getattr(polysimd, perf_key, 0)
-        if ptr:
-            stats = read_perf(ptr, freq_hz=freq_hz)
-            if using_cycles:
-                val = stats.get('c_mean_cycles', 0)
-            else:
-                val = stats.get('c_mean_ns', 0)
-            print("  %-8s  %8.0f %s/call" % (v, val, unit))
+        stats = read_perf(polysimd.poly, variant=variant_short[v],
+                           freq_hz=freq_hz)
+        if using_cycles:
+            val = stats.get('c_mean_cycles', 0)
         else:
-            print("  %-8s  (no perf struct)" % v)
+            val = stats.get('c_mean_ns', 0)
+        print("  %-8s  %8.0f %s/call" % (v, val, unit))
 
 # --- Speedup ratios ---
 print()
