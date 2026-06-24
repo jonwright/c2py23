@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/jonwright/c2py23.git"
-BRANCH="issue-25"
+BRANCH="main"
 SILX="https://www.silx.org/pub/wheelhouse"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
