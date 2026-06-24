@@ -1,41 +1,47 @@
 """c2py23 performance data decoder.
 
-Reads c2py_perf_t structs exposed as raw pointers on modules built with
-`timing: true` in their .c2py file.
+Reads c2py_perf_t data via module-level C accessor functions -- no ctypes
+required.  Modules built with `timing: true` expose `_c2py_perf_read`,
+`_c2py_perf_meta`, `_c2py_perf_reset` and pointer attributes on the module
+so that `read_perf()` can locate the right perf counter from the wrapper
+function object alone.
 
-Usage:
-    from c2py23.perf import read_perf
+Usage::
+
+    from c2py23.perf import read_perf, reset_perf
 
     import my_timed_module
-    stats = read_perf(my_timed_module._perf_myfunc)
+    stats = read_perf(my_timed_module.wsum)
     print(stats)
 
-    # With C2PY_USE_CYCLE_COUNTER, provide the frequency for correct ns:
-    stats = read_perf(my_timed_module._perf_myfunc,
+    # With C2PY_USE_CYCLE_COUNTER, provide the frequency:
+    stats = read_perf(my_timed_module.wsum,
                       freq_hz=my_timed_module._c2py_tick_frequency())
+
+    # Read the currently-selected variant's timing:
+    stats = read_perf(my_timed_module.poly, variant=True)
+
+    # Reset counters between benchmark batches:
+    reset_perf(my_timed_module.wsum)
 """
 from __future__ import print_function
 
-import ctypes
+import array
 
 
-class _c2py_perf_t(ctypes.Structure):
-    _fields_ = [
-        ("call_count", ctypes.c_uint64),
-        ("t_enter",    ctypes.c_uint64),
-        ("t_pre_c",    ctypes.c_uint64),
-        ("t_post_c",   ctypes.c_uint64),
-        ("t_exit",     ctypes.c_uint64),
-        ("t_c_min",    ctypes.c_uint64),
-        ("t_c_max",    ctypes.c_uint64),
-        ("t_c_total",  ctypes.c_uint64),
-        ("t_wrap_min", ctypes.c_uint64),
-        ("t_wrap_max", ctypes.c_uint64),
-        ("t_wrap_total", ctypes.c_uint64),
-        ("variant",    ctypes.c_int),
-        ("group_idx",  ctypes.c_int),
-        ("variant_name", ctypes.c_void_p),
-    ]
+# ---- Layout constants for the uint64 buffer ----
+_I_CALL_COUNT    = 0
+_I_T_ENTER       = 1
+_I_T_PRE_C       = 2
+_I_T_POST_C      = 3
+_I_T_EXIT        = 4
+_I_T_C_MIN       = 5
+_I_T_C_MAX       = 6
+_I_T_C_TOTAL     = 7
+_I_T_WRAP_MIN    = 8
+_I_T_WRAP_MAX    = 9
+_I_T_WRAP_TOTAL  = 10
+_N_FIELDS        = 11
 
 
 def _to_ns(ticks, freq_hz):
@@ -45,19 +51,62 @@ def _to_ns(ticks, freq_hz):
     return ticks * 1000000000 // freq_hz
 
 
-def read_perf(ptr_int, freq_hz=None):
-    """Decode a c2py_perf_t from the raw pointer (as Python int).
+def _get_perf_ptr(func, variant=None):
+    """Resolve the raw perf-struct pointer for *func*.
 
     Parameters
     ----------
-    ptr_int : int
-        Raw pointer to the c2py_perf_t struct (e.g. module._perf_myfunc).
+    func : callable
+        A wrapper function on a timing-enabled module (e.g. ``mod.wsum``).
+    variant : None, True, or str, optional
+        - None       -> wrapper overhead counter (``_c2py_perf_ptr_*``)
+        - True       -> currently-selected variant (``_c2py_active_ptr_*``)
+        - str        -> named overload (``_c2py_ol_ptr_funcname__name``)
+
+    Returns
+    -------
+    int
+        Raw pointer value (Python int).
+    """
+    name = func.__name__
+    mod = func.__self__
+
+    if variant is True:
+        attr = '_c2py_active_ptr_' + name
+        if hasattr(mod, attr):
+            return getattr(mod, attr)
+        return getattr(mod, '_c2py_perf_ptr_' + name)
+
+    if isinstance(variant, str):
+        attr = '_c2py_ol_ptr_{0}__{1}'.format(name, variant)
+        return getattr(mod, attr)
+
+    return getattr(mod, '_c2py_perf_ptr_' + name)
+
+
+def read_perf(func, freq_hz=None, variant=None):
+    """Decode a c2py_perf_t counter.
+
+    Parameters
+    ----------
+    func : callable
+        Wrapper function on a timing-enabled module (e.g. ``mod.wsum``).
+        The module is found via ``func.__self__`` and the counter pointer
+        is looked up by ``func.__name__`` on the module.
     freq_hz : int or None, optional
         Tick source frequency in Hz.  When None or 0, the raw tick values
-        are returned under the _ns keys (correct for the default
-        clock_gettime source which returns nanoseconds).  When provided
-        and != 1e9, the values are converted and the raw tick values are
-        additionally returned under _cycles keys.
+        are returned under the ``_ns`` keys (correct for the default
+        ``clock_gettime`` source which returns nanoseconds).  When provided
+        and not equal to 1e9, the values are converted and the raw tick
+        values are additionally returned under ``_cycles`` keys.
+    variant : None, True, or str, optional
+        Which perf counter to read:
+
+        - ``None`` (default) — wrapper-overhead counter
+        - ``True`` — the currently-selected variant (functions with
+          variant groups only; falls back to wrapper overhead otherwise)
+        - ``str`` — a named overload, e.g. ``"weighted_sum"`` for the
+          counter ``_c2py_ol_ptr_wsum__weighted_sum``
 
     Returns
     -------
@@ -65,94 +114,110 @@ def read_perf(ptr_int, freq_hz=None):
         call_count, t_enter, t_pre_c, t_post_c, t_exit,
         c_dur_ns, wrap_dur_ns,
         c_min_ns, c_max_ns, c_mean_ns,
-        wrap_min_ns, wrap_max_ns, wrap_mean_ns.
+        wrap_min_ns, wrap_max_ns, wrap_mean_ns,
+        variant, group_idx, variant_name.
       Additional keys when freq_hz is provided and != 1e9:
         c_dur_cycles, wrap_dur_cycles,
         c_min_cycles, c_max_cycles, c_mean_cycles,
         wrap_min_cycles, wrap_max_cycles, wrap_mean_cycles.
     """
-    if ptr_int == 0:
+    ptr = _get_perf_ptr(func, variant)
+    if ptr == 0:
         return {"call_count": 0}
-    p = _c2py_perf_t.from_address(ptr_int)
-    n = p.call_count
-    vname = ""
-    if p.variant_name:
-        try:
-            vname = ctypes.c_char_p(p.variant_name).value
-            if vname is None:
-                vname = ""
-            elif isinstance(vname, bytes):
-                vname = vname.decode('ascii', errors='replace')
-        except Exception:
-            vname = ""
 
-    c_dur = p.t_post_c - p.t_pre_c
-    wrap_dur = (p.t_pre_c - p.t_enter) + (p.t_exit - p.t_post_c) \
-               if p.t_enter or p.t_exit else 0
+    mod = func.__self__
+
+    buf = array.array('Q', [0] * _N_FIELDS)
+    mod._c2py_perf_read(ptr, buf)
+    variant_val, group_idx, vname = mod._c2py_perf_meta(ptr)
+
+    n = buf[_I_CALL_COUNT]
+    t_enter   = buf[_I_T_ENTER]
+    t_pre_c   = buf[_I_T_PRE_C]
+    t_post_c  = buf[_I_T_POST_C]
+    t_exit    = buf[_I_T_EXIT]
+    t_c_min   = buf[_I_T_C_MIN]
+    t_c_max   = buf[_I_T_C_MAX]
+    t_c_total = buf[_I_T_C_TOTAL]
+    t_w_min   = buf[_I_T_WRAP_MIN]
+    t_w_max   = buf[_I_T_WRAP_MAX]
+    t_w_total = buf[_I_T_WRAP_TOTAL]
+
+    c_dur = t_post_c - t_pre_c
+    wrap_dur = (t_pre_c - t_enter) + (t_exit - t_post_c) \
+               if t_enter or t_exit else 0
 
     result = {
         "call_count": n,
-        "t_enter":    p.t_enter,
-        "t_pre_c":    p.t_pre_c,
-        "t_post_c":   p.t_post_c,
-        "t_exit":     p.t_exit,
+        "t_enter":    t_enter,
+        "t_pre_c":    t_pre_c,
+        "t_post_c":   t_post_c,
+        "t_exit":     t_exit,
         "c_dur_ns":   _to_ns(c_dur, freq_hz),
         "wrap_dur_ns": _to_ns(wrap_dur, freq_hz),
-        "c_min_ns":   _to_ns(p.t_c_min, freq_hz),
-        "c_max_ns":   _to_ns(p.t_c_max, freq_hz),
-        "c_mean_ns":  _to_ns(p.t_c_total / float(n), freq_hz) if n else 0,
-        "wrap_min_ns":  _to_ns(p.t_wrap_min, freq_hz),
-        "wrap_max_ns":  _to_ns(p.t_wrap_max, freq_hz),
-        "wrap_mean_ns": _to_ns(p.t_wrap_total / float(n), freq_hz) if n else 0,
-        "variant":    p.variant,
-        "group_idx":  p.group_idx,
+        "c_min_ns":   _to_ns(t_c_min, freq_hz),
+        "c_max_ns":   _to_ns(t_c_max, freq_hz),
+        "c_mean_ns":  _to_ns(t_c_total / float(n), freq_hz) if n else 0,
+        "wrap_min_ns":  _to_ns(t_w_min, freq_hz),
+        "wrap_max_ns":  _to_ns(t_w_max, freq_hz),
+        "wrap_mean_ns": _to_ns(t_w_total / float(n), freq_hz) if n else 0,
+        "variant":    variant_val,
+        "group_idx":  group_idx,
         "variant_name": vname,
     }
 
     if freq_hz is not None and freq_hz != 0 and freq_hz != 1000000000:
         result["c_dur_cycles"]   = c_dur
         result["wrap_dur_cycles"] = wrap_dur
-        result["c_min_cycles"]   = p.t_c_min
-        result["c_max_cycles"]   = p.t_c_max
-        result["c_mean_cycles"]  = p.t_c_total / float(n) if n else 0
-        result["wrap_min_cycles"]  = p.t_wrap_min
-        result["wrap_max_cycles"]  = p.t_wrap_max
-        result["wrap_mean_cycles"] = p.t_wrap_total / float(n) if n else 0
+        result["c_min_cycles"]   = t_c_min
+        result["c_max_cycles"]   = t_c_max
+        result["c_mean_cycles"]  = t_c_total / float(n) if n else 0
+        result["wrap_min_cycles"]  = t_w_min
+        result["wrap_max_cycles"]  = t_w_max
+        result["wrap_mean_cycles"] = t_w_total / float(n) if n else 0
 
     return result
 
 
-def reset_perf(ptr_int):
-    """Zero a c2py_perf_t struct, resetting all counters.
-
-    Call this between benchmark batches to get clean per-batch stats
-    without needing to toggle timing on/off.
+def reset_perf(func, variant=None):
+    """Reset a c2py_perf_t counter to its initial state.
 
     Parameters
     ----------
-    ptr_int : int
-        Raw pointer to the c2py_perf_t struct (e.g. module._perf_myfunc).
+    func : callable
+        Wrapper function on a timing-enabled module (e.g. ``mod.wsum``).
+    variant : None, True, or str, optional
+        Selects which counter to reset.  See :func:`read_perf`.
     """
-    if ptr_int == 0:
+    ptr = _get_perf_ptr(func, variant)
+    if ptr == 0:
         return
-    ctypes.memset(ptr_int, 0, ctypes.sizeof(_c2py_perf_t))
-    # Restore sentinel values for min tracking
-    p = _c2py_perf_t.from_address(ptr_int)
-    p.variant = -1
-    p.group_idx = -1
-    p.t_c_min = 2**64 - 1
-    p.t_wrap_min = 2**64 - 1
+    mod = func.__self__
+    mod._c2py_perf_reset(ptr)
 
 
-def read_enabled(enabled_ptr_int):
-    """Read the _c2py_timing_enabled flag."""
-    if enabled_ptr_int == 0:
-        return 0
-    return ctypes.c_int.from_address(enabled_ptr_int).value
+def get_enabled(func):
+    """Return 1 if per-call timing is enabled, 0 otherwise.
+
+    Parameters
+    ----------
+    func : callable
+        Any wrapper function or the module itself from a timing-enabled
+        module.  The module is found via ``func.__self__``.
+    """
+    mod = func.__self__
+    return mod._c2py_perf_get_enabled()
 
 
-def set_enabled(enabled_ptr_int, value):
-    """Set the _c2py_timing_enabled flag (0 or 1)."""
-    if enabled_ptr_int == 0:
-        return
-    ctypes.c_int.from_address(enabled_ptr_int).value = value
+def set_enabled(func, value):
+    """Enable (value=1) or disable (value=0) per-call timing.
+
+    Parameters
+    ----------
+    func : callable
+        See :func:`get_enabled`.
+    value : int
+        1 to enable, 0 to disable.
+    """
+    mod = func.__self__
+    mod._c2py_perf_set_enabled(int(value))

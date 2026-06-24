@@ -231,15 +231,15 @@ def test_constants():
 
 
 def test_timing():
-    """Test performance timing feature."""
-    from c2py23.perf import read_perf, read_enabled, set_enabled
+    """Test performance timing feature (no ctypes)."""
+    from c2py23.perf import read_perf, get_enabled, set_enabled
 
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'timing'))
     import timedmod
     import ctypes as ct
 
-    py0 = read_perf(timedmod._perf_wsum)
-    ov0 = read_perf(timedmod._perf_wsum__weighted_sum)
+    py0 = read_perf(timedmod.wsum)
+    ov0 = read_perf(timedmod.wsum, variant="weighted_sum")
     py_count0 = py0['call_count']
     ov_count0 = ov0['call_count']
 
@@ -248,8 +248,8 @@ def test_timing():
         r = timedmod.wsum(arr, 2.0)
         assert abs(r - 30.0) < 0.001
 
-    py = read_perf(timedmod._perf_wsum)
-    ov = read_perf(timedmod._perf_wsum__weighted_sum)
+    py = read_perf(timedmod.wsum)
+    ov = read_perf(timedmod.wsum, variant="weighted_sum")
 
     assert py['call_count'] == py_count0 + 10, (
         "py call_count expected %d, got %d" % (py_count0 + 10, py['call_count']))
@@ -261,15 +261,15 @@ def test_timing():
     assert ov['wrap_dur_ns'] == 0
 
     # Test toggle off
-    enabled = read_enabled(timedmod._c2py_timing_enabled)
+    enabled = get_enabled(timedmod.wsum)
     assert enabled == 1
-    set_enabled(timedmod._c2py_timing_enabled, 0)
-    assert read_enabled(timedmod._c2py_timing_enabled) == 0
+    set_enabled(timedmod.wsum, 0)
+    assert get_enabled(timedmod.wsum) == 0
 
     timedmod.wsum(arr, 1.0)
-    py2 = read_perf(timedmod._perf_wsum)
+    py2 = read_perf(timedmod.wsum)
     assert py2['call_count'] == py['call_count']  # should NOT have incremented
-    set_enabled(timedmod._c2py_timing_enabled, 1)
+    set_enabled(timedmod.wsum, 1)
 
     print("PASS: timing")
 
