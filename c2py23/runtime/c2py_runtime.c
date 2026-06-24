@@ -17,9 +17,12 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
+#include <sys/auxv.h> /* Linux: getauxval for CPU feature detection on ARM64/POWER */
+#include <pthread.h>
 #else
 #include <dlfcn.h>
-#include <sys/auxv.h> /* Linux-specific: getauxval for CPU feature detection on ARM64/POWER */
 #include <pthread.h>
 #endif
 
