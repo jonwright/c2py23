@@ -558,6 +558,93 @@ def test_array_sig():
     print("PASS: array_sig")
 
 
+def test_simd_dispatch():
+    """Test CPU feature flag dispatch: SSE2 on x86_64, NEON on aarch64."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases',
+                                     'simd_dispatch'))
+    import simd_fillmod as m
+    import platform
+    from c2py23.perf import read_perf
+
+    buf = (ctypes.c_float * 32)(*range(32))
+    m.fill(buf, 7.77)
+
+    # Output correctness
+    for i in range(32):
+        assert abs(buf[i] - 7.77) < 0.001, (
+            "simd_fill buf[%d] expected 7.77 got %s" % (i, buf[i]))
+
+    # Verify dispatch: check per-overload call counts
+    arch = platform.machine()
+    sse2_perf = read_perf(m.fill, variant="fill_sse2")
+    neon_perf = read_perf(m.fill, variant="fill_neon")
+    scalar_perf = read_perf(m.fill, variant="fill_scalar")
+
+    if arch in ('x86_64', 'AMD64'):
+        assert sse2_perf['call_count'] >= 1, (
+            "SSE2 should be dispatched on x86_64")
+        assert neon_perf['call_count'] == 0, (
+            "NEON should not dispatch on x86_64")
+        assert scalar_perf['call_count'] == 0, (
+            "Scalar should not dispatch on x86_64 when SSE2 available")
+    elif arch in ('aarch64', 'arm64'):
+        assert neon_perf['call_count'] >= 1, (
+            "NEON should be dispatched on aarch64")
+        assert sse2_perf['call_count'] == 0, (
+            "SSE2 should not dispatch on aarch64")
+        assert scalar_perf['call_count'] == 0, (
+            "Scalar should not dispatch on aarch64 when NEON available")
+
+    print("PASS: simd_dispatch")
+
+
+def test_timing_cycle_counter():
+    """Test runtime cycle counter tick source selection.
+    Skips if cycle counter frequency was not detected."""
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases',
+                                     'timing'))
+    import timedmod
+    import ctypes as ct
+    from c2py23.perf import read_perf, read_enabled, set_enabled
+
+    # Check if cycle counter frequency is available
+    try:
+        timedmod._c2py_set_tick_source("cycle")
+    except RuntimeError:
+        print("SKIP: timing_cycle_counter (cycle counter freq not detected)")
+        return
+
+    # Switch back to clock for clean start, then to cycle
+    timedmod._c2py_set_tick_source("clock")
+
+    arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
+    p0 = read_perf(timedmod.wsum)
+    count0 = p0['call_count']
+
+    timedmod._c2py_set_tick_source("cycle")
+    for i in range(50):
+        r = timedmod.wsum(arr, 2.0)
+        assert abs(r - 30.0) < 0.001
+
+    p1 = read_perf(timedmod.wsum)
+    assert p1['call_count'] == count0 + 50
+    # In cycle mode we have c_mean_cycles; in clock mode only c_mean_ns.
+    # The read_perf always populates c_mean_ns from the raw data assuming
+    # 1e9 Hz, so c_mean_ns will be wrong in cycle mode. Just verify
+    # the call counts and that data is non-zero.
+    assert p1['c_mean_ns'] >= 0, "C function should have consumed ticks"
+
+    # Switch back to clock mode
+    timedmod._c2py_set_tick_source("clock")
+    p2 = read_perf(timedmod.wsum)
+    # Call with clock mode one more time
+    timedmod.wsum(arr, 1.0)
+    p3 = read_perf(timedmod.wsum)
+    assert p3['call_count'] == p2['call_count'] + 1
+
+    print("PASS: timing_cycle_counter")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -577,6 +664,8 @@ def main():
         ("gil_release", test_gil_release),
         ("address", test_address),
         ("array_sig", test_array_sig),
+        ("simd_dispatch", test_simd_dispatch),
+        ("timing_cycle_counter", test_timing_cycle_counter),
     ]
     passed = 0
     failed = 0

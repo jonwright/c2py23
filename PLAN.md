@@ -4,7 +4,10 @@
 
 ### P3: aarch64 / ppc64le support
 
-**Status: CPU detection implemented.  No CI/testing yet.**
+**Status: aarch64 CI added (ubuntu-24.04-arm runner), SIMD dispatch test enabled.
+Feature flags always defined (unconditionally) for cross-arch header portability.
+CPU cycle counter now runtime-selectable via `_c2py_set_tick_source()`.
+ppc64le still needs CI.**
 
 The runtime has full CPU feature detection for ARM64 (`getauxval`,
 `mrs`, `c2py_arm64.h`) and POWER (`getauxval`, `mftb`, `c2py_ppc64.h`).

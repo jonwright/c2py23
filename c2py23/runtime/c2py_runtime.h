@@ -498,82 +498,94 @@ typedef struct {
     const char *variant_name;  /* points to static string, NULL if unset */
 } c2py_perf_t;
 
-/* Returns monotonic nanoseconds by default via clock_gettime().
- * Define -DC2PY_USE_CYCLE_COUNTER at build time to use the CPU's native
- * cycle counter instead (rdtsc on x86, CNTVCT_EL0 on aarch64, timebase
- * on POWER).  This gives lower overhead but returns platform-dependent
- * cycle counts, not nanoseconds.
+/* Tick source: wall clock by default, cycle counter on request.
  *
- * To convert cycle counter deltas to nanoseconds:
+ * Default mode returns nanoseconds via clock_gettime() (Unix) or
+ * QueryPerformanceCounter (Windows).  Set _c2py_use_cycle_counter=1
+ * at runtime to switch to the CPU cycle counter (rdtsc on x86,
+ * CNTVCT_EL0 on aarch64, timebase on POWER).
  *
- *     uint64_t delta_ns = c2py_ticks_to_ns(t2 - t1, freq_hz);
- *
- * Obtain the counter frequency (Hz) on your platform:
- *   x86:   CPUID leaf 0x15 (EBX/EAX * ECX), or /proc/cpuinfo "cpu MHz"
- *   ARM64: MRS CNTFRQ_EL0, or /sys/devices/system/cpu/cpu0/regs/identification/processor_frequency
- *   POWER: Read /proc/device-tree/cpus/timebase-frequency
+ * The cycle counter returns raw platform-dependent ticks.  Convert
+ * deltas to nanoseconds with c2py_ticks_to_ns().
  *
  * All tick calls are guarded by _c2py_do_time so there is zero cost
- * when --timing is not enabled in the .c2py interface.
+ * when timing is not enabled in the .c2py interface.
  */
-#if defined(C2PY_USE_CYCLE_COUNTER)
+
+/* Runtime tick source selection.
+ * 0 = wall clock (default): nanosecond ticks, freq = 1e9
+ * 1 = CPU cycle counter: raw cycles, converted to ns via c2py_ticks_to_ns()
+ *     Requires c2py_cycle_counter_frequency_hz > 0. */
+extern int _c2py_use_cycle_counter;
+
+/* Detected CPU cycle counter frequency in Hz, probed once at init.
+ * 0 if the platform does not support cycle counters or detection failed.
+ * When the cycle counter is selected (use_cycle_counter=1), the active
+ * frequency is copied to c2py_tick_frequency_hz. */
+extern uint64_t c2py_cycle_counter_frequency_hz;
+
+/* Helper: raw cycle counter read (used internally by c2py_ticks when
+ * _c2py_use_cycle_counter is set). */
+static inline uint64_t c2py_cycle_counter_ticks(void) {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
-static inline uint64_t c2py_ticks(void) {
     return __rdtsc();
-}
 #elif defined(__x86_64__) || defined(__i386__)
-static inline uint64_t c2py_ticks(void) {
-    unsigned int lo, hi;
-    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
-}
+    {
+        unsigned int lo, hi;
+        __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+        return ((uint64_t)hi << 32) | lo;
+    }
 #elif defined(__aarch64__)
-static inline uint64_t c2py_ticks(void) {
-    uint64_t cnt;
-    __asm__ __volatile__("mrs %0, CNTVCT_EL0" : "=r"(cnt));
-    return cnt;
-}
+    {
+        uint64_t cnt;
+        __asm__ __volatile__("mrs %0, CNTVCT_EL0" : "=r"(cnt));
+        return cnt;
+    }
 #elif defined(__powerpc64__) || defined(__powerpc__)
-static inline uint64_t c2py_ticks(void) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_ppc_get_timebase();
 #else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    return 0;
 #endif
-}
-#elif defined(_WIN32)
-static inline uint64_t c2py_ticks(void) {
-    LARGE_INTEGER freq, counter;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&counter);
-    return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
-}
 #else
-/* Unsupported arch: fall back to clock_gettime even with C2PY_USE_CYCLE_COUNTER */
-static inline uint64_t c2py_ticks(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
+    return 0;
 #endif
-#else /* !C2PY_USE_CYCLE_COUNTER */
+}
+
+/* Monotonic timestamp, always returns nanoseconds.
+ *
+ * When _c2py_use_cycle_counter == 0 (default):
+ *   Returns ns from clock_gettime() on Unix or QueryPerformanceCounter
+ *   on Windows.  c2py_tick_frequency_hz == 1e9.
+ *
+ * When _c2py_use_cycle_counter == 1:
+ *   Returns raw cycles from rdtsc/CNTVCT_EL0/timebase.  Convert to ns
+ *   via c2py_ticks_to_ns(delta, c2py_tick_frequency_hz) where
+ *   c2py_tick_frequency_hz is set to c2py_cycle_counter_frequency_hz.
+ *
+ * If the cycle counter is requested but the platform does not support
+ * it (c2py_cycle_counter_ticks() returns 0), silently falls back to
+ * wall-clock nanoseconds. */
+static inline uint64_t c2py_ticks(void) {
+    if (_c2py_use_cycle_counter) {
+        uint64_t c = c2py_cycle_counter_ticks();
+        if (c != 0) return c;
+    }
 #ifdef _WIN32
-static inline uint64_t c2py_ticks(void) {
-    LARGE_INTEGER freq, counter;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&counter);
-    return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
-}
+    {
+        LARGE_INTEGER freq, counter;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&counter);
+        return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
+    }
 #else
-static inline uint64_t c2py_ticks(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    }
 #endif
-#endif /* C2PY_USE_CYCLE_COUNTER */
+}
 
 /* Convert cycle counter ticks to nanoseconds given the counter frequency
  * in Hz.  Returns ticks * 1e9 / freq_hz.
@@ -585,14 +597,15 @@ static inline uint64_t c2py_ticks_to_ns(uint64_t ticks, uint64_t freq_hz) {
     return ticks * 1000000000ULL / freq_hz;
 }
 
-/* Tick source frequency in Hz, detected once at runtime init.
- * Default (clock_gettime): 1,000,000,000 (nanosecond ticks).
- * With C2PY_USE_CYCLE_COUNTER: detected cycle counter frequency,
- * or 0 if the platform cannot be probed.
- */
+/* Active tick source frequency in Hz, set at init and updated when
+ * _c2py_use_cycle_counter is toggled via __c2py_set_tick_source().
+ * Default (wall clock): 1,000,000,000 (ns ticks).
+ * Cycle counter mode: detected cycle counter frequency, or 0 if
+ * the platform cannot be probed. */
 extern uint64_t c2py_tick_frequency_hz;
 
-/* Returns c2py_tick_frequency_hz. */
+/* Returns the active tick source frequency in Hz.  Generated wrapper
+ * code uses this to convert tick deltas to nanoseconds. */
 static inline uint64_t c2py_tick_frequency(void) {
     return c2py_tick_frequency_hz;
 }

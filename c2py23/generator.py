@@ -616,13 +616,13 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params,
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
                 b.emit('    if (' + when_c + ') {')
             else:
-                b.emit('    {  /* group 0 (always) */')
+                b.emit('    if (1) {  /* group 0 (always) */')
         else:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
                 b.emit('    } else if (' + when_c + ') {')
             else:
-                b.emit('    } else {  /* group {0} (always) */'.format(i))
+                b.emit('    }} else {{  /* group {0} (always) */'.format(i))
 
         if is_group:
             gi = group_index
@@ -676,13 +676,13 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params,
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
                 b.emit('    if (' + when_c + ') {')
             else:
-                b.emit('    {  /* overload 0 (always) */')
+                b.emit('    if (1) {  /* overload 0 (always) */')
         else:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
                 b.emit('    } else if (' + when_c + ') {')
             else:
-                b.emit('    } else {  /* overload {0} (always) */'.format(i))
+                b.emit('    }} else {{  /* overload {0} (always) */'.format(i))
         b.emit('        /* {0} */'.format(ol.sig_str))
         _emit_c_call(b, ol, buf_params, scalar_params,
                              timing, name, gil)
@@ -940,6 +940,10 @@ def _emit_module_init(b, module_def, has_free_threading,
             '    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled,'
             ' METH_VARARGS,')
         b.emit('     "set timing enabled flag"},')
+        b.emit(
+            '    {"_c2py_set_tick_source", (PyCFunction)__c2py_set_tick_source,'
+            ' METH_VARARGS,')
+        b.emit('     "set tick source (\\\"clock\\\" or \\\"cycle\\\")"},')
     b.emit('    {NULL, NULL, 0, NULL}')
     b.emit('};')
     b.emit('')
@@ -988,6 +992,10 @@ def _emit_module_init(b, module_def, has_free_threading,
             '    {"_c2py_perf_set_enabled", (PyCFunction)_c2py_perf_set_enabled,'
             ' METH_VARARGS,')
         b.emit('     "set timing enabled flag"},')
+        b.emit(
+            '    {"_c2py_set_tick_source", (PyCFunction)__c2py_set_tick_source,'
+            ' METH_VARARGS,')
+        b.emit('     "set tick source (\\\"clock\\\" or \\\"cycle\\\")"},')
     b.emit('    {NULL, NULL, 0, NULL}')
     b.emit('};')
     b.emit('')
@@ -1657,6 +1665,8 @@ def _emit_constants(b, mod):
             b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
             b.emit('            PyLong_FromLong({}));'.format(cvalue))
     if mod.timing:
+        b.emit('        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",')
+        b.emit('            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));')
         for func in mod.functions:
             b.emit('        PyObject_SetAttrString(module, "_c2py_perf_ptr_{0}",'.format(func.name))
             b.emit('            PyLong_FromVoidPtr(&_perf_{0}));'.format(func.name))
@@ -1811,6 +1821,42 @@ def _emit_timing_decls(b, mod):
     b.emit('        return NULL;')
     b.emit('    return PyLong_FromUnsignedLongLong(')
     b.emit('        c2py_ticks_to_ns((uint64_t)ticks, (uint64_t)freq_hz));')
+    b.emit('}')
+    b.emit('')
+    b.emit('/* Python-callable: select tick source ("clock" or "cycle").')
+    b.emit(' * Returns (old_freq_hz, new_freq_hz) tuple. */')
+    b.emit('static PyObject*')
+    b.emit('__c2py_set_tick_source(PyObject *self, PyObject *args) {')
+    b.emit('    const char *source = NULL;')
+    b.emit('    (void)self;')
+    b.emit('    if (!PyArg_ParseTuple(args, "s", &source))')
+    b.emit('        return NULL;')
+    b.emit('')
+    b.emit('    uint64_t old_freq = c2py_tick_frequency_hz;')
+    b.emit('    uint64_t new_freq;')
+    b.emit('    int new_mode;')
+    b.emit('')
+    b.emit('    if (source != NULL && strcmp(source, "cycle") == 0) {')
+    b.emit('        new_mode = 1;')
+    b.emit('        new_freq = c2py_cycle_counter_frequency_hz;')
+    b.emit('        if (new_freq == 0) {')
+    b.emit('            PyErr_SetString(PyExc_RuntimeError,')
+    b.emit('                "cycle counter frequency not detected on this platform");')
+    b.emit('            return NULL;')
+    b.emit('        }')
+    b.emit('    } else {')
+    b.emit('        new_mode = 0;')
+    b.emit('        new_freq = 1000000000ULL;')
+    b.emit('    }')
+    b.emit('')
+    b.emit('    _c2py_use_cycle_counter = new_mode;')
+    b.emit('    c2py_tick_frequency_hz = new_freq;')
+    b.emit('')
+    b.emit('    PyObject *tup = PyTuple_New(2);')
+    b.emit('    if (tup == NULL) return NULL;')
+    b.emit('    PyTuple_SetItem(tup, 0, PyLong_FromUnsignedLongLong(old_freq));')
+    b.emit('    PyTuple_SetItem(tup, 1, PyLong_FromUnsignedLongLong(new_freq));')
+    b.emit('    return tup;')
     b.emit('}')
     b.emit('')
     # Perf accessor functions

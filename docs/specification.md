@@ -1332,12 +1332,22 @@ Modules built with `timing: true` expose:
   ```
 - **`_perf_<funcname>`** -- pointer to the perf struct for a function.
   For variant groups also `_perf_<funcname>__<variant_c_name>`.
-- **`_c2py_tick_frequency()`** -- returns the tick source frequency in Hz.
+- **`_c2py_tick_frequency()`** -- returns the active tick source frequency in Hz.
   `1000000000` for the default `clock_gettime` source (nanoseconds), or
-  the detected CPU cycle counter frequency when built with
-  `-DC2PY_USE_CYCLE_COUNTER` (0 if detection fails).
+  the detected CPU cycle counter frequency when `_c2py_set_tick_source("cycle")`
+  has been called (0 if detection failed).
 - **`_c2py_ticks_to_ns(ticks, freq_hz)`** -- converts a tick count to
   nanoseconds given the frequency.  Returns 0 if `freq_hz` is 0.
+- **`_c2py_set_tick_source("clock"|"cycle")`** -- selects the tick source
+  at runtime.  `"clock"` (default) uses `clock_gettime` (Unix) or
+  `QueryPerformanceCounter` (Windows), returning nanoseconds.  `"cycle"`
+  uses the CPU cycle counter (`rdtsc` on x86, `CNTVCT_EL0` on ARM64,
+  `mftb`/`__builtin_ppc_get_timebase` on POWER).  Returns a
+  `(old_freq_hz, new_freq_hz)` tuple.  Raises `RuntimeError` if the
+  cycle counter frequency is not detected on the current platform.
+- **`_c2py_cycle_counter_frequency`** -- module attribute: the detected
+  CPU cycle counter frequency in Hz, or 0.  Set at init, independent of
+  the current tick source selection.
 
 ### Decoding Performance Data
 
@@ -1351,33 +1361,36 @@ stats = read_perf(mymod._perf_wsum)
 print(stats["c_dur_ns"])       # last call C duration (ns)
 print(stats["c_mean_ns"])      # mean C duration (ns)
 
-# With C2PY_USE_CYCLE_COUNTER, pass the frequency:
-stats = read_perf(mymod._perf_wsum,
-                  freq_hz=mymod._c2py_tick_frequency())
+# Switch to CPU cycle counter at runtime:
+mymod._c2py_set_tick_source("cycle")
+stats = read_perf(mymod._perf_wsum)
 print(stats["c_dur_ns"])       # converted to ns
-print(stats["c_dur_cycles"])   # raw ticks (only when freq_hz != 1e9)
+print(stats["c_dur_cycles"])   # raw cycles
+mymod._c2py_set_tick_source("clock")
 ```
 
-`read_perf(ptr_int, freq_hz=None)` returns:
+`read_perf(func, variant=None)` returns:
 - `call_count`, `t_enter`, `t_pre_c`, `t_post_c`, `t_exit`
 - `c_dur_ns`, `wrap_dur_ns`, `c_min_ns`, `c_max_ns`, `c_mean_ns`
 - `wrap_min_ns`, `wrap_max_ns`, `wrap_mean_ns`
-- When `freq_hz` is provided and `!= 1e9`: additional `_cycles` keys
-  with raw tick values.
+- When the cycle counter is active: additional `_cycles` keys
+  with raw tick values (`c_dur_cycles`, `c_mean_cycles`, etc.)
 
-`read_enabled(ptr_int)` returns 0 or 1.  `set_enabled(ptr_int, value)`
+`read_enabled(func)` returns 0 or 1.  `set_enabled(func, value)`
 sets the flag.
+
+### Tick Source
+
+Both the wall-clock timer (`clock_gettime` on Unix, `QueryPerformanceCounter`
+on Windows) and the CPU cycle counter (`rdtsc` on x86, `CNTVCT_EL0` on
+aarch64, `mftb`/`__builtin_ppc_get_timebase` on POWER) are compiled into
+every timing-enabled module.  The tick source is selected at runtime via
+`_c2py_set_tick_source()`.  The cycle counter has lower overhead but
+returns platform-dependent cycle counts; use `_c2py_ticks_to_ns()` to
+convert deltas to nanoseconds.
 
 All tick calls are guarded by `_c2py_do_time` so there is zero overhead
 when timing is disabled or not compiled in.
-
-### Compile-Time Options
-
-Define `-DC2PY_USE_CYCLE_COUNTER` at build time to use `rdtsc` (x86),
-`CNTVCT_EL0` (ARM64), or `mftb` (POWER) instead of `clock_gettime`.
-The cycle counter has lower overhead but returns platform-dependent
-cycle counts (not nanoseconds).  Use `_c2py_tick_frequency()` and
-`_c2py_ticks_to_ns()` to convert.
 
 ### Address Sanitizer (ASan)
 
@@ -1410,7 +1423,10 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **aarch64 / ppc64le CI** -- QEMU user-mode Apptainer testing; CPU detection
-  already implemented (CPUID/getauxval/mrs/mftb)
+- **aarch64 CI** -- native ARM64 GitHub runner (ubuntu-24.04-arm) added;
+  CPU feature flags, SIMD dispatch, and cycle counter timer tested on
+  x86_64 and validated on aarch64 hardware.
+- **ppc64le CI** -- CPU detection already implemented (getauxval/mftb);
+  needs QEMU user-mode or cloud-native runner.
 - **Windows free-threading** -- no x64 FT Python builds available on CI yet
 - **Binary wheel distribution** -- c2pypi packer for multi-arch PyPI publishing
