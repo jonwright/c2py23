@@ -167,7 +167,7 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 
 static void _c2py_probe_cpu_features(void)
 {
-#ifdef __x86_64__
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
     unsigned int eax1, ebx1, ecx1, edx1;
     unsigned int eax7, ebx7, ecx7, edx7;
     unsigned int eax81, ebx81, ecx81, edx81;
@@ -306,7 +306,7 @@ static void _c2py_probe_cpu_features(void)
 
     /* Always attempt to detect CPU cycle counter frequency.
      * On platforms without a readable cycle counter this remains 0. */
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
     {
 #if defined(_MSC_VER)
         int info[4];
