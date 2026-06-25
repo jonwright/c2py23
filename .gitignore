@@ -42,6 +42,9 @@ examples/lz4_wrap/*_wrapper.c
 examples/lz4_wrap/*.so
 examples/threading_bench/*_wrapper.c
 examples/threading_bench/*.so
+examples/cmake_demo/*_wrapper.c
+examples/meson_demo/*_wrapper.c
+examples/wheel_demo/*_wrapper.c
 /tests/test_workspace/
 
 # Audit output (generated Markdown for LLM/human review)
