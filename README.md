@@ -76,6 +76,18 @@ c2py23 generate file.c2py -o wrapper.c       # generate without building
 
 Linux (x86_64, gcc) and Windows (x64, MSVC/MinGW). 32-bit not supported.
 
+## Examples
+
+The [GitHub repository](https://github.com/jonwright/c2py23) includes build examples
+(not in the PyPI sdist):
+
+- `examples/kissfft_wrap/` — real + complex FFT over float buffers
+- `examples/lz4_wrap/` — compress/decompress over byte buffers
+- `examples/simd_dispatch/` — CPU feature dispatch (SSE2/AVX2/AVX-512, NEON, Altivec)
+- `examples/threading_bench/` — GIL release, free-threading, OpenMP
+- `examples/wheel_demo/` — multi-platform wheel packaging
+- `examples/cmake_demo/`, `examples/meson_demo/` — build system integration
+
 ## Documentation
 
 - `docs/specification.md` — full `.c2py` grammar, supported types, architecture
