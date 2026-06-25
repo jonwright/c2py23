@@ -6,8 +6,32 @@ include setup.py
 recursive-include c2py23 *.py *.h *.c
 prune c2py23/__pycache__
 
-prune audit/20260620_resolved
+recursive-include docs *.md
 
+# wrapper examples (not the full submodule sources)
+recursive-include examples/kissfft_wrap *.py *.c *.c2py *.h
+recursive-include examples/lz4_wrap *.py *.c *.c2py *.h
+recursive-include examples/simd_dispatch *.py *.c *.c2py *.h Makefile CMakeLists.txt build.sh MANIFEST.in setup.py
+recursive-include examples/simd_dispatch/polysimd *.py
+recursive-include examples/threading_bench *.py *.c *.c2py Makefile
+recursive-include examples/wheel_demo *.py *.c *.c2py *.h MANIFEST.in build.sh setup.py
+recursive-include examples/wheel_demo/arraysum *.py
+recursive-include examples/cmake_demo *.py *.c *.c2py *.h CMakeLists.txt build.sh setup.py
+recursive-include examples/cmake_demo/arraysum *.py
+recursive-include examples/meson_demo *.py *.c *.c2py *.h build.sh setup.py
+recursive-include examples/meson_demo/arraysum *.py
+
+# build artifacts in examples
+prune examples/*/build
+prune examples/*/builddir
+prune examples/*/*.egg-info
+
+# exclude full submodule sources (only wrapper dirs needed)
+prune examples/kissfft
+prune examples/lz4
+
+prune audit/20260620_resolved
+prune tests
 prune tests/test_venv_3.12
 prune tests/test_workspace
 

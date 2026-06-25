@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "c2py23"
-version = "0.2.0"
+dynamic = ["version", "readme"]
 description = "Wrap C99 code to Python via the buffer protocol"
 requires-python = ">=2.7"
 dependencies = [
