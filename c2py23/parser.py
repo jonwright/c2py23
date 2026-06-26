@@ -1,19 +1,30 @@
 """Parser for .c2py interface definition files.
 
 Handles:
+  - Python dict format (native, no dependency)
   - YAML loading (via PyYAML)
   - C function signature parsing
   - Expression parsing (for 'when' conditions and 'map' substitutions)
   - Building the ModuleDef data model
+
+The entry point is `load_c2py(path)` which auto-detects the input format
+(Python dict or YAML).  For programmatic use, `from_c2py_dict(raw_dict, path)`
+accepts a Python dict directly.
 """
 from __future__ import print_function
 
+import ast
 import os
 import re
 import sys
 import warnings
-import yaml
 from collections import namedtuple
+
+try:
+    import yaml as _yaml
+    _HAS_YAML = True
+except ImportError:
+    _HAS_YAML = False
 
 # Python 2/3 compat: str covers bytes+unicode on 2.x, text on 3.x
 if sys.version_info[0] >= 3:
@@ -161,41 +172,79 @@ class ModuleDef(namedtuple('ModuleDef', ['name', 'sources', 'headers', 'function
     pass
 
 # ---------------------------------------------------------------------------
-# YAML loading
+# Loading (Python dict or YAML)
 # ---------------------------------------------------------------------------
 
-def load_c2py(path):
-    """Load and parse a .c2py YAML file, returning a ModuleDef."""
-    with open(path, 'r') as f:
-        raw = yaml.safe_load(f)
-
-    module_name = _get_required(raw, 'module', path)
-    sources = raw.get('source', [])
+def from_c2py_dict(raw_dict, path="<dict>"):
+    """Parse a Python dict (from Python dict format or YAML) into a ModuleDef.
+    
+    Args:
+        raw_dict: A dict with keys: module, source, headers, functions,
+                  constants, timing, free_threading.
+        path: A label for error messages (file path or "<dict>").
+    
+    Returns:
+        A ModuleDef namedtuple.
+    """
+    module_name = _get_required(raw_dict, 'module', path)
+    sources = raw_dict.get('source', [])
     if isinstance(sources, _STRING_TYPES):
         sources = [sources]
-    headers = raw.get('headers', [])
+    headers = raw_dict.get('headers', [])
     if isinstance(headers, _STRING_TYPES):
         headers = [headers]
 
     funcs = []
-    for f in raw.get('functions', []):
+    for f in raw_dict.get('functions', []):
         funcs.extend(_expand_func_template(f, path))
 
-    constants = raw.get('constants', {})
+    constants = raw_dict.get('constants', {})
     if not isinstance(constants, dict):
         raise ValueError("'constants' must be a dict in {}".format(path))
     for k, v in constants.items():
         if not isinstance(v, int):
             raise ValueError("Constant '{}' in {} must be an integer, got {}".format(k, path, type(v)))
 
-    timing = bool(raw.get('timing', False))
-    free_threading = bool(raw.get('free_threading', False))
+    timing = bool(raw_dict.get('timing', False))
+    free_threading = bool(raw_dict.get('free_threading', False))
 
     mod = ModuleDef(module_name, sources, headers, funcs, constants, timing, free_threading)
+    return mod
 
+
+def load_c2py(path):
+    """Load and parse a .c2py file, returning a ModuleDef.
+    
+    Supports two formats, auto-detected:
+      1. Python dict: a file containing a Python dict literal
+         (parsed via ast.literal_eval, no PyYAML needed).
+      2. YAML: standard .c2py YAML format (requires PyYAML).
+    """
+    with open(path, 'r') as f:
+        text = f.read()
+    
+    # Try Python dict format first (safe, no dependencies)
+    try:
+        raw = ast.literal_eval(text)
+        if isinstance(raw, dict):
+            mod = from_c2py_dict(raw, path)
+            base_dir = os.path.dirname(os.path.abspath(path))
+            _validate_module(mod, base_dir)
+            return mod
+    except (ValueError, SyntaxError):
+        pass
+    
+    # Fall back to YAML
+    if not _HAS_YAML:
+        raise ImportError(
+            "Could not parse '{}' as a Python dict and PyYAML is not installed.\n"
+            "Install PyYAML with: pip install PyYAML\n"
+            "Or use the Python dict format (see docs/specification.md).".format(path))
+    
+    raw = _yaml.safe_load(text)
+    mod = from_c2py_dict(raw, path)
     base_dir = os.path.dirname(os.path.abspath(path))
     _validate_module(mod, base_dir)
-
     return mod
 
 

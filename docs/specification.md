@@ -51,6 +51,64 @@ functions:                            # required: list of wrapped functions
       VAR2: [val_a, val_b, ...]       #   all lists must have same length
     checks:                           # optional: pre-conditions
       - "expression"
+
+### Alternative: Python Dict Format
+
+Instead of YAML, the same interface can be written as a Python dict literal.
+This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
+
+```python
+{
+    "module": "<python-module-name>",
+    "source": ["file1.c", "file2.c"],
+    "headers": ["header1.h", "header2.h"],           # optional
+    "constants": {"NAME1": 42, "NAME2": 7},           # optional
+    "timing": True,                                   # optional
+    "free_threading": True,                            # optional
+    "functions": [
+        {
+            "py_sig": "name(arg: type, ...) -> return_type",
+            "doc": "Custom docstring",                 # optional
+            "params": {"param_name": "description"},   # optional
+            "gil_release": True,                       # optional
+            "checks": ["expression"],                  # optional
+            "c_overloads": [
+                {
+                    "sig": "void foo(int n, double *out)",
+                    "map": {"out": "out.ptr", "n": "out.n"},
+                    "when": "out.format == 'd'",       # optional
+                },
+            ],
+            "default_raise": "TypeError: expected d",   # optional
+            "expand": {"VAR": ["val_a", "val_b"]},       # optional
+        },
+    ],
+}
+```
+
+The key names and values are identical to the YAML schema above.
+Differences from YAML:
+
+- **`c_overloads`** instead of `c_overloads:` (same key name, both work)
+- **Boolean values**: `True`/`False` (or `true`/`false` in Python)
+- **None** (optional keys omitted or set to `None`)
+- **Strings** use Python quoting (single or double)
+- **No indentation sensitivity** -- dict boundaries are `{`/`}`
+
+The `load_c2py()` function auto-detects between YAML and Python dict:
+
+```python
+from c2py23.parser import load_c2py, from_c2py_dict
+
+# From file (auto-detect)
+mod = load_c2py("mymod.c2py")
+
+# From Python dict directly
+mod = from_c2py_dict({"module": "mymod", ...})
+```
+
+See `tests/test_regression_fixes.py::test_python_dict_format` for a full
+working example.
       - ...
     c_overloads:                      # required: ordered list of alternatives
       # flat overload:

@@ -1225,6 +1225,68 @@ functions:
     _pass()
 
 
+def test_python_dict_format():
+    """Test parsing a Python dict instead of YAML."""
+    from c2py23.parser import from_c2py_dict
+
+    # A complete interface as a Python dict
+    iface = {
+        "module": "test_dict",
+        "source": ["test_dict.c"],
+        "headers": ["test.h"],
+        "constants": {"MAX_N": 1000},
+        "timing": True,
+        "free_threading": False,
+        "functions": [
+            {
+                "py_sig": "process(a: buffer) -> int",
+                "doc": "Process a buffer",
+                "checks": ["a.format == 'd'", "a.n > 0"],
+                "c_overloads": [
+                    {
+                        "sig": "process_f64(const double *a, intptr_t n) -> int",
+                        "map": {"a": "a.ptr", "n": "a.n"},
+                        "when": "a.format == 'd'",
+                    }
+                ],
+                "default_raise": "TypeError: expected double buffer",
+            },
+            {
+                "py_sig": "set_threshold(val: float) -> void",
+                "c_overloads": [
+                    {
+                        "sig": "set_threshold_c(double val) -> void",
+                        "map": {"val": "val"},
+                    }
+                ],
+            },
+        ],
+    }
+
+    # Parse via from_c2py_dict
+    mod = from_c2py_dict(iface, "test_dict")
+    assert mod.name == "test_dict"
+    assert mod.sources == ["test_dict.c"]
+    assert mod.headers == ["test.h"]
+    assert mod.constants == {"MAX_N": 1000}
+    assert mod.timing is True
+    assert mod.free_threading is False
+    assert len(mod.functions) == 2
+    assert mod.functions[0].name == "process"
+    assert mod.functions[0].checks is not None
+    assert len(mod.functions[0].checks) == 2
+    assert len(mod.functions[0].overloads) == 1
+    assert len(mod.functions[1].overloads) == 1
+    assert mod.functions[0].doc == "Process a buffer"
+
+    # Verify the module can generate a wrapper
+    from c2py23.generator import generate
+    code = generate(mod)
+    assert len(code) > 0, "Generated wrapper should not be empty"
+
+    _pass()
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):

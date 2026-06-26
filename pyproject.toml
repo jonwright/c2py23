@@ -29,6 +29,8 @@ dependencies = [
     "PyYAML>=3.10,<6;python_version=='2.7'",
 ]
 
+[project.optional-dependencies]
+
 [project.scripts]
 c2py23 = "c2py23.cli:main"
 
