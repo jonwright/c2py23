@@ -1,0 +1,57 @@
+# Python dict format equivalent of simd_fill.c2py
+{
+    "module": "simd_fillmod",
+    "source": ["simd_fill.c"],
+    "headers": [
+        "c2py_amd64.h",
+        "c2py_arm64.h",
+        "c2py_ppc64.h",
+    ],
+    "timing": True,
+    "functions": [
+        {
+            "py_sig": "fill(buf: buffer, val: float=3.14) -> void",
+            "checks": [
+                "buf.format == 'f'",
+                "buf.n > 0",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "void fill_sse2(float *buf, int n, float val)",
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val",
+                    },
+                    "when": "c2py_amd64_sse2",
+                },
+                {
+                    "sig": "void fill_neon(float *buf, int n, float val)",
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val",
+                    },
+                    "when": "c2py_arm64_asimd",
+                },
+                {
+                    "sig": "void fill_altivec(float *buf, int n, float val)",
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val",
+                    },
+                    "when": "c2py_ppc64_altivec",
+                },
+                {
+                    "sig": "void fill_scalar(float *buf, int n, float val)",
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val",
+                    },
+                },
+            ],
+        },
+    ],
+}

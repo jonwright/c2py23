@@ -21,10 +21,29 @@ collect_ignore = ["test_all.py", "test_manylinux.py"]
 
 
 def _module_name(c2py_path):
+    """Extract module name from a .c2py file (YAML or Python dict format).
+    
+    Uses the same auto-detection order as load_c2py() in parser.py."""
     with open(c2py_path) as f:
-        for line in f:
-            if line.startswith("module:"):
-                return line.split()[1]
+        text = f.read()
+    # Try Python dict format first (safe, no PyYAML needed)
+    try:
+        import ast
+        data = ast.literal_eval(text)
+        if isinstance(data, dict):
+            return data.get('module')
+    except (ValueError, SyntaxError):
+        pass
+    # Legacy YAML format fallback
+    try:
+        from c2py23.parser import _HAS_YAML
+        if _HAS_YAML:
+            import yaml as _yaml
+            data = _yaml.safe_load(text)
+            if isinstance(data, dict):
+                return data.get('module')
+    except Exception:
+        pass
     return None
 
 

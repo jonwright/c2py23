@@ -58,7 +58,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest --quiet
+          python -m pip install pytest PyYAML --quiet
 
       - name: Install numpy (3.x)
         if: matrix.python-version != '2.7'

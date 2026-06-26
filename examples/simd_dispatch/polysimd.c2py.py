@@ -1,0 +1,45 @@
+# Python dict format equivalent of polysimd.c2py
+{
+    "module": "_polysimd",
+    "source": [
+        "poly_f32_avx512.o",
+        "poly_f32_avx2.o",
+        "poly_f32_scalar.o",
+    ],
+    "headers": ["c2py_amd64.h"],
+    "timing": True,
+    "functions": [
+        {
+            "py_sig": "poly(a: buffer, b: buffer, out: buffer) -> void",
+            "checks": [
+                "a.n == b.n",
+                "a.n == out.n",
+            ],
+            "c_overloads": [
+                {
+                    "when": "a.format == 'f' and b.format == 'f' and out.format == 'f'",
+                    "map": {
+                        "a": "a.ptr",
+                        "b": "b.ptr",
+                        "out": "out.ptr",
+                        "n": "a.n",
+                    },
+                    "group": "float",
+                    "variants": [
+                        {
+                            "sig": "void poly_f32_avx512(const float *a, const float *b, float *out, int n)",
+                            "when": "c2py_amd64_avx512f",
+                        },
+                        {
+                            "sig": "void poly_f32_avx2(const float *a, const float *b, float *out, int n)",
+                            "when": "c2py_amd64_avx2",
+                        },
+                        {
+                            "sig": "void poly_f32_scalar(const float *a, const float *b, float *out, int n)",
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}

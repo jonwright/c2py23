@@ -1225,6 +1225,122 @@ functions:
     _pass()
 
 
+def test_python_dict_format():
+    """Test parsing a Python dict instead of YAML."""
+    from c2py23.parser import from_c2py_dict
+
+    # A complete interface as a Python dict
+    iface = {
+        "module": "test_dict",
+        "source": ["test_dict.c"],
+        "headers": ["test.h"],
+        "constants": {"MAX_N": 1000},
+        "timing": True,
+        "free_threading": False,
+        "functions": [
+            {
+                "py_sig": "process(a: buffer) -> int",
+                "doc": "Process a buffer",
+                "checks": ["a.format == 'd'", "a.n > 0"],
+                "c_overloads": [
+                    {
+                        "sig": "process_f64(const double *a, intptr_t n) -> int",
+                        "map": {"a": "a.ptr", "n": "a.n"},
+                        "when": "a.format == 'd'",
+                    }
+                ],
+                "default_raise": "TypeError: expected double buffer",
+            },
+            {
+                "py_sig": "set_threshold(val: float) -> void",
+                "c_overloads": [
+                    {
+                        "sig": "set_threshold_c(double val) -> void",
+                        "map": {"val": "val"},
+                    }
+                ],
+            },
+        ],
+    }
+
+    # Parse via from_c2py_dict
+    mod = from_c2py_dict(iface, "test_dict")
+    assert mod.name == "test_dict"
+    assert mod.sources == ["test_dict.c"]
+    assert mod.headers == ["test.h"]
+    assert mod.constants == {"MAX_N": 1000}
+    assert mod.timing is True
+    assert mod.free_threading is False
+    assert len(mod.functions) == 2
+    assert mod.functions[0].name == "process"
+    assert mod.functions[0].checks is not None
+    assert len(mod.functions[0].checks) == 2
+    assert len(mod.functions[0].overloads) == 1
+    assert len(mod.functions[1].overloads) == 1
+    assert mod.functions[0].doc == "Process a buffer"
+
+    # Verify the module can generate a wrapper
+    from c2py23.generator import generate
+    code = generate(mod)
+    assert len(code) > 0, "Generated wrapper should not be empty"
+
+    _pass()
+
+
+def test_yaml_dict_equivalence():
+    """Verify .c2py (YAML) and .c2py.py (dict) parse identically for all files."""
+    from c2py23.parser import load_c2py
+    import os
+
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    cases_dir = os.path.join(_script_dir, 'cases')
+    pairs = []
+    for root, dirs, files in os.walk(cases_dir):
+        for fn in files:
+            if fn.endswith('.c2py') and not fn.endswith('.c2py.py'):
+                yaml_path = os.path.join(root, fn)
+                dict_path = yaml_path + '.py'
+                if os.path.isfile(dict_path):
+                    pairs.append((yaml_path, dict_path))
+
+    assert len(pairs) > 0, "No YAML/dict pairs found"
+    errors = []
+    for yaml_path, dict_path in pairs:
+        rel = os.path.relpath(yaml_path, cases_dir)
+        try:
+            yaml_mod = load_c2py(yaml_path)
+            dict_mod = load_c2py(dict_path)
+        except Exception as e:
+            errors.append("%s: load failed - %s" % (rel, e))
+            continue
+
+        checks = []
+        checks.append(('module name', yaml_mod.name == dict_mod.name))
+        checks.append(('sources', yaml_mod.sources == dict_mod.sources))
+        checks.append(('headers', yaml_mod.headers == dict_mod.headers))
+        checks.append(('constants', yaml_mod.constants == dict_mod.constants))
+        checks.append(('timing', yaml_mod.timing == dict_mod.timing))
+        checks.append(('free_threading',
+                       yaml_mod.free_threading == dict_mod.free_threading))
+        checks.append(('function count',
+                       len(yaml_mod.functions) == len(dict_mod.functions)))
+        for i, (yf, df) in enumerate(zip(yaml_mod.functions, dict_mod.functions)):
+            checks.append(('func[%d].name' % i, yf.name == df.name))
+            checks.append(('func[%d].overload count' % i,
+                           len(yf.overloads) == len(df.overloads)))
+            checks.append(('func[%d].doc' % i, yf.doc == df.doc))
+            checks.append(('func[%d].gil_release' % i,
+                           yf.gil_release == df.gil_release))
+
+        failed = [label for label, ok in checks if not ok]
+        if failed:
+            errors.append("%s: %s" % (rel, ', '.join(failed)))
+
+    if errors:
+        raise AssertionError("\n".join(errors))
+    print("PASS: yaml-dict equivalence (%d files)" % len(pairs))
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):

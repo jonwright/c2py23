@@ -1,0 +1,56 @@
+# Python dict format equivalent of kissfft.c2py
+{
+    "module": "kissfftmod",
+    "source": [
+        "../kissfft/kiss_fft.c",
+        "../kissfft/kiss_fftr.c",
+        "kissfft_thin.c",
+    ],
+    "headers": [
+        "../kissfft/kiss_fft.h",
+        "../kissfft/kiss_fftr.h",
+    ],
+    "functions": [
+        {
+            "py_sig": "rfft_forward(data: buffer, spec: buffer) -> void",
+            "checks": [
+                "data.format == 'f'",
+                "spec.format == 'f'",
+                "data.ndim == 1",
+                "spec.ndim == 1",
+                "spec.n >= data.n + 2",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "kissfft_rfft_forward(const float *data, float *spec, int n)",
+                    "map": {
+                        "data": "data.ptr",
+                        "spec": "spec.ptr",
+                        "n": "data.n",
+                    },
+                },
+            ],
+        },
+        {
+            "py_sig": "cfft_forward(fin: buffer, fout: buffer) -> void",
+            "checks": [
+                "fin.format == 'f'",
+                "fout.format == 'f'",
+                "fin.ndim == 1",
+                "fout.ndim == 1",
+                "fin.n == fout.n",
+                "fin.n % 2 == 0",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "kissfft_cfft_forward(const float *fin, float *fout, int n)",
+                    "map": {
+                        "fin": "fin.ptr",
+                        "fout": "fout.ptr",
+                        "n": "fin.n / 2",
+                    },
+                },
+            ],
+        },
+    ],
+}
