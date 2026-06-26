@@ -6,6 +6,7 @@ Python 2.7 compatible (pytest 4.6.x).  Uses subprocess.Popen.
 from __future__ import print_function
 
 import os
+import re
 import sys
 import subprocess
 
@@ -21,10 +22,14 @@ collect_ignore = ["test_all.py", "test_manylinux.py"]
 
 
 def _module_name(c2py_path):
+    """Extract module name from a .c2py file (YAML or Python dict format)."""
     with open(c2py_path) as f:
-        for line in f:
-            if line.startswith("module:"):
-                return line.split()[1]
+        text = f.read()
+    # YAML: module: name   (line start, or dict start)
+    # Dict: "module": "name"  (Python dict literal)
+    match = re.search(r'["\']?module["\']?\s*:\s*["\']([^"\'}\s]+)["\']', text)
+    if match:
+        return match.group(1)
     return None
 
 
