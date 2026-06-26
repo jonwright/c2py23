@@ -109,6 +109,66 @@ mod = from_c2py_dict({"module": "mymod", ...})
 
 See `tests/test_regression_fixes.py::test_python_dict_format` for a full
 working example.
+
+#### Debugging Dict-Format Files
+
+The `.c2py` file is data, not code -- it cannot be `import`ed.
+To validate or debug your dict structure:
+
+```python
+import ast
+
+# Safe: parses only literals, no code execution
+data = ast.literal_eval(open("mymod.c2py").read())
+# data is now the parsed dict
+
+# Parse and validate with c2py23:
+from c2py23.parser import from_c2py_dict
+mod = from_c2py_dict(data, "mymod.c2py")
+```
+
+First-line comments (`# ...`) are automatically stripped by `load_c2py()`
+before parsing, so they do not interfere with `ast.literal_eval()`.
+
+For interactive development, build the dict in a `.py` file with full IDE
+support (syntax highlighting, bracket matching), then export to `.c2py`:
+
+```python
+# mymod_dev.py -- your development file
+interface = {
+    "module": "mymod",
+    "source": ["mymod.c"],
+    "functions": [
+        ...
+    ],
+}
+
+# Validate:
+from c2py23.parser import from_c2py_dict
+mod = from_c2py_dict(interface, "mymod")
+print("OK:", mod.name)
+
+# Export to .c2py dict format:
+from tools.convert_c2py_to_dict import py_repr
+with open("mymod.c2py", "w") as f:
+    f.write("# This file defines the c2py23 interface for mymod\n")
+    f.write(py_repr(interface, 0) + "\n")
+```
+
+The comment on the first line is stripped by `load_c2py()`'s comment remover
+before parsing.  This also lets you debug by `exec()` (for local/trusted
+files only -- see security note below):
+
+```python
+# For trusted/development use only:
+exec(open("mymod.c2py").read())
+# data is now available as the `data` variable
+```
+
+**Security note**: Executing `.c2py` files with `exec()` is equivalent to
+running any build script -- it trusts the source.  For downloaded or
+untrusted code, always use `ast.literal_eval()` which only accepts
+Python literals (no functions, imports, or expressions).
       - ...
     c_overloads:                      # required: ordered list of alternatives
       # flat overload:
@@ -1488,3 +1548,65 @@ Makefile and Python test harness).
   needs QEMU user-mode or cloud-native runner.
 - **Windows free-threading** -- no x64 FT Python builds available on CI yet
 - **Binary wheel distribution** -- c2pypi packer for multi-arch PyPI publishing
+
+## Migration Guide: c2ImageD11
+
+c2ImageD11 uses `C2PY_BEGIN` blocks embedded in C comments to define its
+c2py23 interface.  The `tools/harvester.py` script extracts these blocks
+as Python dicts (via `ast.literal_eval()`), assembles them into a YAML
+file (`lib/interface/_cImageD11.c2py`), and runs `c2py23 generate` to
+produce the wrapper.
+
+With c2py23's native dict format support, the YAML intermediate step
+can be eliminated:
+
+### Before (current harvester)
+
+```python
+# Extract C2PY_BEGIN blocks from C sources (unchanged)
+# ...
+# Convert to YAML and write intermediate file:
+yaml_text = yaml.dump(assembled, ...)
+with open("_cImageD11.c2py", "w") as f:
+    f.write(yaml_text)
+# Shell out to c2py23:
+subprocess.check_call(["python3", "-m", "c2py23.cli", "generate",
+                        c2py_path, "-o", wrapper_path])
+```
+
+### After (migration)
+
+```python
+# from_c2py_dict parses the dict directly -- no YAML needed.
+from c2py23.parser import from_c2py_dict
+from c2py23.generator import generate
+
+# Build the assembled dict (same logic as before, skip yaml.dump):
+mod = from_c2py_dict(assembled, "_cImageD11")
+
+# Generate wrapper C code directly:
+wrapper_code = generate(mod)
+with open("_cImageD11_wrapper.c", "w") as f:
+    f.write(wrapper_code)
+```
+
+### Benefits
+
+- **PyYAML dependency removed** from c2ImageD11's build chain.
+- **No YAML intermediate file** -- the C2PY_BEGIN dicts go straight to
+  `from_c2py_dict()` / `generate()`.
+- **Same C2PY_BEGIN format** -- the inline Python dicts in C comments
+  are unchanged.
+- **The assembled `_cImageD11.c2py` can switch to dict format** (or be
+  removed and generated on-the-fly in CI).
+
+### Recommended workflow
+
+1. Update `harvester.py` to call `from_c2py_dict()` + `generate()` instead
+   of writing YAML + shelling out.
+2. Convert the committed `lib/interface/_cImageD11.c2py` to Python dict
+   format (or remove it and regenerate in CI).
+3. Remove PyYAML from `setup.py`/`pyproject.toml`.
+4. The CI regeneration step (which runs harvester before meson setup)
+   works identically -- the harvester now produces dict-format `.c2py`
+   files instead of YAML.
