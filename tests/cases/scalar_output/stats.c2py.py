@@ -1,0 +1,24 @@
+# Python dict format equivalent of stats.c2py
+{
+    "module": "statmod",
+    "source": ["stats.c"],
+    "functions": [
+        {
+            "py_sig": "stats(data: buffer) -> void",
+            "checks": ["data.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "stats(const double *data, intptr_t n, double *minval, double *maxval)",
+                    "map": {
+                        "data": "data.ptr",
+                        "n": "data.n",
+                    },
+                    "outputs": {
+                        "minval": "double",
+                        "maxval": "double",
+                    },
+                },
+            ],
+        },
+    ],
+}

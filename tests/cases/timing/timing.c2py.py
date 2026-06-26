@@ -1,0 +1,21 @@
+# Python dict format equivalent of timing.c2py
+{
+    "module": "timedmod",
+    "source": ["timing.c"],
+    "timing": True,
+    "functions": [
+        {
+            "py_sig": "wsum(data: buffer, weight: float) -> float",
+            "c_overloads": [
+                {
+                    "sig": "weighted_sum(const double *data, intptr_t n, double weight) -> double",
+                    "map": {
+                        "data": "data.ptr",
+                        "n": "data.n",
+                        "weight": "weight",
+                    },
+                },
+            ],
+        },
+    ],
+}

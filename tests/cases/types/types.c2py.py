@@ -1,0 +1,68 @@
+# Python dict format equivalent of types.c2py
+{
+    "module": "typesmod",
+    "source": ["types.c"],
+    "headers": ["stdint.h"],
+    "functions": [
+        {
+            "py_sig": "fill(arr: buffer, value: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "fill_u16(uint16_t *arr, intptr_t n, uint16_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'H'",
+                },
+                {
+                    "sig": "fill_u32(uint32_t *arr, intptr_t n, uint32_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'I' or arr.format == 'L'",
+                },
+                {
+                    "sig": "fill_i32(int32_t *arr, intptr_t n, int32_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'i' or arr.format == 'l'",
+                },
+                {
+                    "sig": "fill_i64(int64_t *arr, intptr_t n, int64_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'q'",
+                },
+                {
+                    "sig": "fill_i8(int8_t *arr, intptr_t n, int8_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'b'",
+                },
+                {
+                    "sig": "fill_i16(int16_t *arr, intptr_t n, int16_t value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'h'",
+                },
+            ],
+            "default_raise": "TypeError: expected 'H', 'I'/'L', 'q', 'b', 'i'/'l', or 'h' buffer",
+        },
+    ],
+}

@@ -1,0 +1,20 @@
+# Python dict format equivalent of address.c2py
+{
+    "module": "addressmod",
+    "source": ["address.c"],
+    "functions": [
+        {
+            "py_sig": "address_store(ptr: int, value: int, offset: int) -> int",
+            "c_overloads": [
+                {
+                    "sig": "int address_store(void *ptr, int value, int offset)",
+                    "map": {
+                        "ptr": "ptr",
+                        "value": "value",
+                        "offset": "offset",
+                    },
+                },
+            ],
+        },
+    ],
+}

@@ -1287,6 +1287,60 @@ def test_python_dict_format():
     _pass()
 
 
+def test_yaml_dict_equivalence():
+    """Verify .c2py (YAML) and .c2py.py (dict) parse identically for all files."""
+    from c2py23.parser import load_c2py
+    import os
+
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    cases_dir = os.path.join(_script_dir, 'cases')
+    pairs = []
+    for root, dirs, files in os.walk(cases_dir):
+        for fn in files:
+            if fn.endswith('.c2py') and not fn.endswith('.c2py.py'):
+                yaml_path = os.path.join(root, fn)
+                dict_path = yaml_path + '.py'
+                if os.path.isfile(dict_path):
+                    pairs.append((yaml_path, dict_path))
+
+    assert len(pairs) > 0, "No YAML/dict pairs found"
+    errors = []
+    for yaml_path, dict_path in pairs:
+        rel = os.path.relpath(yaml_path, cases_dir)
+        try:
+            yaml_mod = load_c2py(yaml_path)
+            dict_mod = load_c2py(dict_path)
+        except Exception as e:
+            errors.append("%s: load failed - %s" % (rel, e))
+            continue
+
+        checks = []
+        checks.append(('module name', yaml_mod.name == dict_mod.name))
+        checks.append(('sources', yaml_mod.sources == dict_mod.sources))
+        checks.append(('headers', yaml_mod.headers == dict_mod.headers))
+        checks.append(('constants', yaml_mod.constants == dict_mod.constants))
+        checks.append(('timing', yaml_mod.timing == dict_mod.timing))
+        checks.append(('free_threading',
+                       yaml_mod.free_threading == dict_mod.free_threading))
+        checks.append(('function count',
+                       len(yaml_mod.functions) == len(dict_mod.functions)))
+        for i, (yf, df) in enumerate(zip(yaml_mod.functions, dict_mod.functions)):
+            checks.append(('func[%d].name' % i, yf.name == df.name))
+            checks.append(('func[%d].overload count' % i,
+                           len(yf.overloads) == len(df.overloads)))
+            checks.append(('func[%d].doc' % i, yf.doc == df.doc))
+            checks.append(('func[%d].gil_release' % i,
+                           yf.gil_release == df.gil_release))
+
+        failed = [label for label, ok in checks if not ok]
+        if failed:
+            errors.append("%s: %s" % (rel, ', '.join(failed)))
+
+    if errors:
+        raise AssertionError("\n".join(errors))
+    print("PASS: yaml-dict equivalence (%d files)" % len(pairs))
+
+
 if __name__ == '__main__':
     results = []
     for name in sorted(globals()):
