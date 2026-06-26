@@ -19,10 +19,13 @@ setup(
     long_description_content_type='text/markdown',
     packages=find_packages(include=['c2py23', 'c2py23.*']),
     package_data={'c2py23': ['runtime/*.h', 'runtime/*.c']},
-    install_requires=[
-        'PyYAML>=5.1;python_version>="3"',
-        'PyYAML>=3.10,<6;python_version=="2.7"',
-    ],
+    install_requires=[],
+    extras_require={
+        'yaml': [
+            'PyYAML>=5.1;python_version>="3"',
+            'PyYAML>=3.10,<6;python_version=="2.7"',
+        ],
+    },
     entry_points={
         'console_scripts': [
             'c2py23=c2py23.cli:main',

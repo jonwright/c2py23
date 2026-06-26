@@ -1,13 +1,31 @@
-module: summod
-source: [template.c]
-
-functions:
-  - expand:
-      TYPE: [uint8_t, uint16_t, int32_t]
-      SUFFIX: [u8, u16, i32]
-    py_sig: "sum_${SUFFIX}(data: buffer) -> int"
-    checks:
-      - "data.len >= 0"
-    c_overloads:
-      - sig: "int sum_${SUFFIX}(const ${TYPE} *data, intptr_t n)"
-        map: {data: "data.ptr", n: "data.n"}
+{
+    "module": "summod",
+    "source": ["template.c"],
+    "functions": [
+        {
+            "expand": {
+                "TYPE": [
+                    "uint8_t",
+                    "uint16_t",
+                    "int32_t",
+                ],
+                "SUFFIX": [
+                    "u8",
+                    "u16",
+                    "i32",
+                ],
+            },
+            "py_sig": "sum_${SUFFIX}(data: buffer) -> int",
+            "checks": ["data.len >= 0"],
+            "c_overloads": [
+                {
+                    "sig": "int sum_${SUFFIX}(const ${TYPE} *data, intptr_t n)",
+                    "map": {
+                        "data": "data.ptr",
+                        "n": "data.n",
+                    },
+                },
+            ],
+        },
+    ],
+}

@@ -1,15 +1,27 @@
-module: constmod
-source: [constants.c]
-constants:
-  ALPHA: 1
-  BETA: 2
-  GAMMA: 3
-  ZERO: 0
-  NEG: -1
-  LARGE: 2147483647
-
-functions:
-  - py_sig: "scale_sum(data: buffer, factor: int) -> float"
-    c_overloads:
-      - sig: "scale_and_sum(const double *data, intptr_t n, int factor) -> double"
-        map: {data: "data.ptr", n: "data.n", factor: factor}
+{
+    "module": "constmod",
+    "source": ["constants.c"],
+    "constants": {
+        "ALPHA": 1,
+        "BETA": 2,
+        "GAMMA": 3,
+        "ZERO": 0,
+        "NEG": -1,
+        "LARGE": 2147483647,
+    },
+    "functions": [
+        {
+            "py_sig": "scale_sum(data: buffer, factor: int) -> float",
+            "c_overloads": [
+                {
+                    "sig": "scale_and_sum(const double *data, intptr_t n, int factor) -> double",
+                    "map": {
+                        "data": "data.ptr",
+                        "n": "data.n",
+                        "factor": "factor",
+                    },
+                },
+            ],
+        },
+    ],
+}

@@ -218,14 +218,17 @@ def load_c2py(path):
     Supports two formats, auto-detected:
       1. Python dict: a file containing a Python dict literal
          (parsed via ast.literal_eval, no PyYAML needed).
+         Lines starting with '#' are stripped as comments.
       2. YAML: standard .c2py YAML format (requires PyYAML).
     """
     with open(path, 'r') as f:
         text = f.read()
     
-    # Try Python dict format first (safe, no dependencies)
+    # Try Python dict format first (safe, no dependencies).
+    # Strip whole-line comments (#) before passing to literal_eval.
     try:
-        raw = ast.literal_eval(text)
+        stripped = re.sub(r'(?m)^\s*#.*$', '', text)
+        raw = ast.literal_eval(stripped)
         if isinstance(raw, dict):
             mod = from_c2py_dict(raw, path)
             base_dir = os.path.dirname(os.path.abspath(path))
