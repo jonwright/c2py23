@@ -137,10 +137,10 @@ def test_gil_release_stress():
     """Stress test: GIL release path."""
     sys.path.insert(0, os.path.join(_SCRIPT_DIR, 'cases', 'gil_release'))
     import gilmod
-    for _ in range(_ITERATIONS // 10):  # fewer iter (sleeps 1ms each)
+    for _ in range(_ITERATIONS // 100):  # fewer iter (sleeps 1ms each, ~1s on Windows)
         arr = _float_array([0.0, 0.0])
         gilmod.sleep_fill(arr, 3.14, 1000)
-    print("PASS: gil_release stress (%d calls)" % (_ITERATIONS // 10))
+    print("PASS: gil_release stress (%d calls)" % (_ITERATIONS // 100))
 
 
 def test_constants_stress():
