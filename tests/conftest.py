@@ -6,7 +6,6 @@ Python 2.7 compatible (pytest 4.6.x).  Uses subprocess.Popen.
 from __future__ import print_function
 
 import os
-import re
 import sys
 import subprocess
 
@@ -22,14 +21,29 @@ collect_ignore = ["test_all.py", "test_manylinux.py"]
 
 
 def _module_name(c2py_path):
-    """Extract module name from a .c2py file (YAML or Python dict format)."""
+    """Extract module name from a .c2py file (YAML or Python dict format).
+    
+    Uses the same auto-detection order as load_c2py() in parser.py."""
     with open(c2py_path) as f:
         text = f.read()
-    # YAML: module: name   (line start, or dict start)
-    # Dict: "module": "name"  (Python dict literal)
-    match = re.search(r'["\']?module["\']?\s*:\s*["\']([^"\'}\s]+)["\']', text)
-    if match:
-        return match.group(1)
+    # Try Python dict format first (safe, no PyYAML needed)
+    try:
+        import ast
+        data = ast.literal_eval(text)
+        if isinstance(data, dict):
+            return data.get('module')
+    except (ValueError, SyntaxError):
+        pass
+    # Legacy YAML format fallback
+    try:
+        from c2py23.parser import _HAS_YAML
+        if _HAS_YAML:
+            import yaml as _yaml
+            data = _yaml.safe_load(text)
+            if isinstance(data, dict):
+                return data.get('module')
+    except Exception:
+        pass
     return None
 
 
