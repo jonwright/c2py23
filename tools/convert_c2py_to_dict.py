@@ -1,20 +1,33 @@
 #!/usr/bin/env python
-"""Convert all .c2py YAML files in tests/cases/ to Python dict format.
-The resulting files remain valid .c2py (same extension), auto-detected by load_c2py()."""
-from __future__ import print_function
-import os, re, sys, json
+"""Convert YAML .c2py files to Python dict format sidecar (.c2py.py).
 
-CASES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tests', 'cases')
+The .c2py.py file is written alongside the original .c2py file and
+contains the equivalent interface as a Python dict literal.  It is
+auto-detected by load_c2py() and can be loaded in place of the YAML.
+
+Usage:
+    python3 tools/convert_c2py_to_dict.py              # tests/cases/
+    python3 tools/convert_c2py_to_dict.py --all         # tests/cases/ + examples/
+    python3 tools/convert_c2py_to_dict.py path/file.c2py  # single file
+    python3 tools/convert_c2py_to_dict.py --check          # validate symmetry only
+"""
+from __future__ import print_function
+import os, sys, json
+
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CASES_DIR = os.path.join(PROJECT_DIR, 'tests', 'cases')
+EXAMPLES_DIR = os.path.join(PROJECT_DIR, 'examples')
+
 
 def py_repr(obj, indent=0):
     """Render a Python object as a pretty-printed Python dict literal."""
-    sp = "    "  # 4-space indent
+    sp = "    "
     if isinstance(obj, dict):
         if not obj:
             return "{}"
         items = []
         for k, v in obj.items():
-            kr = json.dumps(k)  # safe string repr
+            kr = json.dumps(k)
             vr = py_repr(v, indent + 1)
             items.append(sp * (indent + 1) + kr + ": " + vr)
         inner = ",\n".join(items)
@@ -40,41 +53,65 @@ def py_repr(obj, indent=0):
     else:
         return json.dumps(obj)
 
-def convert_file(c2py_path):
-    with open(c2py_path) as f:
-        text = f.read()
-    
-    # Try to parse as YAML
+
+def convert_file(c2py_path, check_only=False):
+    """Read YAML, write .c2py.py sidecar.  Returns True on success."""
     try:
         import yaml
-        data = yaml.safe_load(text)
-    except Exception:
-        print("  SKIP: cannot parse %s" % c2py_path)
+    except ImportError:
+        print("PyYAML required for conversion: pip install PyYAML", file=sys.stderr)
         return False
-    
+
+    with open(c2py_path) as f:
+        data = yaml.safe_load(f)
     if not isinstance(data, dict):
-        print("  SKIP: %s is not a dict" % c2py_path)
         return False
-    
-    # Generate Python dict format
+
+    dict_path = c2py_path + '.py'
     result = py_repr(data, 0)
-    
-    # Write back
-    with open(c2py_path, 'w') as f:
-        f.write(result)
-        f.write('\n')
+    if not check_only:
+        with open(dict_path, 'w') as f:
+            f.write('# Python dict format equivalent of %s\n' % os.path.basename(c2py_path))
+            f.write(result)
+            f.write('\n')
     return True
 
-def main():
-    count = 0
-    for root, dirs, files in os.walk(CASES_DIR):
+
+def find_c2py_files(root_dir):
+    for root, dirs, files in os.walk(root_dir):
         for fn in sorted(files):
-            if fn.endswith('.c2py'):
-                path = os.path.join(root, fn)
-                if convert_file(path):
-                    count += 1
-                    print("  CONVERTED: %s" % os.path.relpath(path, CASES_DIR))
-    print("\nConverted %d file(s)" % count)
+            if fn.endswith('.c2py') and not fn.endswith('.c2py.py'):
+                yield os.path.join(root, fn)
+
+
+def main():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('paths', nargs='*', help='.c2py files to convert (default: all in tests/cases/)')
+    ap.add_argument('--all', action='store_true', help='Walk both tests/cases/ and examples/')
+    ap.add_argument('--check', action='store_true', help='Check only (do not write files)')
+    args = ap.parse_args()
+
+    if args.paths:
+        paths = args.paths
+    else:
+        paths = list(find_c2py_files(CASES_DIR))
+        if args.all:
+            paths.extend(find_c2py_files(EXAMPLES_DIR))
+
+    count = 0
+    for p in sorted(paths):
+        if convert_file(p, check_only=args.check):
+            rel = os.path.relpath(p, PROJECT_DIR)
+            if args.check:
+                print("  OK: %s" % rel)
+            else:
+                print("  WRITTEN: %s.py" % rel)
+            count += 1
+
+    print("\n%d file(s) processed" % count)
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
