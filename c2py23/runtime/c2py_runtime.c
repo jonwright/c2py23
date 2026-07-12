@@ -830,10 +830,15 @@ int c2py_runtime_init(void)
 #ifdef _MSC_VER
     {
         char buf[128];
-        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+        int len = _snprintf_s(buf, sizeof(buf), _TRUNCATE,
                     "c2py: c2py_runtime_init ENTER dl_handle=%p\n",
                     C2PY.dl_handle);
-        OutputDebugStringA(buf);
+        if (len > 0) {
+            DWORD written;
+            HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+            if (h && h != INVALID_HANDLE_VALUE)
+                WriteFile(h, buf, (DWORD)len, &written, NULL);
+        }
     }
 #endif
 #ifndef _WIN32

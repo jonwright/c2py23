@@ -333,14 +333,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -393,14 +393,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -487,12 +487,12 @@ static PyModuleDef_FT _module_def_ft = {
 
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
 #ifdef _MSC_VER
-    OutputDebugStringA("c2py: PyInit_xfrm ENTER\n");
+    { const char _m[] = "c2py: PyInit_xfrm ENTER\n"; DWORD _w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), _m, (DWORD)(sizeof(_m)-1), &_w, NULL); }
     __try {
 #endif
     c2py_runtime_init();
 #ifdef _MSC_VER
-    OutputDebugStringA("c2py: c2py_runtime_init done\n");
+    { const char _m[] = "c2py: c2py_runtime_init done\n"; DWORD _w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), _m, (DWORD)(sizeof(_m)-1), &_w, NULL); }
 #endif
 
     PyObject *module = NULL;
