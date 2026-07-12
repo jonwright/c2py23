@@ -1040,9 +1040,13 @@ def _emit_module_init(b, module_def, has_free_threading,
     # PyInit (Python 3)
     b.emit('C2PY_EXPORT PyObject* PyInit_{}(void) {{'.format(name))
     b.emit('#ifdef _MSC_VER')
+    b.emit('    OutputDebugStringA("c2py: PyInit_{} ENTER\\n");'.format(name))
     b.emit('    __try {')
     b.emit('#endif')
     b.emit('    c2py_runtime_init();')
+    b.emit('#ifdef _MSC_VER')
+    b.emit('    OutputDebugStringA("c2py: c2py_runtime_init done\\n");')
+    b.emit('#endif')
     for rc in resolve_calls:
         b.emit(rc)
     b.emit('')

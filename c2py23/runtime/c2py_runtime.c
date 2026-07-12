@@ -827,6 +827,15 @@ static void _c2py_runtime_init_once(void)
 
 int c2py_runtime_init(void)
 {
+#ifdef _MSC_VER
+    {
+        char buf[128];
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "c2py: c2py_runtime_init ENTER dl_handle=%p\n",
+                    C2PY.dl_handle);
+        OutputDebugStringA(buf);
+    }
+#endif
 #ifndef _WIN32
     pthread_once(&_c2py_init_once, _c2py_runtime_init_once);
     return _c2py_init_result;
