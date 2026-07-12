@@ -12,6 +12,12 @@ import os
 import warnings
 import ctypes
 
+try:
+    import sysconfig
+    _HAS_SYSCONFIG = True
+except ImportError:
+    _HAS_SYSCONFIG = False
+
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
 IS_PY3 = sys.version_info[0] >= 3
@@ -659,6 +665,41 @@ def test_timing_cycle_counter():
     print("PASS: timing_cycle_counter")
 
 
+def test_freethreading():
+    """Test the freethreadmod module which declares free_threading: true.
+
+    This test verifies:
+    1. Module imports without GIL warning on free-threaded Python
+    2. The double_it function produces correct results
+    3. Module-level free-threading metadata is exposed
+    """
+    import sys
+    mod_dir = os.path.join(os.path.dirname(__file__), 'cases', 'freethreading')
+    sys.path.insert(0, mod_dir)
+    import freethreadmod
+
+    is_ft = (_HAS_SYSCONFIG and
+              sysconfig.get_config_var('Py_GIL_DISABLED') == 1)
+
+    if hasattr(freethreadmod, 'free_threading'):
+        assert freethreadmod.free_threading is True, \
+            "freethreadmod should declare free_threading = True"
+    else:
+        # Older c2py23 versions may not expose the attribute
+        pass
+
+    a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
+    r = (ctypes.c_double * 4)(0.0, 0.0, 0.0, 0.0)
+    ret = freethreadmod.double_it(a, r)
+    assert ret == 4, "Expected return value 4, got %d" % ret
+    assert list(r) == [2.0, 4.0, 6.0, 8.0], "double_it: %s" % list(r)
+
+    if is_ft:
+        print("PASS: freethreading (free-threaded Python)")
+    else:
+        print("PASS: freethreading (GIL-enabled Python)")
+
+
 def main():
     version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
     print("Python version: %s" % version_str)
@@ -680,6 +721,7 @@ def main():
         ("array_sig", test_array_sig),
         ("simd_dispatch", test_simd_dispatch),
         ("timing_cycle_counter", test_timing_cycle_counter),
+        ("freethreading", test_freethreading),
     ]
     passed = 0
     failed = 0

@@ -417,7 +417,7 @@ When adding support for a new Python version (e.g., 3.16):
    Key things to check in the diff:
    - `sizeof(PyObject)`, `sizeof(Py_buffer)`, `sizeof(PyModuleDef)` -- must match
    - `PyObject.ob_refcnt` and `ob_type` offsets -- must match
-   - `PY_MOD_GIL` value -- if changed, update `C2PY.py_mod_gil_slot` in `runtime.c`
+   - `PY_MOD_GIL` value -- if changed, audit `PyUnstable_Module_SetGIL` call path in `runtime.c`
    - Symbol availability (any symbols removed?) -- update `c2py_runtime.c`
 
 3. **Run the full test suite** across all containers:
