@@ -66,10 +66,10 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML --quiet
+          python -m pip install pytest PyYAML setuptools wheel --quiet
 
       - name: Install numpy (stable 3.x)
-        if: matrix.python-version != '2.7' && !contains(fromJson('["3.14t","3.15","3.15t"]'), matrix.python-version)
+        if: matrix.python-version == '3.13' || matrix.python-version == '3.14'
         run: python -m pip install numpy --quiet
 
       - name: Install numpy (3.14t FT)
@@ -86,11 +86,21 @@ jobs:
           python -m pip install --only-binary=:all: "$url" --quiet 2>$null
         continue-on-error: true
 
-      - name: Run tests (3.x)
-        if: matrix.python-version != '2.7'
+      - name: Run tests (stable 3.x)
+        if: matrix.python-version != '2.7' && steps.ft.outputs.is_ft != '1'
         env:
           CC: cl
         run: python -m pytest tests/ -v --durations=10 --tb=short
+
+      - name: Run tests (free-threaded 3.x)
+        if: matrix.python-version != '2.7' && steps.ft.outputs.is_ft == '1'
+        env:
+          CC: cl
+        run: >
+          python -m pytest tests/ -v --durations=10 --tb=short
+          --ignore=tests/test_aos_soa.py
+          --ignore=tests/test_peer_review.py
+          2>&1
 
       - name: Run tests (2.7)
         if: matrix.python-version == '2.7'

@@ -161,11 +161,15 @@ def test_build_wheel(tmpdir):
         raise AssertionError("c2py23 build failed: %s" % err)
 
     # Rename the .so to follow the c2py_loader convention
-    so_files = glob.glob(os.path.join(src_dir, '_mysum*.so'))
+    ext = '.pyd' if os.name == 'nt' else '.so'
+    so_files = glob.glob(os.path.join(src_dir, '_mysum*' + ext))
+    if not so_files:
+        so_files = glob.glob(os.path.join(src_dir, '_mysum*'))
+        so_files = [f for f in so_files if f.endswith(ext)]
     if not so_files:
         raise AssertionError(
-            "No .so file produced. Available files: %s" %
-            os.listdir(src_dir))
+            "No %s file produced. Available files: %s" %
+            (ext, os.listdir(src_dir)))
 
     target_so = os.path.join(src_dir, '_mysum.c2py23-linux_x86_64.so')
     if so_files[0] != target_so:
