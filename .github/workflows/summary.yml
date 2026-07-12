@@ -1,0 +1,67 @@
+name: CI Summary
+
+on:
+  workflow_run:
+    workflows: [Linux CI, Windows CI, aarch64 CI, Full Matrix CI]
+    types: [completed]
+
+jobs:
+  harvest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: github.event.workflow_run.conclusion != 'skipped'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Harvest test results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -e
+          echo "=== CI Summary ==="
+          echo "Workflow: $WORKFLOW_NAME"
+          echo "Branch:   $BRANCH"
+          echo "Run:      $RUN_ID"
+          echo ""
+
+          # Fetch all jobs for this run
+          JOBS=$(gh run view "$RUN_ID" --json jobs --jq '.jobs[] | "\(.name)|\(.status)|\(.conclusion)"')
+          JOB_COUNT=$(echo "$JOBS" | wc -l)
+
+          PASSED=0
+          FAILED=0
+          declare -a FAILURE_NAMES
+
+          while IFS='|' read -r name status conclusion; do
+            icon="?"
+            if [ "$conclusion" = "success" ]; then
+              icon="[OK]"
+              PASSED=$((PASSED + 1))
+            elif [ "$conclusion" = "failure" ]; then
+              icon="[FAIL]"
+              FAILED=$((FAILED + 1))
+              FAILURE_NAMES+=("$name")
+            else
+              icon="[${conclusion:-$status}]"
+            fi
+            echo "  $icon $name"
+          done <<< "$JOBS"
+
+          echo ""
+          echo "---"
+          echo "Total jobs: $JOB_COUNT"
+          echo "Passed:     $PASSED"
+          echo "Failed:     $FAILED"
+
+          if [ $FAILED -gt 0 ]; then
+            echo ""
+            echo "Failures:"
+            for name in "${FAILURE_NAMES[@]}"; do
+              echo "  - $name"
+            done
+            exit 1
+          fi

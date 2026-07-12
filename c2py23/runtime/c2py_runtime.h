@@ -195,9 +195,11 @@ typedef struct {
 } PyModuleDef_Slot;
 
 /* Py_MOD_GIL_NOT_USED: signal that this module supports free-threading.
- * Value is (void*)1 = Py_MOD_GIL_NOT_USED (stable across CPython 3.13+).
- * The slot NUMBER (Py_mod_gil) changed from 4 (3.13-3.14) to 87 (3.15+).
- * That value is determined at runtime via C2PY.py_mod_gil_slot. */
+ * Value is (void*)1 (stable across CPython 3.13+).
+ * c2py23 uses PyUnstable_Module_SetGIL() (resolved at runtime) to
+ * declare free-threading support on the module object, rather than
+ * the older PyModuleDef_Slot / Py_mod_gil slot-number mechanism
+ * (whose slot number changed from 4 in 3.13-3.14 to 87 in 3.15+). */
 #define Py_MOD_GIL_NOT_USED  ((void*)1)
 
 /* ------------------------------------------------------------------ */

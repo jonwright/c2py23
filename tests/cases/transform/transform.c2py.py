@@ -3,6 +3,7 @@
     "module": "xfrm",
     "source": ["transform.c"],
     "timing": True,
+    "free_threading": True,
     "functions": [
         {
             "py_sig": "transform(points: buffer, out: buffer) -> void",

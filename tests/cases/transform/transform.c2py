@@ -1,6 +1,7 @@
 module: xfrm
 source: [transform.c]
 timing: true
+free_threading: true
 
 functions:
   - py_sig: "transform(points: buffer, out: buffer) -> void"

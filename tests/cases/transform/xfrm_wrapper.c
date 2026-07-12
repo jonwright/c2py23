@@ -469,7 +469,7 @@ static PyMethodDef _methods_fastcall[] = {
 static PyModuleDef _module_def = {
     PyModuleDef_HEAD_INIT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: no (GIL re-enabled on 3.14t)",
+    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: yes (Py_MOD_GIL_NOT_USED)",
     -1,
     NULL,  /* methods set at init */
     NULL, NULL, NULL, NULL
@@ -478,7 +478,7 @@ static PyModuleDef _module_def = {
 static PyModuleDef_FT _module_def_ft = {
     PyModuleDef_HEAD_INIT_FT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: no (GIL re-enabled on 3.14t)",
+    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: yes (Py_MOD_GIL_NOT_USED)",
     -1,
     NULL,  /* methods set at init */
     NULL,  /* m_slots = NULL (single-phase init; PyUnstable_Module_SetGIL handles FT) */
@@ -486,7 +486,9 @@ static PyModuleDef_FT _module_def_ft = {
 };
 
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
-    c2py_runtime_init();
+    if (c2py_runtime_init() != 0) {
+        return NULL;  /* Python will raise ImportError */
+    }
 
     PyObject *module = NULL;
     PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;
@@ -515,6 +517,9 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
         PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
+        if (C2PY.Unstable_Module_SetGIL != NULL) {
+            C2PY.Unstable_Module_SetGIL(module, (void*)1);  /* Py_MOD_GIL_NOT_USED */
+        }
     }
     return module;
 }

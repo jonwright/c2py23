@@ -7,12 +7,12 @@ on:
 jobs:
   test-windows:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["2.7", "3.13", "3.14"]
+        python-version: ["2.7", "3.13", "3.14", "3.14t", "3.15", "3.15t"]
 
     defaults:
       run:
@@ -46,7 +46,9 @@ jobs:
 
       - name: ABI diagnostic (Python)
         if: matrix.python-version != '2.7'
-        run: python tests/abi_diag.py
+        run: |
+          python tests/abi_diag.py
+          python tests/abi_list_dlls.py
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -58,11 +60,25 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML --quiet
+          python -m pip install pytest PyYAML setuptools wheel --quiet
 
-      - name: Install numpy (3.x)
-        if: matrix.python-version != '2.7'
+      - name: Install numpy (stable 3.x)
+        if: matrix.python-version == '3.13' || matrix.python-version == '3.14'
         run: python -m pip install numpy --quiet
+
+      - name: Install numpy (3.14t FT)
+        if: matrix.python-version == '3.14t'
+        run: python -m pip install numpy --quiet 2>$null
+        continue-on-error: true
+
+      - name: Install numpy (3.15 pre-release / 3.15t via cgohlke MKL wheels)
+        if: matrix.python-version == '3.15' || matrix.python-version == '3.15t'
+        run: |
+          $ver = if ("${{ matrix.python-version }}" -eq "3.15") { "cp315-cp315" } else { "cp315-cp315t" }
+          $url = "https://github.com/cgohlke/numpy-mkl-wheels/releases/download/v2026.5.20/numpy-2.4.6-$ver-win_amd64.whl"
+          Write-Output "Downloading numpy from: $url"
+          python -m pip install --only-binary=:all: "$url" --quiet 2>$null
+        continue-on-error: true
 
       - name: Run tests (3.x)
         if: matrix.python-version != '2.7'

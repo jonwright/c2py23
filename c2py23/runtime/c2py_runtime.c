@@ -426,22 +426,16 @@ static void _c2py_runtime_init_once(void)
     }
 
 #ifdef _WIN32
-    /* On Windows, python3.dll is the stable-ABI forwarder DLL (PEP 384).
-     * It is loaded as a dependency of python3XX.dll, which in turn
-     * loads this extension module.  python3.dll exports the limited
-     * API which covers all symbols c2py23 needs.
-     * Fall back to enumerating known versioned DLL names for Python
-     * installations that do not ship python3.dll (e.g. Python 2.7). */
     {
-        /* Prefer versioned DLLs: python3.dll is the stable-ABI
-         * forwarder which may not export all symbols (e.g. Python 3.9
-         * does not export PyObject_GetBuffer from python3.dll). */
         static const char *candidates[] = {
             "python315.dll", "python314.dll", "python313.dll",
             "python312.dll", "python311.dll", "python310.dll",
             "python39.dll", "python38.dll", "python37.dll",
             "python36.dll", "python27.dll",
             "python3.dll",
+            /* Free-threaded builds may use 't' suffix DLL names */
+            "python315t.dll", "python314t.dll", "python313t.dll",
+            "python3t.dll",
             NULL
         };
         int i;
@@ -449,8 +443,32 @@ static void _c2py_runtime_init_once(void)
             C2PY.dl_handle = (void*)GetModuleHandleA(candidates[i]);
             if (C2PY.dl_handle) break;
         }
+        /* On free-threaded and some embedded builds, Python symbols
+         * may be exported from the .exe itself rather than a separate
+         * DLL.  GetModuleHandleA(NULL) returns the .exe handle. */
         if (C2PY.dl_handle == NULL) {
-            fprintf(stderr, "c2py_runtime: GetModuleHandle failed "
+            C2PY.dl_handle = (void*)GetModuleHandleA(NULL);
+        }
+        /* Last resort: try to load python3.dll or python3XX.dll
+         * explicitly via LoadLibraryA.  This works when the DLL exists
+         * on disk but was not loaded as a dependency of the main
+         * executable (e.g. free-threaded Python 3.14t/3.15t on Windows
+         * where the executable may have a non-standard import table). */
+        if (C2PY.dl_handle == NULL) {
+            static const char *load_candidates[] = {
+                "python3.dll",
+                "python315.dll", "python314.dll",
+                "python3t.dll",
+                "python315t.dll", "python314t.dll",
+                NULL
+            };
+            for (i = 0; load_candidates[i]; i++) {
+                C2PY.dl_handle = (void*)LoadLibraryA(load_candidates[i]);
+                if (C2PY.dl_handle) break;
+            }
+        }
+        if (C2PY.dl_handle == NULL) {
+            fprintf(stderr, "c2py_runtime: GetModuleHandle / LoadLibrary failed "
                     "(python3.dll not found). "
                     "GetLastError=%lu\n", GetLastError());
             fprintf(stderr, "c2py_runtime: interpreter may be statically "
@@ -495,10 +513,10 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Reject unsupported Python versions --- */
 #ifdef _WIN32
-    if (C2PY.version_major >= 3 && C2PY.version_minor > 14) {
+    if (C2PY.version_major >= 3 && C2PY.version_minor > 15) {
         fprintf(stderr,
                 "c2py_runtime: Python %d.%d on Windows is not yet supported.\n"
-                "Supported versions: 2.7, 3.6-3.14.\n"
+                "Supported versions: 2.7, 3.6-3.15.\n"
                 "To add Windows support for a new Python version, audit the CPython\n"
                 "headers for ABI changes and update checks in c2py_runtime.c.\n",
                 C2PY.version_major, C2PY.version_minor);
@@ -845,3 +863,4 @@ int c2py_runtime_init(void)
     return _c2py_init_result;
 #endif
 }
+

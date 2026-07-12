@@ -2,6 +2,7 @@
 {
     "module": "arraysum",
     "source": ["arraysum.c"],
+    "free_threading": True,
     "functions": [
         {
             "py_sig": "array_sum(a: buffer, b: buffer, result: buffer) -> int",
