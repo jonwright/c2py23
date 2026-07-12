@@ -433,6 +433,9 @@ static void _c2py_runtime_init_once(void)
             "python39.dll", "python38.dll", "python37.dll",
             "python36.dll", "python27.dll",
             "python3.dll",
+            /* Free-threaded builds may use 't' suffix DLL names */
+            "python315t.dll", "python314t.dll", "python313t.dll",
+            "python3t.dll",
             NULL
         };
         int i;
@@ -454,7 +457,10 @@ static void _c2py_runtime_init_once(void)
         if (C2PY.dl_handle == NULL) {
             static const char *load_candidates[] = {
                 "python3.dll",
-                "python315.dll", "python314.dll", NULL
+                "python315.dll", "python314.dll",
+                "python3t.dll",
+                "python315t.dll", "python314t.dll",
+                NULL
             };
             for (i = 0; load_candidates[i]; i++) {
                 C2PY.dl_handle = (void*)LoadLibraryA(load_candidates[i]);
