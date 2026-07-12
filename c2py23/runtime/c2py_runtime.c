@@ -833,6 +833,7 @@ static void _c2py_runtime_init_once(void)
 
 int c2py_runtime_init(void)
 {
+    fprintf(stderr, "c2py init: ENTER\n"); fflush(stderr);
 #ifndef _WIN32
     pthread_once(&_c2py_init_once, _c2py_runtime_init_once);
     return _c2py_init_result;
