@@ -28,7 +28,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           pip install -e . --quiet
-          pip install pytest numpy PyYAML --quiet
+          pip install pytest numpy PyYAML setuptools wheel --quiet
 
       - name: Run tests
         run: pytest tests/ -v --durations=10 --tb=short

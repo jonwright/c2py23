@@ -30,6 +30,8 @@ import sys
 import tempfile
 import zipfile
 
+import pytest
+
 
 def _parse_wheel_tags(filename):
     """Parse ABI tags from a wheel filename.
@@ -91,6 +93,13 @@ def test_build_wheel(tmpdir):
       signalling that c2py23 should adopt proper ABI tags.
     """
     project = os.path.join(str(tmpdir), 'wheel_test')
+
+    try:
+        import setuptools  # noqa: F401
+        import wheel  # noqa: F401
+    except ImportError:
+        pytest.skip("setuptools and/or wheel not installed -- skipping wheel build test")
+
     src_dir = os.path.join(project, 'mysum')
     os.makedirs(src_dir)
 
