@@ -49,3 +49,4 @@ examples/threading_bench/*.so
 /audit/wrappers/
 /audit/20260620_resolved/
 _test_*
+site/

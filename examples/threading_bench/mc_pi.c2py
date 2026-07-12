@@ -4,6 +4,7 @@ free_threading: true
 
 functions:
   - py_sig: "mc_pi(n: int, seed: int = 0) -> int"
+    doc: "Monte Carlo Pi estimation (serial, GIL released)."
     gil_release: true
     c_overloads:
       - sig: "mc_pi_serial(int n, int seed) -> int"
@@ -12,6 +13,7 @@ functions:
           seed: seed
 
   - py_sig: "mc_pi_omp(n: int, seed: int = 0) -> int"
+    doc: "Monte Carlo Pi estimation (OpenMP parallel)."
     c_overloads:
       - sig: "mc_pi_omp(int n, int seed) -> int"
         map:

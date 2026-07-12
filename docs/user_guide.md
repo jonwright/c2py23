@@ -252,21 +252,44 @@ remove the global counter.
 
 ## Performance Timing
 
-See `docs/specification.md` for the full timing documentation.
+Set `timing: true` in your `.c2py` file to enable per-function wall-clock timing.
+Each wrapped function gets a `_perf_<name>()` introspection method returning a dict
+with call count, total C time, and per-overload breakdown.
+
+```yaml
+module: mymod
+source: [mymod.c]
+timing: true
+```
+
+```python
+import mymod
+mymod.myfunc(data, out)
+print(mymod._perf_myfunc())
+# {'calls': 1, 't_c_total_ns': 23400, 't_c_min_ns': 23400, ...}
+```
+
+The tick source defaults to `clock_gettime(CLOCK_MONOTONIC)`.  Call
+`mymod._c2py_set_tick_source("cycle")` to switch to the CPU cycle counter
+(rdtsc on x86, cntvct on arm64) for higher precision.
+
+See `specification.md` for per-overload timing and the full perf struct schema.
 
 ## Building and Testing
+
+See [Getting Started](getting_started.md) for installation and first build.
 
 ```bash
 # Build
 c2py23 build mymod.c2py
 
-# Single Python version
+# Test single Python version
 bash tests/run_tests.sh python3.12
 
-# All versions via containers
+# Test all versions via snakepit containers
 python3 tests/test_all.py
 
-# Valgrind
+# Leak check
 valgrind --leak-check=full python3 tests/test_leaks.py
 ```
 

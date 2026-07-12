@@ -10,6 +10,7 @@ free_threading: true
 
 functions:
   - py_sig: "rfft_forward(data: buffer, spec: buffer) -> void"
+    doc: "Real-to-complex FFT. N real floats input, (N/2+1)*2 floats output (interleaved real/imag pairs)."
     checks:
       - "data.format == 'f'"
       - "spec.format == 'f'"
@@ -24,6 +25,7 @@ functions:
           n: "data.n"
 
   - py_sig: "cfft_forward(fin: buffer, fout: buffer) -> void"
+    doc: "Complex-to-complex FFT. N*2 float32 input (interleaved real/imag), same-size output."
     checks:
       - "fin.format == 'f'"
       - "fout.format == 'f'"
