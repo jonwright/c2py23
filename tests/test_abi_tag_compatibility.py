@@ -68,7 +68,10 @@ def _run(cmd, **kwargs):
     """Run a subprocess, returning (returncode, stdout)."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, **kwargs)
-    stdout, stderr = proc.communicate(timeout=120)
+    try:
+        stdout, stderr = proc.communicate(timeout=120)
+    except TypeError:
+        stdout, stderr = proc.communicate()
     if isinstance(stdout, bytes):
         stdout = stdout.decode('utf-8', errors='replace')
     if isinstance(stderr, bytes):
