@@ -50,22 +50,7 @@ jobs:
 
       - name: Dump loaded DLLs (Windows)
         if: matrix.python-version != '2.7'
-        run: python -c "
-import ctypes, ctypes.wintypes
-kernel32 = ctypes.windll.kernel32
-psapi = ctypes.windll.psapi
-hProcess = kernel32.GetCurrentProcess()
-modules = (ctypes.wintypes.HMODULE * 1024)()
-cbNeeded = ctypes.wintypes.DWORD()
-if psapi.EnumProcessModules(hProcess, modules, ctypes.sizeof(modules), ctypes.byref(cbNeeded)):
-    count = cbNeeded.value // ctypes.sizeof(ctypes.wintypes.HMODULE)
-    print(f'Loaded modules ({count}):')
-    for i in range(count):
-        name = ctypes.create_unicode_buffer(260)
-        psapi.GetModuleBaseNameW(hProcess, modules[i], name, 260)
-        if 'python' in name.value.lower():
-            print(f'  {name.value}')
-"
+        run: python tests/dump_loaded_dlls.py
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
