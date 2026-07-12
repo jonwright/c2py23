@@ -8,6 +8,7 @@ Mirrors snakepit's test_images.py pattern:
    the appropriate Apptainer container
 3. Collects pass/fail results
 """
+
 from __future__ import print_function
 
 import os
@@ -19,9 +20,9 @@ from datetime import datetime
 # Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), 'snakepit')
-WORKSPACE_DIR = os.path.join(SCRIPT_DIR, 'test_workspace')
-LOG_FILE = os.path.join(SCRIPT_DIR, 'test_results.log')
+SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
+WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
+LOG_FILE = os.path.join(SCRIPT_DIR, "test_results.log")
 
 # Python versions to test
 PYTHON_VERSIONS = [
@@ -44,24 +45,47 @@ _log_file = None
 
 # Common signal names for crash diagnostics
 _SIGNAL_NAMES = {
-    1: 'SIGHUP', 2: 'SIGINT', 3: 'SIGQUIT', 4: 'SIGILL',
-    5: 'SIGTRAP', 6: 'SIGABRT', 7: 'SIGBUS', 8: 'SIGFPE',
-    9: 'SIGKILL', 10: 'SIGUSR1', 11: 'SIGSEGV', 12: 'SIGUSR2',
-    13: 'SIGPIPE', 14: 'SIGALRM', 15: 'SIGTERM', 16: 'SIGSTKFLT',
-    17: 'SIGCHLD', 18: 'SIGCONT', 19: 'SIGSTOP', 20: 'SIGTSTP',
-    21: 'SIGTTIN', 22: 'SIGTTOU', 23: 'SIGURG', 24: 'SIGXCPU',
-    25: 'SIGXFSZ', 26: 'SIGVTALRM', 27: 'SIGPROF', 28: 'SIGWINCH',
-    29: 'SIGIO', 30: 'SIGPWR', 31: 'SIGSYS',
+    1: "SIGHUP",
+    2: "SIGINT",
+    3: "SIGQUIT",
+    4: "SIGILL",
+    5: "SIGTRAP",
+    6: "SIGABRT",
+    7: "SIGBUS",
+    8: "SIGFPE",
+    9: "SIGKILL",
+    10: "SIGUSR1",
+    11: "SIGSEGV",
+    12: "SIGUSR2",
+    13: "SIGPIPE",
+    14: "SIGALRM",
+    15: "SIGTERM",
+    16: "SIGSTKFLT",
+    17: "SIGCHLD",
+    18: "SIGCONT",
+    19: "SIGSTOP",
+    20: "SIGTSTP",
+    21: "SIGTTIN",
+    22: "SIGTTOU",
+    23: "SIGURG",
+    24: "SIGXCPU",
+    25: "SIGXFSZ",
+    26: "SIGVTALRM",
+    27: "SIGPROF",
+    28: "SIGWINCH",
+    29: "SIGIO",
+    30: "SIGPWR",
+    31: "SIGSYS",
 }
 
 
 def _signal_name(sig):
-    return _SIGNAL_NAMES.get(sig, 'signal {}'.format(sig))
+    return _SIGNAL_NAMES.get(sig, "signal {}".format(sig))
 
 
 def log_write(message):
     if _log_file:
-        _log_file.write(message + '\n')
+        _log_file.write(message + "\n")
         _log_file.flush()
 
 
@@ -72,7 +96,7 @@ def print_header(message):
     print(line + "\n")
     log_write(line)
     log_write(message)
-    log_write(line + '\n')
+    log_write(line + "\n")
 
 
 def print_success(message):
@@ -108,32 +132,37 @@ def run_apptainer(sif_file, command, capture_output=True, timeout=600):
         return 1, "", "SIF file not found"
 
     apptainer_cmd = [
-        "apptainer", "exec",
+        "apptainer",
+        "exec",
         "-e",
-        "-B", WORKSPACE_DIR + ":/workspace",
-        "--pwd", "/workspace",
+        "-B",
+        WORKSPACE_DIR + ":/workspace",
+        "--pwd",
+        "/workspace",
         sif_path,
-        "/bin/bash", "-c", command
+        "/bin/bash",
+        "-c",
+        command,
     ]
 
     try:
         if capture_output:
-            proc = subprocess.Popen(
-                apptainer_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
+            proc = subprocess.Popen(apptainer_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 print_error("Command timed out after {}s -- killing".format(timeout))
                 proc.kill()
                 stdout, stderr = proc.communicate()
-                return -9, "", "TIMEOUT after {}s (possibly infinite loop or hang)".format(timeout)
+                return (
+                    -9,
+                    "",
+                    "TIMEOUT after {}s (possibly infinite loop or hang)".format(timeout),
+                )
             if isinstance(stdout, bytes):
-                stdout = stdout.decode('utf-8', errors='replace')
+                stdout = stdout.decode("utf-8", errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode('utf-8', errors='replace')
+                stderr = stderr.decode("utf-8", errors="replace")
             return proc.returncode, stdout, stderr
         else:
             ret = subprocess.call(apptainer_cmd, timeout=timeout)
@@ -201,25 +230,30 @@ def prepare_workspace():
     for item in os.listdir(PROJECT_DIR):
         src = os.path.join(PROJECT_DIR, item)
         dst = os.path.join(WORKSPACE_DIR, item)
-        if item in ('.git', '__pycache__', '*.pyc', 'test_workspace',
-                     '*.egg-info'):
+        if item in (".git", "__pycache__", "*.pyc", "test_workspace", "*.egg-info"):
             continue
         if os.path.isdir(src):
-            if item == 'tests':
+            if item == "tests":
                 # Copy tests but not test_workspace subdir
-                shutil.copytree(src, dst,
-                                ignore=shutil.ignore_patterns(
-                                    'test_venv', 'test_workspace',
-                                    '__pycache__', '*.pyc', '*.egg-info'))
+                shutil.copytree(
+                    src,
+                    dst,
+                    ignore=shutil.ignore_patterns(
+                        "test_venv",
+                        "test_workspace",
+                        "__pycache__",
+                        "*.pyc",
+                        "*.egg-info",
+                    ),
+                )
             else:
-                shutil.copytree(src, dst,
-                                ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+                shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         else:
-            if not item.endswith('.pyc'):
+            if not item.endswith(".pyc"):
                 shutil.copy2(src, dst)
 
     # Make scripts executable
-    for script in ['tests/run_tests.sh']:
+    for script in ["tests/run_tests.sh"]:
         sp = os.path.join(WORKSPACE_DIR, script)
         if os.path.exists(sp):
             os.chmod(sp, 0o755)
@@ -230,7 +264,7 @@ def prepare_workspace():
 def main():
     global _log_file
 
-    _log_file = open(LOG_FILE, 'w')
+    _log_file = open(LOG_FILE, "w")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_write("c2py23 Test Suite - " + timestamp + "\n")
 
@@ -251,8 +285,7 @@ def main():
                 print("\nStopping to debug this version first.")
                 print("To debug, run:")
                 sif_path = os.path.join(SNAKEPIT_DIR, sif_file)
-                print("  apptainer shell -e -B {}:/workspace {}".format(
-                    WORKSPACE_DIR, sif_path))
+                print("  apptainer shell -e -B {}:/workspace {}".format(WORKSPACE_DIR, sif_path))
                 return 1
 
         # Summary
@@ -277,5 +310,5 @@ def main():
             _log_file.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

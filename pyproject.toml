@@ -39,3 +39,16 @@ Homepage = "https://github.com/jonwright/c2py23"
 
 [tool.setuptools.packages.find]
 include = ["c2py23*"]
+
+[tool.black]
+line-length = 120
+target-version = ["py33"]
+exclude = '''
+/(
+    tests/test_venv_3\.12
+  | tests/test_venv_3\.15
+  | tests/cases
+  | examples/kissfft
+  | examples/lz4
+)/
+'''

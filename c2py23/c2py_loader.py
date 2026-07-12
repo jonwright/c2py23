@@ -29,6 +29,7 @@ Users who do not want a c2py23 runtime dependency can copy the
 function body into their own __init__.py.  The code is intentionally
 small and self-contained.
 """
+
 from __future__ import print_function
 
 import os
@@ -39,20 +40,20 @@ import platform as _platform
 def _platform_key():
     """Return 'linux_x86_64', 'win_amd64', 'linux_ppc64le', etc."""
     _os = sys.platform
-    if _os == 'linux2':
-        _os = 'linux'
-    elif _os == 'win32':
-        _os = 'win'
+    if _os == "linux2":
+        _os = "linux"
+    elif _os == "win32":
+        _os = "win"
     _arch = _platform.machine()
-    if _arch == 'AMD64':
-        if _os == 'win':
-            _arch = 'amd64'
+    if _arch == "AMD64":
+        if _os == "win":
+            _arch = "amd64"
         else:
-            _arch = 'x86_64'
-    return '%s_%s' % (_os, _arch)
+            _arch = "x86_64"
+    return "%s_%s" % (_os, _arch)
 
 
-def load_native(package_dir, module_name='_native', tag='c2py23'):
+def load_native(package_dir, module_name="_native", tag="c2py23"):
     """Load <module_name>.<tag>-<platform_key>.so from package_dir.
 
     Args:
@@ -72,55 +73,51 @@ def load_native(package_dir, module_name='_native', tag='c2py23'):
         _mod = load_native(os.path.dirname(__file__), '_mymodule')
     """
     _key = _platform_key()
-    if os.name == 'nt':
-        _ext = '.pyd'
+    if os.name == "nt":
+        _ext = ".pyd"
     else:
-        _ext = '.so'
-    _filename = '%s.%s-%s%s' % (module_name, tag, _key, _ext)
+        _ext = ".so"
+    _filename = "%s.%s-%s%s" % (module_name, tag, _key, _ext)
     _path = os.path.join(package_dir, _filename)
 
-    _trace = os.environ.get('C2PY_TRACE')
+    _trace = os.environ.get("C2PY_TRACE")
     if _trace:
-        print('[c2py_loader] platform=%s file=%s' % (_key, _filename),
-              file=sys.stderr)
+        print("[c2py_loader] platform=%s file=%s" % (_key, _filename), file=sys.stderr)
 
     if not os.path.isfile(_path):
-        _alternatives = [
-            f for f in os.listdir(package_dir)
-            if f.startswith(module_name + '.')
-        ]
-        _hint = ', '.join(sorted(_alternatives)) if _alternatives else 'none'
+        _alternatives = [f for f in os.listdir(package_dir) if f.startswith(module_name + ".")]
+        _hint = ", ".join(sorted(_alternatives)) if _alternatives else "none"
         raise ImportError(
             "c2py23: native module not found for platform '%s'\n"
             "  Expected: %s\n"
             "  Available: %s\n"
-            "  Build with: gcc -shared -fPIC ... -o %s" %
-            (_key, _filename, _hint, _path))
+            "  Build with: gcc -shared -fPIC ... -o %s" % (_key, _filename, _hint, _path)
+        )
 
     if _trace:
-        print('[c2py_loader] loading %s -> %s' % (module_name, _path),
-              file=sys.stderr)
+        print("[c2py_loader] loading %s -> %s" % (module_name, _path), file=sys.stderr)
 
     if sys.version_info[0] >= 3:
         import importlib.machinery
         import importlib.util
-        loader = importlib.machinery.ExtensionFileLoader(
-            module_name, _path)
-        spec = importlib.util.spec_from_file_location(
-            module_name, _path, loader=loader)
+
+        loader = importlib.machinery.ExtensionFileLoader(module_name, _path)
+        spec = importlib.util.spec_from_file_location(module_name, _path, loader=loader)
         mod = importlib.util.module_from_spec(spec)
         # Warn if overwriting an existing module in sys.modules.
         # Using distinct module names per package (e.g. '_mymodule'
         # instead of '_native') avoids collisions.
         if module_name in sys.modules:
             import warnings as _w
+
             _w.warn(
                 "c2py_loader: overwriting existing module '%s' "
-                "in sys.modules. Use a unique module name."
-                % module_name)
+                "in sys.modules. Use a unique module name." % module_name
+            )
         sys.modules[module_name] = mod
         loader.exec_module(mod)
         return mod
     else:
         import imp
+
         return imp.load_dynamic(module_name, _path)

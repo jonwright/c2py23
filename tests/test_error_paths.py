@@ -2,10 +2,11 @@
 
 Tests:
   - arraysum (3 buffers): format check failure on last buffer
-  - arraysum (3 buffers): size mismatch check on last buffer  
+  - arraysum (3 buffers): size mismatch check on last buffer
   - Writable buffer alias detection
   - Strided buffer rejection
 """
+
 from __future__ import print_function
 
 import sys
@@ -34,14 +35,14 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 _IS_FREE_THREADED = False
 try:
-    if sysconfig.get_config_var('Py_GIL_DISABLED') == 1:
+    if sysconfig.get_config_var("Py_GIL_DISABLED") == 1:
         _IS_FREE_THREADED = True
 except Exception:
     pass
 
 if not _IS_FREE_THREADED:
     try:
-        if 'free-threading' in sys.version.lower():
+        if "free-threading" in sys.version.lower():
             _IS_FREE_THREADED = True
     except Exception:
         pass
@@ -58,7 +59,7 @@ def refcount(obj):
 
 def test_arraysum_format_mismatch_last_buffer():
     """3 buffers: a(d), b(d), c(f). c has wrong format -> format check fails."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
@@ -66,7 +67,9 @@ def test_arraysum_format_mismatch_last_buffer():
     c = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)  # wrong type!
 
     if not _IS_FREE_THREADED:
-        ra0 = refcount(a); rb0 = refcount(b); rc0 = refcount(c)
+        ra0 = refcount(a)
+        rb0 = refcount(b)
+        rc0 = refcount(c)
 
     try:
         arraysum.array_sum(a, b, c)
@@ -75,7 +78,9 @@ def test_arraysum_format_mismatch_last_buffer():
         pass
 
     if not _IS_FREE_THREADED:
-        ra1 = refcount(a); rb1 = refcount(b); rc1 = refcount(c)
+        ra1 = refcount(a)
+        rb1 = refcount(b)
+        rc1 = refcount(c)
         assert ra1 == ra0, "a refcount: %d -> %d (leak!)" % (ra0, ra1)
         assert rb1 == rb0, "b refcount: %d -> %d (leak!)" % (rb0, rb1)
         assert rc1 == rc0, "c refcount: %d -> %d (leak!)" % (rc0, rc1)
@@ -87,7 +92,7 @@ def test_arraysum_format_mismatch_last_buffer():
 def test_arraysum_size_mismatch_last_buffer():
     """3 buffers: a(d, 4), b(d, 4), c(d, 3). c has different length ->
     size check fails."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
@@ -95,7 +100,9 @@ def test_arraysum_size_mismatch_last_buffer():
     c = (ctypes.c_double * 3)(0.0, 0.0, 0.0)  # wrong size
 
     if not _IS_FREE_THREADED:
-        ra0 = refcount(a); rb0 = refcount(b); rc0 = refcount(c)
+        ra0 = refcount(a)
+        rb0 = refcount(b)
+        rc0 = refcount(c)
 
     try:
         arraysum.array_sum(a, b, c)
@@ -104,7 +111,9 @@ def test_arraysum_size_mismatch_last_buffer():
         pass
 
     if not _IS_FREE_THREADED:
-        ra1 = refcount(a); rb1 = refcount(b); rc1 = refcount(c)
+        ra1 = refcount(a)
+        rb1 = refcount(b)
+        rc1 = refcount(c)
         assert ra1 == ra0, "a refcount: %d -> %d (leak!)" % (ra0, ra1)
         assert rb1 == rb0, "b refcount: %d -> %d (leak!)" % (rb0, rb1)
         assert rc1 == rc0, "c refcount: %d -> %d (leak!)" % (rc0, rc1)
@@ -115,7 +124,7 @@ def test_arraysum_size_mismatch_last_buffer():
 
 def test_arraysum_success_refcounts():
     """3 buffers all correct: refcounts must return to baseline after call."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
@@ -140,7 +149,7 @@ def test_arraysum_success_refcounts():
 
 def test_arraysum_repeated_success_loop():
     """10000 calls with 3 buffers -- verify refcount stability each time."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
@@ -158,8 +167,7 @@ def test_arraysum_repeated_success_loop():
             rb = refcount(b)
             rc = refcount(c)
             if ra != ra0 or rb != rb0 or rc != rc0:
-                print("  FAIL at iter %d: a=%d->%d b=%d->%d c=%d->%d" % (
-                    i, ra0, ra, rb0, rb, rc0, rc))
+                print("  FAIL at iter %d: a=%d->%d b=%d->%d c=%d->%d" % (i, ra0, ra, rb0, rb, rc0, rc))
                 return False
 
     ra1 = refcount(a)
@@ -173,7 +181,7 @@ def test_arraysum_repeated_success_loop():
 
 def test_arraysum_alias_detection_refcounts():
     """Alias detection (c2py wraps around writable buffers that alias)."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     # arraysum writes to r. If r aliases a or b, should error.
@@ -182,7 +190,8 @@ def test_arraysum_alias_detection_refcounts():
     r = a  # r IS a (alias)
 
     if not _IS_FREE_THREADED:
-        ra0 = refcount(a); rb0 = refcount(b)
+        ra0 = refcount(a)
+        rb0 = refcount(b)
 
     try:
         arraysum.array_sum(a, b, r)
@@ -191,7 +200,8 @@ def test_arraysum_alias_detection_refcounts():
         pass
 
     if not _IS_FREE_THREADED:
-        ra1 = refcount(a); rb1 = refcount(b)
+        ra1 = refcount(a)
+        rb1 = refcount(b)
         assert ra1 == ra0, "a refcount: %d -> %d (alias leak!)" % (ra0, ra1)
         assert rb1 == rb0, "b refcount: %d -> %d (alias leak!)" % (rb0, rb1)
 
@@ -204,7 +214,7 @@ def test_zero_length_buffer():
     if sys.version_info[0] < 3:
         print("SKIP: zero-length buffer (Python 2.7 old buffer protocol differs)")
         return
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 0)()
@@ -217,7 +227,7 @@ def test_zero_length_buffer():
 
 def test_two_read_only_overlap():
     """Two read-only input buffers may overlap (not flagged as alias)."""
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
     import arraysum
 
     a = (ctypes.c_double * 4)(1.0, 2.0, 3.0, 4.0)
@@ -228,19 +238,20 @@ def test_two_read_only_overlap():
     print("PASS: read-only overlap allowed")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     results = []
     for name in sorted(globals()):
-        if name.startswith('test_'):
+        if name.startswith("test_"):
             try:
                 globals()[name]()
-                results.append(('PASS', name))
+                results.append(("PASS", name))
             except Exception as e:
-                results.append(('FAIL', name + ': ' + str(e)))
+                results.append(("FAIL", name + ": " + str(e)))
                 import traceback
+
                 traceback.print_exc()
 
-    passed = sum(1 for r, _ in results if r == 'PASS')
+    passed = sum(1 for r, _ in results if r == "PASS")
     total = len(results)
-    print('\nResults: %d/%d passed' % (passed, total))
+    print("\nResults: %d/%d passed" % (passed, total))
     sys.exit(0 if passed == total else 1)

@@ -2,6 +2,7 @@
 
 These require built .so files (from run_tests.sh or manual c2py23 build).
 """
+
 from __future__ import print_function
 
 import sys
@@ -14,7 +15,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_CASES_DIR = os.path.join(SCRIPT_DIR, 'cases')
+_CASES_DIR = os.path.join(SCRIPT_DIR, "cases")
 
 
 def _setup_mod_path(name):
@@ -39,9 +40,10 @@ def _reimport(name):
 
 # ---- Task R: re-import cycle tests ----
 
+
 def test_reimport_arraysum():
     """Import -> delete -> gc -> re-import x 10 cycles with call between each."""
-    mod_name = 'arraysum'
+    mod_name = "arraysum"
     _setup_mod_path(mod_name)
     try:
         mod = __import__(mod_name)
@@ -67,8 +69,8 @@ def test_reimport_arraysum():
 
 def test_reimport_fill():
     """Re-import a module with type dispatch (when: conditions)."""
-    mod_name = 'fillmod'
-    _setup_mod_path('fill')
+    mod_name = "fillmod"
+    _setup_mod_path("fill")
     try:
         mod = __import__(mod_name)
         arr = (ctypes.c_float * 6)(0, 0, 0, 0, 0, 0)
@@ -82,13 +84,13 @@ def test_reimport_fill():
 
         print("PASS: reimport_fill")
     finally:
-        _teardown_mod_path('fill')
+        _teardown_mod_path("fill")
 
 
 def test_reimport_scalar_output():
     """Re-import a module with output scalars (outputs: syntax)."""
-    mod_name = 'statmod'
-    _setup_mod_path('scalar_output')
+    mod_name = "statmod"
+    _setup_mod_path("scalar_output")
     try:
         mod = __import__(mod_name)
         data = (ctypes.c_double * 5)(3.0, 1.0, 4.0, 1.0, 5.0)
@@ -103,14 +105,15 @@ def test_reimport_scalar_output():
         assert len(result) == 2
         print("PASS: reimport_scalar_output")
     finally:
-        _teardown_mod_path('scalar_output')
+        _teardown_mod_path("scalar_output")
 
 
 # ---- Task S: concurrent import tests ----
 
+
 def test_concurrent_import_arraysum():
     """Multiple threads importing the same module simultaneously."""
-    mod_name = 'arraysum'
+    mod_name = "arraysum"
     _setup_mod_path(mod_name)
     try:
         n_threads = 10
@@ -136,8 +139,7 @@ def test_concurrent_import_arraysum():
         del sys.modules[mod_name]
         gc.collect()
 
-        threads = [threading.Thread(target=worker, args=(i,))
-                   for i in range(n_threads)]
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
         for t in threads:
             t.start()
         for t in threads:
@@ -154,8 +156,8 @@ def test_concurrent_import_arraysum():
 
 def test_concurrent_import_fill():
     """Concurrent import of a type-dispatch module from multiple threads."""
-    mod_name = 'fillmod'
-    _setup_mod_path('fill')
+    mod_name = "fillmod"
+    _setup_mod_path("fill")
     try:
         n_threads = 10
         results = {}
@@ -178,8 +180,7 @@ def test_concurrent_import_fill():
         del sys.modules[mod_name]
         gc.collect()
 
-        threads = [threading.Thread(target=worker, args=(i,))
-                   for i in range(n_threads)]
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
         for t in threads:
             t.start()
         for t in threads:
@@ -192,10 +193,11 @@ def test_concurrent_import_fill():
 
         print("PASS: concurrent_import_fill")
     finally:
-        _teardown_mod_path('fill')
+        _teardown_mod_path("fill")
 
 
 # ---- Task Q: subinterpreter test (Python 3.12+) ----
+
 
 def test_subinterpreter_basic():
     """Verify that subinterpreter import of c2py23 modules fails (3.12+).
@@ -219,7 +221,7 @@ def test_subinterpreter_basic():
         print("SKIP: subinterpreter_basic (_xxsubinterpreters not available)")
         return
 
-    mod_name = 'arraysum'
+    mod_name = "arraysum"
     _setup_mod_path(mod_name)
     try:
         interpid = _interpreters.create()
@@ -253,7 +255,7 @@ def test_subinterpreter_multiple():
         print("SKIP: subinterpreter_multiple (_xxsubinterpreters not available)")
         return
 
-    mod_name = 'arraysum'
+    mod_name = "arraysum"
     _setup_mod_path(mod_name)
     try:
         for _ in range(5):
@@ -277,11 +279,13 @@ else:
 
 # ---- Task P: exception path stress tests ----
 
+
 def test_exception_partial_buffer():
     """When acquisition of buffer 2/3 fails, verify buffer 1 is released."""
-    sys.path.insert(0, os.path.join(_CASES_DIR, 'arraysum'))
+    sys.path.insert(0, os.path.join(_CASES_DIR, "arraysum"))
     try:
         import arraysum
+
         a = (ctypes.c_double * 4)(1, 2, 3, 4)
         b = (ctypes.c_double * 4)(5, 6, 7, 8)
         c = (ctypes.c_float * 4)(0, 0, 0, 0)  # wrong format for c
@@ -294,14 +298,15 @@ def test_exception_partial_buffer():
                 pass
         print("PASS: exception_partial_buffer")
     finally:
-        sys.path.remove(os.path.join(_CASES_DIR, 'arraysum'))
+        sys.path.remove(os.path.join(_CASES_DIR, "arraysum"))
 
 
 def test_exception_overload_failure():
     """No overload matches -> default_raise or generic error."""
-    sys.path.insert(0, os.path.join(_CASES_DIR, 'transform'))
+    sys.path.insert(0, os.path.join(_CASES_DIR, "transform"))
     try:
         import xfrm
+
         # Pass 1D arrays to a function that only has 2D shape dispatch (N,3) or (3,N)
         arr = (ctypes.c_double * 6)(1, 2, 3, 4, 5, 6)
         out = (ctypes.c_double * 6)(0, 0, 0, 0, 0, 0)
@@ -314,14 +319,15 @@ def test_exception_overload_failure():
                 pass
         print("PASS: exception_overload_failure")
     finally:
-        sys.path.remove(os.path.join(_CASES_DIR, 'transform'))
+        sys.path.remove(os.path.join(_CASES_DIR, "transform"))
 
 
 def test_exception_alias_detection():
     """Writable buffer alias detection must be stable over repeated calls."""
-    sys.path.insert(0, os.path.join(_CASES_DIR, 'arraysum'))
+    sys.path.insert(0, os.path.join(_CASES_DIR, "arraysum"))
     try:
         import arraysum as m
+
         a = (ctypes.c_double * 4)(1, 2, 3, 4)
 
         for i in range(100):
@@ -332,24 +338,25 @@ def test_exception_alias_detection():
                 pass
         print("PASS: exception_alias_detection")
     finally:
-        sys.path.remove(os.path.join(_CASES_DIR, 'arraysum'))
+        sys.path.remove(os.path.join(_CASES_DIR, "arraysum"))
 
 
 # ---- Runner ----
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     results = []
     for name in sorted(globals()):
-        if name.startswith('test_'):
+        if name.startswith("test_"):
             try:
                 globals()[name]()
-                results.append(('PASS', name))
+                results.append(("PASS", name))
             except Exception as e:
-                results.append(('FAIL', name + ': ' + str(e)))
+                results.append(("FAIL", name + ": " + str(e)))
                 import traceback
+
                 traceback.print_exc()
 
-    passed = sum(1 for r, _ in results if r == 'PASS')
+    passed = sum(1 for r, _ in results if r == "PASS")
     total = len(results)
-    print('\nResults: %d/%d passed' % (passed, total))
+    print("\nResults: %d/%d passed" % (passed, total))
     sys.exit(0 if passed == total else 1)

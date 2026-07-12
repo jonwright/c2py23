@@ -4,6 +4,7 @@ Usage:
     c2py23 build foo.c2py [-o foo.so] [--asan] [--generate-only] [--compile-only [--source s.c ...] [--include d/ ...]]
     c2py23 generate foo.c2py [-o wrapper.c]
 """
+
 from __future__ import print_function
 
 import sys
@@ -30,13 +31,14 @@ def _generate_wrapper(c2py_path, output_path=None):
     if output_path:
         wrapper_path = output_path
     else:
-        wrapper_c = mod_name + '_wrapper.c'
-        wrapper_path = os.path.join(os.path.dirname(c2py_path) or '.', wrapper_c)
+        wrapper_c = mod_name + "_wrapper.c"
+        wrapper_path = os.path.join(os.path.dirname(c2py_path) or ".", wrapper_c)
 
     from c2py23.generator import generate as _gen
+
     c_code = _gen(module_def)
     try:
-        with open(wrapper_path, 'w') as f:
+        with open(wrapper_path, "w") as f:
             f.write(c_code)
     except IOError as e:
         sys.exit("Error writing {}: {}".format(wrapper_path, e))
@@ -83,8 +85,8 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
 def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False):
     """Compile a wrapper .c file (plus runtime and user sources) to a .so/.pyd."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    runtime_dir = os.path.join(script_dir, 'runtime')
-    runtime_c = os.path.join(runtime_dir, 'c2py_runtime.c')
+    runtime_dir = os.path.join(script_dir, "runtime")
+    runtime_c = os.path.join(runtime_dir, "c2py_runtime.c")
 
     all_sources = [runtime_c, wrapper_path] + list(source_files)
     for src_path in all_sources:
@@ -94,65 +96,64 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 
     all_includes = [runtime_dir] + list(include_dirs)
 
-    is_win = sys.platform == 'win32'
+    is_win = sys.platform == "win32"
 
     if is_win:
-        cc = os.environ.get('CC', '')
+        cc = os.environ.get("CC", "")
         if not cc:
-            cc = _find_msvc() or 'gcc'
-        if cc == 'cl' or cc.endswith('cl.exe') or cc.endswith('cl'):
+            cc = _find_msvc() or "gcc"
+        if cc == "cl" or cc.endswith("cl.exe") or cc.endswith("cl"):
             is_msvc = True
         else:
             is_msvc = False
     else:
-        cc = os.environ.get('CC', 'gcc')
+        cc = os.environ.get("CC", "gcc")
         is_msvc = False
 
     if is_msvc:
-        _default_cflags = '/W4'
+        _default_cflags = "/W4"
     else:
-        _default_cflags = '-Wall -Werror -Wpointer-arith'
-    cflags = [f for f in os.environ.get('CFLAGS', _default_cflags).split() if f]
-    ldflags = [f for f in os.environ.get('LDFLAGS', '').split() if f]
+        _default_cflags = "-Wall -Werror -Wpointer-arith"
+    cflags = [f for f in os.environ.get("CFLAGS", _default_cflags).split() if f]
+    ldflags = [f for f in os.environ.get("LDFLAGS", "").split() if f]
 
     if asan:
         if is_msvc:
-            cflags.append('/fsanitize=address')
+            cflags.append("/fsanitize=address")
         else:
-            cflags.append('-fsanitize=address')
-            cflags.append('-g')
-            cflags.append('-O1')
-            ldflags.append('-fsanitize=address')
+            cflags.append("-fsanitize=address")
+            cflags.append("-g")
+            cflags.append("-O1")
+            ldflags.append("-fsanitize=address")
         print("  [ASan enabled]")
 
     if is_win:
-        default_libs = '-lkernel32' if not is_msvc else ''
-        libs = os.environ.get('LIBS', default_libs).split()
+        default_libs = "-lkernel32" if not is_msvc else ""
+        libs = os.environ.get("LIBS", default_libs).split()
         libs = [l for l in libs if l]
     else:
-        libs = os.environ.get('LIBS', '-ldl -lm').split()
+        libs = os.environ.get("LIBS", "-ldl -lm").split()
 
     if is_msvc:
         include_flags = []
         for d in all_includes:
-            include_flags.extend(['/I', d])
-        cmd = [cc, '/nologo', '/LD'] + cflags + include_flags + all_sources
-        cmd += libs + ['/Fe' + output_so]
+            include_flags.extend(["/I", d])
+        cmd = [cc, "/nologo", "/LD"] + cflags + include_flags + all_sources
+        cmd += libs + ["/Fe" + output_so]
     elif is_win:
         include_flags = []
         for d in all_includes:
-            include_flags.extend(['-I', d])
-        cmd = [cc, '-shared'] + include_flags + cflags + all_sources
-        cmd += ldflags + libs + ['-o', output_so]
+            include_flags.extend(["-I", d])
+        cmd = [cc, "-shared"] + include_flags + cflags + all_sources
+        cmd += ldflags + libs + ["-o", output_so]
     else:
         include_flags = []
         for d in all_includes:
-            include_flags.extend(['-I', d])
-        cmd = ([cc, '-shared', '-fPIC'] + include_flags + cflags +
-               all_sources + ldflags + libs + ['-o', output_so])
+            include_flags.extend(["-I", d])
+        cmd = [cc, "-shared", "-fPIC"] + include_flags + cflags + all_sources + ldflags + libs + ["-o", output_so]
 
     print("Compiling {}...".format(output_so))
-    print("  " + ' '.join(cmd))
+    print("  " + " ".join(cmd))
     ret = subprocess.call(cmd)
     if ret != 0:
         print("ERROR: compilation failed", file=sys.stderr)
@@ -164,8 +165,8 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 def _find_msvc():
     """Find MSVC cl.exe in PATH or standard VS install locations.
     Returns path string or None."""
-    for candidate in ['cl', 'cl.exe']:
-        for path in os.environ.get('PATH', '').split(os.pathsep):
+    for candidate in ["cl", "cl.exe"]:
+        for path in os.environ.get("PATH", "").split(os.pathsep):
             full = os.path.join(path, candidate)
             if os.path.isfile(full):
                 return candidate
@@ -176,7 +177,7 @@ def _determine_so_path(output_arg, default_name, base_dir):
     """Determine the .so/.pyd output path."""
     if output_arg:
         return output_arg
-    ext = '.pyd' if sys.platform == 'win32' else '.so'
+    ext = ".pyd" if sys.platform == "win32" else ".so"
     return os.path.join(base_dir, default_name + ext)
 
 
@@ -185,16 +186,19 @@ def cmd_build(args):
     c2py_path = args.file
 
     # --generate-only: stop after writing wrapper .c
-    if getattr(args, 'generate_only', False):
+    if getattr(args, "generate_only", False):
         wrapper_path, _ = _generate_wrapper(c2py_path, args.output)
         print("Wrapper written to: {}".format(wrapper_path))
         return
 
     # --compile-only: skip parse+generate, compile existing wrapper.c
-    if getattr(args, 'compile_only', False):
+    if getattr(args, "compile_only", False):
         wrapper_path = c2py_path
         if not os.path.exists(wrapper_path):
-            print("ERROR: wrapper file not found: {}".format(wrapper_path), file=sys.stderr)
+            print(
+                "ERROR: wrapper file not found: {}".format(wrapper_path),
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         source_files = args.source or []
@@ -204,11 +208,15 @@ def cmd_build(args):
         include_dirs = [os.path.abspath(d) for d in include_dirs]
 
         base = os.path.splitext(os.path.basename(wrapper_path))[0]
-        so_base = base.replace('_wrapper', '')
-        output_so = _determine_so_path(args.output, so_base,
-                                        os.path.dirname(wrapper_path) or '.')
-        _compile_wrapper(wrapper_path, source_files, include_dirs, output_so,
-                          asan=getattr(args, 'asan', False))
+        so_base = base.replace("_wrapper", "")
+        output_so = _determine_so_path(args.output, so_base, os.path.dirname(wrapper_path) or ".")
+        _compile_wrapper(
+            wrapper_path,
+            source_files,
+            include_dirs,
+            output_so,
+            asan=getattr(args, "asan", False),
+        )
         return
 
     # Normal build: parse + generate + compile
@@ -221,8 +229,13 @@ def cmd_build(args):
 
     output_so = _determine_so_path(args.output, module_def.name, base_dir)
 
-    _compile_wrapper(wrapper_path, source_files, include_dirs, output_so,
-                      asan=getattr(args, 'asan', False))
+    _compile_wrapper(
+        wrapper_path,
+        source_files,
+        include_dirs,
+        output_so,
+        asan=getattr(args, "asan", False),
+    )
 
 
 def cmd_generate(args):
@@ -230,36 +243,56 @@ def cmd_generate(args):
     wrapper_path, _ = _generate_wrapper(args.file, args.output)
     print("Wrapper written to: %s" % wrapper_path)
 
-def _add_build_parser(sub):
-    build_p = sub.add_parser('build', help='Build a .so from a .c2py file')
-    build_p.add_argument('file', help='Path to .c2py interface file')
-    build_p.add_argument('-o', '--output', help='Output .so path (or wrapper .c path with --generate-only)')
 
-    build_p.add_argument('--asan', action='store_true',
-                          help='Compile with -fsanitize=address '
-                               '(detects buffer overflows, leaks, use-after-free)')
-    build_p.add_argument('--generate-only', action='store_true',
-                          help='Generate wrapper .c only, do not compile')
-    build_p.add_argument('--compile-only', action='store_true',
-                          help='Compile an existing wrapper .c file (skip parse+generate)')
-    build_p.add_argument('-s', '--source', action='append',
-                          help='User C source files (repeatable, for --compile-only)')
-    build_p.add_argument('-I', '--include', action='append',
-                          help='Include directories (repeatable, for --compile-only)')
+def _add_build_parser(sub):
+    build_p = sub.add_parser("build", help="Build a .so from a .c2py file")
+    build_p.add_argument("file", help="Path to .c2py interface file")
+    build_p.add_argument(
+        "-o",
+        "--output",
+        help="Output .so path (or wrapper .c path with --generate-only)",
+    )
+
+    build_p.add_argument(
+        "--asan",
+        action="store_true",
+        help="Compile with -fsanitize=address " "(detects buffer overflows, leaks, use-after-free)",
+    )
+    build_p.add_argument(
+        "--generate-only",
+        action="store_true",
+        help="Generate wrapper .c only, do not compile",
+    )
+    build_p.add_argument(
+        "--compile-only",
+        action="store_true",
+        help="Compile an existing wrapper .c file (skip parse+generate)",
+    )
+    build_p.add_argument(
+        "-s",
+        "--source",
+        action="append",
+        help="User C source files (repeatable, for --compile-only)",
+    )
+    build_p.add_argument(
+        "-I",
+        "--include",
+        action="append",
+        help="Include directories (repeatable, for --compile-only)",
+    )
     build_p.set_defaults(func=cmd_build)
 
 
 def _add_generate_parser(sub):
-    gen_p = sub.add_parser('generate', help='Generate wrapper .c from .c2py (no compilation)')
-    gen_p.add_argument('file', help='Path to .c2py interface file')
-    gen_p.add_argument('-o', '--output', help='Output wrapper .c path')
+    gen_p = sub.add_parser("generate", help="Generate wrapper .c from .c2py (no compilation)")
+    gen_p.add_argument("file", help="Path to .c2py interface file")
+    gen_p.add_argument("-o", "--output", help="Output wrapper .c path")
     gen_p.set_defaults(func=cmd_generate)
 
 
 def main():
-    parser = argparse.ArgumentParser(prog='c2py23',
-                                      description='Wrap C99 code to Python via the buffer protocol')
-    sub = parser.add_subparsers(dest='command', help='Commands')
+    parser = argparse.ArgumentParser(prog="c2py23", description="Wrap C99 code to Python via the buffer protocol")
+    sub = parser.add_subparsers(dest="command", help="Commands")
 
     _add_build_parser(sub)
     _add_generate_parser(sub)
@@ -271,5 +304,5 @@ def main():
     args.func(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

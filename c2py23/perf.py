@@ -27,25 +27,25 @@ Usage::
     # Reset counters between benchmark batches:
     reset_perf(my_timed_module.wsum)
 """
+
 from __future__ import print_function
 
 import array
 import sys
 
-
 # ---- Layout constants for the uint64 buffer ----
-_I_CALL_COUNT    = 0
-_I_T_ENTER       = 1
-_I_T_PRE_C       = 2
-_I_T_POST_C      = 3
-_I_T_EXIT        = 4
-_I_T_C_MIN       = 5
-_I_T_C_MAX       = 6
-_I_T_C_TOTAL     = 7
-_I_T_WRAP_MIN    = 8
-_I_T_WRAP_MAX    = 9
-_I_T_WRAP_TOTAL  = 10
-_N_FIELDS        = 11
+_I_CALL_COUNT = 0
+_I_T_ENTER = 1
+_I_T_PRE_C = 2
+_I_T_POST_C = 3
+_I_T_EXIT = 4
+_I_T_C_MIN = 5
+_I_T_C_MAX = 6
+_I_T_C_TOTAL = 7
+_I_T_WRAP_MIN = 8
+_I_T_WRAP_MAX = 9
+_I_T_WRAP_TOTAL = 10
+_N_FIELDS = 11
 
 
 def _get_mod(func):
@@ -55,10 +55,10 @@ def _get_mod(func):
     On Python 2.7, ``PyCFunction`` has no ``__self__``, so we fall back
     to ``func.__module__`` and look it up in ``sys.modules``.
     """
-    mod = getattr(func, '__self__', None)
+    mod = getattr(func, "__self__", None)
     if mod is not None:
         return mod
-    modname = getattr(func, '__module__', None)
+    modname = getattr(func, "__module__", None)
     if modname:
         return sys.modules[modname]
     return None
@@ -72,8 +72,8 @@ def _make_perf_buf():
     is unavailable; we use ``bytearray`` instead and decode elements
     via ``struct.unpack_from``.
     """
-    if hasattr(array, 'typecodes') and 'Q' in array.typecodes:
-        return array.array('Q', [0] * _N_FIELDS)
+    if hasattr(array, "typecodes") and "Q" in array.typecodes:
+        return array.array("Q", [0] * _N_FIELDS)
     return bytearray(_N_FIELDS * 8)
 
 
@@ -82,7 +82,8 @@ def _read_buf(buf, idx):
     if isinstance(buf, array.array):
         return buf[idx]
     import struct
-    return struct.unpack_from('<Q', str(buf), idx * 8)[0]
+
+    return struct.unpack_from("<Q", str(buf), idx * 8)[0]
 
 
 def _to_ns(ticks, freq_hz):
@@ -113,16 +114,16 @@ def _get_perf_ptr(func, variant=None):
     mod = _get_mod(func)
 
     if variant is True:
-        attr = '_c2py_active_ptr_' + name
+        attr = "_c2py_active_ptr_" + name
         if hasattr(mod, attr):
             return getattr(mod, attr)
-        return getattr(mod, '_c2py_perf_ptr_' + name)
+        return getattr(mod, "_c2py_perf_ptr_" + name)
 
     if isinstance(variant, str):
-        attr = '_c2py_ol_ptr_{0}__{1}'.format(name, variant)
+        attr = "_c2py_ol_ptr_{0}__{1}".format(name, variant)
         return getattr(mod, attr)
 
-    return getattr(mod, '_c2py_perf_ptr_' + name)
+    return getattr(mod, "_c2py_perf_ptr_" + name)
 
 
 def read_perf(func, freq_hz=None, variant=None):
@@ -173,48 +174,47 @@ def read_perf(func, freq_hz=None, variant=None):
     variant_val, group_idx, vname = mod._c2py_perf_meta(ptr)
 
     n = _read_buf(buf, _I_CALL_COUNT)
-    t_enter   = _read_buf(buf, _I_T_ENTER)
-    t_pre_c   = _read_buf(buf, _I_T_PRE_C)
-    t_post_c  = _read_buf(buf, _I_T_POST_C)
-    t_exit    = _read_buf(buf, _I_T_EXIT)
-    t_c_min   = _read_buf(buf, _I_T_C_MIN)
-    t_c_max   = _read_buf(buf, _I_T_C_MAX)
+    t_enter = _read_buf(buf, _I_T_ENTER)
+    t_pre_c = _read_buf(buf, _I_T_PRE_C)
+    t_post_c = _read_buf(buf, _I_T_POST_C)
+    t_exit = _read_buf(buf, _I_T_EXIT)
+    t_c_min = _read_buf(buf, _I_T_C_MIN)
+    t_c_max = _read_buf(buf, _I_T_C_MAX)
     t_c_total = _read_buf(buf, _I_T_C_TOTAL)
-    t_w_min   = _read_buf(buf, _I_T_WRAP_MIN)
-    t_w_max   = _read_buf(buf, _I_T_WRAP_MAX)
+    t_w_min = _read_buf(buf, _I_T_WRAP_MIN)
+    t_w_max = _read_buf(buf, _I_T_WRAP_MAX)
     t_w_total = _read_buf(buf, _I_T_WRAP_TOTAL)
 
     c_dur = t_post_c - t_pre_c
-    wrap_dur = (t_pre_c - t_enter) + (t_exit - t_post_c) \
-               if t_enter or t_exit else 0
+    wrap_dur = (t_pre_c - t_enter) + (t_exit - t_post_c) if t_enter or t_exit else 0
 
     result = {
         "call_count": n,
-        "t_enter":    t_enter,
-        "t_pre_c":    t_pre_c,
-        "t_post_c":   t_post_c,
-        "t_exit":     t_exit,
-        "c_dur_ns":   _to_ns(c_dur, freq_hz),
+        "t_enter": t_enter,
+        "t_pre_c": t_pre_c,
+        "t_post_c": t_post_c,
+        "t_exit": t_exit,
+        "c_dur_ns": _to_ns(c_dur, freq_hz),
         "wrap_dur_ns": _to_ns(wrap_dur, freq_hz),
-        "c_min_ns":   _to_ns(t_c_min, freq_hz),
-        "c_max_ns":   _to_ns(t_c_max, freq_hz),
-        "c_mean_ns":  _to_ns(t_c_total / float(n), freq_hz) if n else 0,
-        "wrap_min_ns":  _to_ns(t_w_min, freq_hz),
-        "wrap_max_ns":  _to_ns(t_w_max, freq_hz),
+        "c_min_ns": _to_ns(t_c_min, freq_hz),
+        "c_max_ns": _to_ns(t_c_max, freq_hz),
+        "c_mean_ns": _to_ns(t_c_total / float(n), freq_hz) if n else 0,
+        "wrap_min_ns": _to_ns(t_w_min, freq_hz),
+        "wrap_max_ns": _to_ns(t_w_max, freq_hz),
         "wrap_mean_ns": _to_ns(t_w_total / float(n), freq_hz) if n else 0,
-        "variant":    variant_val,
-        "group_idx":  group_idx,
+        "variant": variant_val,
+        "group_idx": group_idx,
         "variant_name": vname,
     }
 
     if freq_hz is not None and freq_hz != 0 and freq_hz != 1000000000:
-        result["c_dur_cycles"]   = c_dur
+        result["c_dur_cycles"] = c_dur
         result["wrap_dur_cycles"] = wrap_dur
-        result["c_min_cycles"]   = t_c_min
-        result["c_max_cycles"]   = t_c_max
-        result["c_mean_cycles"]  = t_c_total / float(n) if n else 0
-        result["wrap_min_cycles"]  = t_w_min
-        result["wrap_max_cycles"]  = t_w_max
+        result["c_min_cycles"] = t_c_min
+        result["c_max_cycles"] = t_c_max
+        result["c_mean_cycles"] = t_c_total / float(n) if n else 0
+        result["wrap_min_cycles"] = t_w_min
+        result["wrap_max_cycles"] = t_w_max
         result["wrap_mean_cycles"] = t_w_total / float(n) if n else 0
 
     return result
