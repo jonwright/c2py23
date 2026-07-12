@@ -912,7 +912,12 @@ Takes `Py_buffer*` for each buffer param and C scalar values. Structure:
 
 ### `_wrapper` Function
 
-Takes `PyObject *self, *args, *kwargs` (standard CPython method). Structure:
+Takes `PyObject *self, PyObject *args` (METH_VARARGS, two parameters). The
+function pointer is cast to ``PyCFunction``, which expects exactly two
+parameters. Keyword arguments are not supported -- all parameters are
+positional-only, including those with default values. On Python 3.12+ a
+parallel ``_fastcall`` wrapper exists in a separate method table selected
+at init time. Structure:
 
 ```
 1. PyArg_ParseTuple -- extract Python objects and scalar values
