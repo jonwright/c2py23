@@ -40,7 +40,7 @@ jobs:
         run: pytest tests/ -v --durations=10 --tb=short
 
   test-linux-27:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
 
     steps:
@@ -48,15 +48,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Python 2.7
-        uses: actions/setup-python@v5
-        with:
-          python-version: "2.7"
+      - name: Install Python 2.7
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python2 python2-dev python3-virtualenv
+          virtualenv -p python2 ${HOME}/cp27
+          source ${HOME}/cp27/bin/activate
+          ${HOME}/cp27/bin/python -m pip install -U pip setuptools wheel
+          echo "${HOME}/cp27/bin" >> $GITHUB_PATH
 
       - name: Install c2py23 and test deps
         run: |
-          pip install -e . --quiet
-          pip install pytest PyYAML setuptools wheel --quiet
+          python -m pip install -e . --quiet
+          python -m pip install pytest PyYAML --quiet
 
       - name: Run tests
-        run: pytest tests/ -v --durations=10 --tb=short
+        run: python -m pytest tests/ -v --durations=10 --tb=short
