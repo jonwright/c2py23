@@ -1039,6 +1039,9 @@ def _emit_module_init(b, module_def, has_free_threading,
 
     # PyInit (Python 3)
     b.emit('C2PY_EXPORT PyObject* PyInit_{}(void) {{'.format(name))
+    b.emit('#ifdef _MSC_VER')
+    b.emit('    __try {')
+    b.emit('#endif')
     b.emit('    c2py_runtime_init();')
     for rc in resolve_calls:
         b.emit(rc)
@@ -1085,6 +1088,11 @@ def _emit_module_init(b, module_def, has_free_threading,
         b.emit('        }')
     b.emit('    }')
     b.emit('    return module;')
+    b.emit('#ifdef _MSC_VER')
+    b.emit('    } __except(c2py_seh_filter(GetExceptionCode(), GetExceptionInformation())) {')
+    b.emit('        return NULL;')
+    b.emit('    }')
+    b.emit('#endif')
     b.emit('}')
     b.emit('')
 

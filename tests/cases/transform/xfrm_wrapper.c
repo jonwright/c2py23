@@ -333,14 +333,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -393,14 +393,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -486,6 +486,9 @@ static PyModuleDef_FT _module_def_ft = {
 };
 
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
+#ifdef _MSC_VER
+    __try {
+#endif
     c2py_runtime_init();
 
     PyObject *module = NULL;
@@ -517,6 +520,11 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
     return module;
+#ifdef _MSC_VER
+    } __except(c2py_seh_filter(GetExceptionCode(), GetExceptionInformation())) {
+        return NULL;
+    }
+#endif
 }
 
 C2PY_EXPORT void initxfrm(void) {

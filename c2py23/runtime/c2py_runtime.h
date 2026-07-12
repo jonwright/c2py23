@@ -750,6 +750,17 @@ static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
 #endif
 
 /* ------------------------------------------------------------------ */
+/* SEH diagnostic for Windows FT crash investigation                  */
+/* ------------------------------------------------------------------ */
+#ifdef _MSC_VER
+#include <excpt.h>
+/* Wrap code that may crash with an access violation on free-threaded
+ * Windows builds.  Writes diagnostic info to stderr and a log file,
+ * then returns EXCEPTION_EXECUTE_HANDLER so the caller can exit cleanly. */
+int c2py_seh_filter(unsigned int code, struct _EXCEPTION_POINTERS *ep);
+#endif
+
+/* ------------------------------------------------------------------ */
 /* Init function                                                      */
 /* ------------------------------------------------------------------ */
 

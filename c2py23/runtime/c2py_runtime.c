@@ -845,3 +845,53 @@ int c2py_runtime_init(void)
     return _c2py_init_result;
 #endif
 }
+
+#ifdef _MSC_VER
+int c2py_seh_filter(unsigned int code, struct _EXCEPTION_POINTERS *ep)
+{
+    const char *name = "UNKNOWN";
+    switch (code) {
+    case EXCEPTION_ACCESS_VIOLATION:      name = "ACCESS_VIOLATION";      break;
+    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: name = "ARRAY_BOUNDS_EXCEEDED"; break;
+    case EXCEPTION_BREAKPOINT:            name = "BREAKPOINT";            break;
+    case EXCEPTION_DATATYPE_MISALIGNMENT: name = "DATATYPE_MISALIGNMENT"; break;
+    case EXCEPTION_FLT_DENORMAL_OPERAND:  name = "FLT_DENORMAL_OPERAND";  break;
+    case EXCEPTION_FLT_DIVIDE_BY_ZERO:    name = "FLT_DIVIDE_BY_ZERO";    break;
+    case EXCEPTION_FLT_INEXACT_RESULT:    name = "FLT_INEXACT_RESULT";    break;
+    case EXCEPTION_FLT_INVALID_OPERATION: name = "FLT_INVALID_OPERATION"; break;
+    case EXCEPTION_FLT_OVERFLOW:          name = "FLT_OVERFLOW";          break;
+    case EXCEPTION_FLT_STACK_CHECK:       name = "FLT_STACK_CHECK";       break;
+    case EXCEPTION_FLT_UNDERFLOW:         name = "FLT_UNDERFLOW";         break;
+    case EXCEPTION_ILLEGAL_INSTRUCTION:   name = "ILLEGAL_INSTRUCTION";   break;
+    case EXCEPTION_INT_DIVIDE_BY_ZERO:    name = "INT_DIVIDE_BY_ZERO";    break;
+    case EXCEPTION_INT_OVERFLOW:          name = "INT_OVERFLOW";          break;
+    case EXCEPTION_IN_PAGE_ERROR:         name = "IN_PAGE_ERROR";         break;
+    case EXCEPTION_STACK_OVERFLOW:        name = "STACK_OVERFLOW";        break;
+    }
+
+    /* Write to stderr */
+    fprintf(stderr, "\n=== c2py SEH crash dump ===\n");
+    fprintf(stderr, "Exception code: 0x%08X (%s)\n", code, name);
+    if (ep && ep->ExceptionRecord) {
+        fprintf(stderr, "Exception addr: %p\n",
+                ep->ExceptionRecord->ExceptionAddress);
+        fprintf(stderr, "Exception info[0]: %p\n",
+                (void*)(uintptr_t)ep->ExceptionRecord->ExceptionInformation[0]);
+        fprintf(stderr, "Exception info[1]: %p\n",
+                (void*)(uintptr_t)ep->ExceptionRecord->ExceptionInformation[1]);
+    }
+    if (ep && ep->ContextRecord) {
+        /* Dump key registers to identify the crash instruction */
+        CONTEXT *ctx = ep->ContextRecord;
+        fprintf(stderr, "RIP:  %p  RSP:  %p  RBP:  %p\n",
+                (void*)ctx->Rip, (void*)ctx->Rsp, (void*)ctx->Rbp);
+        fprintf(stderr, "RAX:  %p  RCX:  %p  RDX:  %p\n",
+                (void*)ctx->Rax, (void*)ctx->Rcx, (void*)ctx->Rdx);
+        fprintf(stderr, "R8:   %p  R9:   %p  R10:  %p\n",
+                (void*)ctx->R8, (void*)ctx->R9, (void*)ctx->R10);
+    }
+    fprintf(stderr, "=== end c2py SEH crash dump ===\n\n");
+    fflush(stderr);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
