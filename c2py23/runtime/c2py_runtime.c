@@ -426,6 +426,7 @@ static void _c2py_runtime_init_once(void)
     }
 
 #ifdef _WIN32
+    fprintf(stderr, "c2py init: step 1 (dll lookup)\n"); fflush(stderr);
     /* On Windows, python3.dll is the stable-ABI forwarder DLL (PEP 384).
      * It is loaded as a dependency of python3XX.dll, which in turn
      * loads this extension module.  python3.dll exports the limited
@@ -468,6 +469,7 @@ static void _c2py_runtime_init_once(void)
     }
 #endif
 
+    fprintf(stderr, "c2py init: step 2 (version detect)\n"); fflush(stderr);
     void *dl = C2PY.dl_handle;
 
     /* --- Detect Python version --- */
@@ -590,6 +592,7 @@ static void _c2py_runtime_init_once(void)
     }
 
     /* --- Buffer protocol (required) --- */
+    fprintf(stderr, "c2py init: step 3 (buffer protocol)\n"); fflush(stderr);
     RESOLVE_REQ(C2PY.GetBuffer, "PyObject_GetBuffer");
     RESOLVE_REQ(C2PY.ReleaseBuffer, "PyBuffer_Release");
     if (C2PY.GetBuffer == NULL || C2PY.ReleaseBuffer == NULL) return;
@@ -639,6 +642,7 @@ static void _c2py_runtime_init_once(void)
      * On FT,  offset 8 is ob_flags/mutex/gc_bits (small values).
      * This verifies/overrides the version-based FT detection above.
      */
+    fprintf(stderr, "c2py init: step 4 (PyObject probe)\n"); fflush(stderr);
     {
         PyObject *tmp = C2PY.Long_FromLong(1);
         if (tmp) {
@@ -690,6 +694,7 @@ static void _c2py_runtime_init_once(void)
         C2PY.exc_RuntimeError == NULL || C2PY.exc_MemoryError == NULL ||
         C2PY.Err_SetString    == NULL || C2PY.Err_Format      == NULL) return;
 
+    fprintf(stderr, "c2py init: step 5 (PyExc deref)\n"); fflush(stderr);
     /* One dereference is always needed to reach the real PyObject*:
      * - Pre-3.12: PyExc_* are PyObject* globals (heap type pointers).
      *   dlsym gives &PyExc_ValueError (a PyObject**). Deref -> PyObject*.
@@ -820,6 +825,7 @@ static void _c2py_runtime_init_once(void)
 
     _c2py_init_result = 0;
     _c2py_runtime_initialized = 1;
+    fprintf(stderr, "c2py init: step 99 (success)\n"); fflush(stderr);
 }
 #ifdef _MSC_VER
 #pragma warning(pop)
