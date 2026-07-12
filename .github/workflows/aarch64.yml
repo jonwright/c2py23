@@ -30,5 +30,8 @@ jobs:
           pip install -e . --quiet
           pip install pytest numpy PyYAML setuptools wheel --quiet
 
+      - name: ABI diagnostic
+        run: python tests/abi_list_dlls.py
+
       - name: Run tests
         run: pytest tests/ -v --durations=10 --tb=short

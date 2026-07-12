@@ -46,11 +46,9 @@ jobs:
 
       - name: ABI diagnostic (Python)
         if: matrix.python-version != '2.7'
-        run: python tests/abi_diag.py
-
-      - name: Dump loaded DLLs (Windows)
-        if: matrix.python-version != '2.7'
-        run: python tests/dump_loaded_dlls.py
+        run: |
+          python tests/abi_diag.py
+          python tests/abi_list_dlls.py
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1

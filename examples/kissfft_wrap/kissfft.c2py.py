@@ -10,6 +10,7 @@
         "../kissfft/kiss_fft.h",
         "../kissfft/kiss_fftr.h",
     ],
+    "free_threading": True,
     "functions": [
         {
             "py_sig": "rfft_forward(data: buffer, spec: buffer) -> void",
