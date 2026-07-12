@@ -28,6 +28,7 @@ if [ "$IS_FT" = "1" ]; then
     # directly using --break-system-packages.
     echo "Free-threaded Python detected -- skipping venv, installing directly"
     "$PYTHON" -m pip install --break-system-packages -e "$PROJECT_DIR" 2>&1 | tail -3
+    "$PYTHON" -m pip install --break-system-packages PyYAML pytest 2>&1 | tail -3
 else
     VENV_DIR="$SCRIPT_DIR/test_venv_${PYVER}"
     if [ ! -d "$VENV_DIR" ]; then
@@ -55,6 +56,7 @@ else
 
     echo "Installing c2py23..."
     pip install -e "$PROJECT_DIR" 2>&1 | tail -3
+    pip install PyYAML pytest 2>&1 | tail -3
 fi
 
 # Helper: run c2py23 build with the right python for FT vs normal
@@ -91,7 +93,10 @@ cd "$PROJECT_DIR/examples/simd_dispatch"
 gcc -c -O3 -Wall -Werror -fPIC -ffast-math -mavx512f -DKERNEL_FN=poly_f32_avx512 poly_kernel.c -o poly_f32_avx512.o
 gcc -c -O3 -Wall -Werror -fPIC -ffast-math -mavx2 -DKERNEL_FN=poly_f32_avx2 poly_kernel.c -o poly_f32_avx2.o
 gcc -c -O3 -Wall -Werror -fPIC -ffast-math -DKERNEL_FN=poly_f32_scalar poly_kernel.c -o poly_f32_scalar.o
-_c2py_build polysimd.c2py -o polysimd.so
+MACHINE=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/aarch64/;s/ppc64le/ppc64le/')
+mkdir -p polysimd
+rm -f polysimd/_polysimd.c2py23-*.so
+_c2py_build polysimd.c2py -o "polysimd/_polysimd.c2py23-linux_${MACHINE}.so"
 cd "$PROJECT_DIR"
 
 echo "  Building: threading_bench"
