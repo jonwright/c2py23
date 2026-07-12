@@ -17,11 +17,9 @@ from __future__ import print_function
 
 import sys
 import os
-import ctypes
 import warnings
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
-import pytest
 import numpy as np
 
 IS_PY3 = sys.version_info[0] >= 3

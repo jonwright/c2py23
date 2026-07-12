@@ -9,8 +9,6 @@ import os
 import sys
 import subprocess
 
-import pytest
-
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES_DIR = os.path.join(PROJECT_DIR, "tests", "cases")
 EXAMPLES_DIR = os.path.join(PROJECT_DIR, "examples")

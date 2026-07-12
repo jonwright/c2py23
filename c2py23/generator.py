@@ -7,12 +7,10 @@ output scalars with NULL checks and PyTuple_SetItem.
 """
 from __future__ import print_function
 
-import re
-
 from c2py23.parser import (
-    Var, Attr, Subscript, IntLit, StrLit, Compare, BinOp, UnaryOp,
-    PyParam, CParam, COverload, CVariant, FuncDef, ModuleDef,
-    _FORMAT_TO_CTYPE, _FORMAT_CHAR_TO_NAME,
+    Var, Attr, Subscript, IntLit, StrLit, Compare, BinOp,
+    COverload,
+    _FORMAT_CHAR_TO_NAME,
     _escape_c_str, _float_literal,
     _is_ptr_expr, _expr_is_count_or_len, _is_simple_expr,
     _expr_refers_to, _expr_to_c, _expr_to_source,

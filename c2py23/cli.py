@@ -12,7 +12,6 @@ import subprocess
 import argparse
 
 from c2py23.parser import load_c2py
-from c2py23.generator import generate
 
 
 def _generate_wrapper(c2py_path, output_path=None):
@@ -165,7 +164,6 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 def _find_msvc():
     """Find MSVC cl.exe in PATH or standard VS install locations.
     Returns path string or None."""
-    import platform as _plat
     for candidate in ['cl', 'cl.exe']:
         for path in os.environ.get('PATH', '').split(os.pathsep):
             full = os.path.join(path, candidate)

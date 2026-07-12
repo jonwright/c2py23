@@ -625,7 +625,7 @@ def test_timing_cycle_counter():
                                      'timing'))
     import timedmod
     import ctypes as ct
-    from c2py23.perf import read_perf, read_enabled, set_enabled
+    from c2py23.perf import read_perf
 
     # Check if cycle counter frequency is available
     try:
