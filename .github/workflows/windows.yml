@@ -48,6 +48,25 @@ jobs:
         if: matrix.python-version != '2.7'
         run: python tests/abi_diag.py
 
+      - name: Dump loaded DLLs (Windows)
+        if: matrix.python-version != '2.7'
+        run: python -c "
+import ctypes, ctypes.wintypes
+kernel32 = ctypes.windll.kernel32
+psapi = ctypes.windll.psapi
+hProcess = kernel32.GetCurrentProcess()
+modules = (ctypes.wintypes.HMODULE * 1024)()
+cbNeeded = ctypes.wintypes.DWORD()
+if psapi.EnumProcessModules(hProcess, modules, ctypes.sizeof(modules), ctypes.byref(cbNeeded)):
+    count = cbNeeded.value // ctypes.sizeof(ctypes.wintypes.HMODULE)
+    print(f'Loaded modules ({count}):')
+    for i in range(count):
+        name = ctypes.create_unicode_buffer(260)
+        psapi.GetModuleBaseNameW(hProcess, modules[i], name, 260)
+        if 'python' in name.value.lower():
+            print(f'  {name.value}')
+"
+
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -78,18 +97,11 @@ jobs:
           python -m pip install --only-binary=:all: "$url" --quiet 2>$null
         continue-on-error: true
 
-      - name: Run tests (stable 3.x)
-        if: matrix.python-version != '2.7' && matrix.python-version != '3.14t' && matrix.python-version != '3.15t'
+      - name: Run tests (3.x)
+        if: matrix.python-version != '2.7'
         env:
           CC: cl
         run: python -m pytest tests/ -v --durations=10 --tb=short
-
-      - name: Run tests (free-threaded 3.x -- known FT Windows crash, see #36)
-        if: matrix.python-version == '3.14t' || matrix.python-version == '3.15t'
-        env:
-          CC: cl
-        run: python -m pytest tests/ -v --durations=10 --tb=short
-        continue-on-error: true
 
       - name: Run tests (2.7)
         if: matrix.python-version == '2.7'
