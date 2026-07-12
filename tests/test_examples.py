@@ -3,6 +3,7 @@
 These are run by pytest.  The conftest.py fixture builds the .so files
 before any tests run.
 """
+
 from __future__ import print_function
 
 import ctypes
@@ -12,13 +13,11 @@ import math
 
 
 def test_kissfft_wrap():
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__),
-                     "..", "examples", "kissfft_wrap"))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples", "kissfft_wrap"))
     import kissfftmod
 
     N = 256
-    data = (ctypes.c_float * N)(
-        *[math.sin(2 * math.pi * 7 * i / N) for i in range(N)])
+    data = (ctypes.c_float * N)(*[math.sin(2 * math.pi * 7 * i / N) for i in range(N)])
     spec = (ctypes.c_float * (N + 2))()
 
     kissfftmod.rfft_forward(data, spec)
@@ -32,8 +31,7 @@ def test_kissfft_wrap():
 
 
 def test_lz4_wrap():
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__),
-                     "..", "examples", "lz4_wrap"))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples", "lz4_wrap"))
     import lz4mod
 
     IS_PY2 = sys.version_info[0] < 3
@@ -48,7 +46,8 @@ def test_lz4_wrap():
     out = (ctypes.c_uint8 * len(data))()
     buf_slice = dst[:compressed_size]
     buf = (ctypes.c_uint8 * compressed_size)(
-        *buf_slice if not IS_PY2 else [buf_slice[i] for i in range(compressed_size)])
+        *buf_slice if not IS_PY2 else [buf_slice[i] for i in range(compressed_size)]
+    )
     decompressed_size = lz4mod.decompress(buf, out)
     assert decompressed_size == len(data), "decompressed size mismatch"
 

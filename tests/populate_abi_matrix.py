@@ -4,6 +4,7 @@ snakepit container for all supported Python versions.
 
 Requires: snakepit containers in ../snakepit/ and Apptainer installed.
 """
+
 from __future__ import print_function
 
 import json
@@ -13,17 +14,17 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), 'snakepit')
-WORKSPACE_DIR = os.path.join(SCRIPT_DIR, 'test_workspace')
-MATRIX_FILE = os.path.join(SCRIPT_DIR, 'abi_matrix.json')
-CHECK_ABI_C = os.path.join(SCRIPT_DIR, 'check_abi.c')
+SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
+WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
+MATRIX_FILE = os.path.join(SCRIPT_DIR, "abi_matrix.json")
+CHECK_ABI_C = os.path.join(SCRIPT_DIR, "check_abi.c")
 
 PYTHON_VERSIONS = [
-    ("2.7",  "ubuntu20.04.sif"),
-    ("3.6",  "debian10.sif"),
-    ("3.7",  "ubuntu24.04.sif"),
-    ("3.8",  "ubuntu20.04.sif"),
-    ("3.9",  "ubuntu24.04.sif"),
+    ("2.7", "ubuntu20.04.sif"),
+    ("3.6", "debian10.sif"),
+    ("3.7", "ubuntu24.04.sif"),
+    ("3.8", "ubuntu20.04.sif"),
+    ("3.9", "ubuntu24.04.sif"),
     ("3.10", "ubuntu24.04.sif"),
     ("3.11", "ubuntu24.04.sif"),
     ("3.12", "ubuntu24.04.sif"),
@@ -38,19 +39,25 @@ def run_apptainer(sif_file, command):
     if not os.path.exists(sif_path):
         return 1, "", "SIF file not found: " + sif_path
     cmd = [
-        "apptainer", "exec", "-e",
-        "-B", WORKSPACE_DIR + ":/workspace",
-        "--pwd", "/workspace",
+        "apptainer",
+        "exec",
+        "-e",
+        "-B",
+        WORKSPACE_DIR + ":/workspace",
+        "--pwd",
+        "/workspace",
         sif_path,
-        "/bin/bash", "-c", command
+        "/bin/bash",
+        "-c",
+        command,
     ]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate()
         if isinstance(stdout, bytes):
-            stdout = stdout.decode('utf-8', errors='replace')
+            stdout = stdout.decode("utf-8", errors="replace")
         if isinstance(stderr, bytes):
-            stderr = stderr.decode('utf-8', errors='replace')
+            stderr = stderr.decode("utf-8", errors="replace")
         return proc.returncode, stdout, stderr
     except Exception as e:
         return 1, "", str(e)
@@ -58,6 +65,7 @@ def run_apptainer(sif_file, command):
 
 def prepare_workspace():
     import shutil
+
     if os.path.exists(WORKSPACE_DIR):
         shutil.rmtree(WORKSPACE_DIR)
     os.makedirs(WORKSPACE_DIR)
@@ -71,21 +79,21 @@ def collect_abi(python_version, sif_file):
     # Build and run inside container.
     # Most Python installations provide pythonX.Y-config; some (e.g. 3.14t
     # installed via uv) do not.  For those, fall back to sysconfig.
-    is_ft = python_version.endswith('t')
+    is_ft = python_version.endswith("t")
 
     if is_ft:
         # Use sysconfig to get include and library paths
         build_and_run = (
             "cd /workspace && "
-            "INCLUDE=$(%s -c \"import sysconfig; "
+            'INCLUDE=$(%s -c "import sysconfig; '
             " print(sysconfig.get_path('include'))\" 2>/dev/null) && "
-            "LIBDIR=$(%s -c \"import sysconfig; "
+            'LIBDIR=$(%s -c "import sysconfig; '
             " print(sysconfig.get_config_var('LIBDIR'))\" 2>/dev/null) && "
-            "LDLIB=$(%s -c \"import sysconfig; "
+            'LDLIB=$(%s -c "import sysconfig; '
             " print(sysconfig.get_config_var('LDLIBRARY'))\" 2>/dev/null) && "
             "LNAME=$(echo \"$LDLIB\" | sed 's/^lib\\(.*\\)\\.so.*$/\\1/') && "
-            "CFG=\"-I$INCLUDE -L$LIBDIR -Wl,-rpath,$LIBDIR -l$LNAME\" && "
-            "echo \"CFG=$CFG\" && "
+            'CFG="-I$INCLUDE -L$LIBDIR -Wl,-rpath,$LIBDIR -l$LNAME" && '
+            'echo "CFG=$CFG" && '
             "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
             "/tmp/check_abi 2>&1" % (py, py, py)
         )
@@ -95,7 +103,7 @@ def collect_abi(python_version, sif_file):
             "cd /workspace && "
             "CFG=$(echo $(%s-config --includes --ldflags 2>/dev/null)) && "
             "if echo \"$CFG\" | grep -qv -- '-lpython'; then "
-            "  CFG=\"$CFG -lpython%s\"; "
+            '  CFG="$CFG -lpython%s"; '
             "fi && "
             "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
             "/tmp/check_abi 2>&1" % (py, python_version)
@@ -109,7 +117,7 @@ def collect_abi(python_version, sif_file):
     # Parse output: CATEGORY label value
     entries = []
     pyver_full = None
-    for line in stdout.strip().split('\n'):
+    for line in stdout.strip().split("\n"):
         line = line.strip()
         if not line:
             continue
@@ -120,7 +128,7 @@ def collect_abi(python_version, sif_file):
         label = parts[1].strip()
         val = parts[2].strip() if len(parts) > 2 else ""
         if category == "PYVER":
-            pyver_full = line[len("PYVER "):]
+            pyver_full = line[len("PYVER ") :]
         entries.append((category, label, val))
 
     if pyver_full is None:
@@ -151,16 +159,16 @@ def main():
             abi_entry[category + "_" + label] = val
         matrix[arch][pyver] = {
             "python_version": entry["python_version"],
-            "abi": abi_entry
+            "abi": abi_entry,
         }
         print("  [OK] Python %s" % pyver)
 
     # Write output
-    with open(MATRIX_FILE, 'w') as f:
+    with open(MATRIX_FILE, "w") as f:
         json.dump(matrix, f, indent=2, sort_keys=True)
     print("\nABI matrix written to " + MATRIX_FILE)
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

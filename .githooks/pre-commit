@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# Pre-commit hook: regenerate transform wrapper when source files change.
+# Pre-commit hook: format with black, then regenerate transform wrapper
+# when source files change.
 #
-# Files that trigger a rebuild:
+# Files that trigger a wrapper rebuild:
 #   c2py23/parser.py  c2py23/generator.py  c2py23/runtime/*.h  c2py23/runtime/*.c
 #   tests/cases/transform/transform.c2py  tests/cases/transform/transform.c
 set -e
+
+# Format all staged Python files with black, then re-stage them
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+if [ -n "$STAGED_PY" ]; then
+    echo "$STAGED_PY" | xargs python3 -m black --config pyproject.toml 2>/dev/null || true
+    echo "$STAGED_PY" | xargs git add
+    echo "[pre-commit] Formatted staged .py files with black."
+fi
 
 WRAPPER="tests/cases/transform/xfrm_wrapper.c"
 TRIGGERS=(

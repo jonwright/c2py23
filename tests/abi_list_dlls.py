@@ -3,6 +3,7 @@
 Works on Linux (via /proc/self/maps) and Windows (via EnumProcessModules).
 Used by CI ABI diagnostic to confirm which CPython runtime is active.
 """
+
 from __future__ import print_function
 
 import os
@@ -12,26 +13,28 @@ import sys
 def _linux_list_libs():
     """Parse /proc/self/maps to find loaded .so files. Deduplicate."""
     seen = set()
-    if not os.path.exists('/proc/self/maps'):
+    if not os.path.exists("/proc/self/maps"):
         return ["ERROR: /proc/self/maps not found"]
 
     libs = []
-    with open('/proc/self/maps', 'r') as f:
+    with open("/proc/self/maps", "r") as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) >= 6:
                 path = parts[5]
-                if ('.so' in path or 'libpython' in path.lower()) and path not in seen:
+                if (".so" in path or "libpython" in path.lower()) and path not in seen:
                     seen.add(path)
                     libs.append(path)
     # Also try ldd on the python binary
     import subprocess
+
     try:
-        out = subprocess.check_output(['ldd', sys.executable],
-                                      stderr=subprocess.STDOUT).decode('utf-8', errors='replace')
-        for line in out.split('\n'):
-            lib = line.strip().split()[0] if line.strip() else ''
-            if lib and ('python' in lib.lower() or '.so' in lib) and lib not in seen:
+        out = subprocess.check_output(["ldd", sys.executable], stderr=subprocess.STDOUT).decode(
+            "utf-8", errors="replace"
+        )
+        for line in out.split("\n"):
+            lib = line.strip().split()[0] if line.strip() else ""
+            if lib and ("python" in lib.lower() or ".so" in lib) and lib not in seen:
                 seen.add(lib)
                 libs.append(lib)
     except Exception:
@@ -70,11 +73,8 @@ def _windows_list_dlls():
     modules = (wintypes.HMODULE * 4096)()
     cbNeeded = wintypes.DWORD()
 
-    if not psapi.EnumProcessModules(hProcess, modules,
-                                    ctypes.sizeof(modules),
-                                    ctypes.byref(cbNeeded)):
-        return ["ERROR: EnumProcessModules failed, err=%d" %
-                ctypes.get_last_error()]
+    if not psapi.EnumProcessModules(hProcess, modules, ctypes.sizeof(modules), ctypes.byref(cbNeeded)):
+        return ["ERROR: EnumProcessModules failed, err=%d" % ctypes.get_last_error()]
 
     count = cbNeeded.value // ctypes.sizeof(wintypes.HMODULE)
     names = []

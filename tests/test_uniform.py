@@ -5,6 +5,7 @@ docstring, constants, timing, scalar_output, template, typedispatch, gil_release
 Uses ctypes arrays (buffer protocol works on 2.7 and 3.x) + memoryview for shape.
 On Python 2.7, some tests are skipped due to old buffer protocol limitations.
 """
+
 from __future__ import print_function
 
 import sys
@@ -14,6 +15,7 @@ import ctypes
 
 try:
     import sysconfig
+
     _HAS_SYSCONFIG = True
 except ImportError:
     _HAS_SYSCONFIG = False
@@ -53,7 +55,7 @@ def _to_list(arr):
 
 def test_arraysum():
     """Test element-wise addition of double arrays."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'arraysum'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "arraysum"))
     import arraysum
 
     a = _double_array([1.0, 2.0, 3.0, 4.0])
@@ -70,7 +72,7 @@ def test_arraysum():
 
 def test_fill():
     """Test type dispatch: fill float vs double arrays."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'fill'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "fill"))
     import fillmod
 
     arr_f = _float_array([0.0, 0.0, 0.0, 0.0])
@@ -86,7 +88,7 @@ def test_fill():
 
 def test_dot():
     """Test type dispatch with scalar return: dot product float vs double."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'dot'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "dot"))
     import dotmod
 
     fa = _float_array([1.0, 2.0, 3.0])
@@ -108,25 +110,21 @@ def test_transform():
         print("SKIP: transform (2D memoryview.cast requires Python 3.x)")
         return
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'transform'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "transform"))
     import xfrm
 
-    pts_aos = _double_array([
-        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0
-    ])
+    pts_aos = _double_array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0])
     out = _zeros_double(12)
-    mv = memoryview(pts_aos).cast('B').cast('d', [4, 3])
-    mv_out = memoryview(out).cast('B').cast('d', [4, 3])
+    mv = memoryview(pts_aos).cast("B").cast("d", [4, 3])
+    mv_out = memoryview(out).cast("B").cast("d", [4, 3])
     xfrm.transform(mv, mv_out)
     expected_aos = [2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0]
     assert _to_list(out) == expected_aos, "AoS transform failed: %s" % _to_list(out)
 
-    pts_soa = _double_array([
-        1.0, 4.0, 7.0, 10.0, 2.0, 5.0, 8.0, 11.0, 3.0, 6.0, 9.0, 12.0
-    ])
+    pts_soa = _double_array([1.0, 4.0, 7.0, 10.0, 2.0, 5.0, 8.0, 11.0, 3.0, 6.0, 9.0, 12.0])
     out2 = _zeros_double(12)
-    mv2 = memoryview(pts_soa).cast('B').cast('d', [3, 4])
-    mv_out2 = memoryview(out2).cast('B').cast('d', [3, 4])
+    mv2 = memoryview(pts_soa).cast("B").cast("d", [3, 4])
+    mv_out2 = memoryview(out2).cast("B").cast("d", [3, 4])
     xfrm.transform(mv2, mv_out2)
     expected_soa = [2.0, 8.0, 14.0, 20.0, 4.0, 10.0, 16.0, 22.0, 6.0, 12.0, 18.0, 24.0]
     assert _to_list(out2) == expected_soa, "SoA transform failed: %s" % _to_list(out2)
@@ -137,7 +135,8 @@ def test_transform():
 def test_types():
     """Test format character dispatch with fixed-width integer types."""
     import ctypes as ct
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'types'))
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "types"))
     import typesmod
 
     # uint16_t (format 'H')
@@ -170,7 +169,7 @@ def test_types():
 
 def test_optional():
     """Test optional parameters with defaults."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'optional'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "optional"))
     import optmod
 
     data = _double_array([1.0, 2.0, 3.0, 4.0, 5.0])
@@ -192,7 +191,7 @@ def test_optional():
 
 def test_docstring():
     """Test custom docstring on a function."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'docstring'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "docstring"))
     import docmod
 
     result = docmod.inc(41)
@@ -200,12 +199,10 @@ def test_docstring():
 
     # Check docstring contains the user doc
     actual_doc = docmod.inc.__doc__
-    assert "Increment x by 1 and return the result" in actual_doc, \
-        "docstring missing user doc: '%s'" % actual_doc
+    assert "Increment x by 1 and return the result" in actual_doc, "docstring missing user doc: '%s'" % actual_doc
     # Check __text_signature__ is parsed correctly (Python 3.3+)
-    if hasattr(docmod.inc, '__text_signature__'):
-        assert docmod.inc.__text_signature__ == "(x)", \
-            "__text_signature__: got %r" % docmod.inc.__text_signature__
+    if hasattr(docmod.inc, "__text_signature__"):
+        assert docmod.inc.__text_signature__ == "(x)", "__text_signature__: got %r" % docmod.inc.__text_signature__
     # Check docstring contains auto-derived info
     assert "Overloads" in actual_doc, "docstring missing Overloads section"
     assert "add_one" in actual_doc, "docstring missing overload C function"
@@ -215,7 +212,7 @@ def test_docstring():
 
 def test_constants():
     """Test module-level integer constants (incl. zero, negative, edge-large)."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'constants'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "constants"))
     import constmod
 
     assert constmod.ALPHA == 1, "ALPHA = %s, expected 1" % constmod.ALPHA
@@ -223,15 +220,16 @@ def test_constants():
     assert constmod.GAMMA == 3, "GAMMA = %s, expected 3" % constmod.GAMMA
     assert constmod.ZERO == 0, "ZERO = %s, expected 0" % constmod.ZERO
     assert constmod.NEG == -1, "NEG = %s, expected -1" % constmod.NEG
-    assert constmod.LARGE == 2147483647, (
-        "LARGE = %s, expected 2147483647" % constmod.LARGE)
+    assert constmod.LARGE == 2147483647, "LARGE = %s, expected 2147483647" % constmod.LARGE
 
     # Also test the function
     data = _double_array([1.0, 2.0, 3.0])
     r = constmod.scale_sum(data, constmod.ALPHA + constmod.BETA)  # factor=3
     expected = 1.0 * 3 + 2.0 * 3 + 3.0 * 3
-    assert abs(r - expected) < 0.001, \
-        "scale_sum(factor=3) = %s, expected %s" % (r, expected)
+    assert abs(r - expected) < 0.001, "scale_sum(factor=3) = %s, expected %s" % (
+        r,
+        expected,
+    )
 
     print("PASS: constants")
 
@@ -240,14 +238,14 @@ def test_timing():
     """Test performance timing feature (no ctypes)."""
     from c2py23.perf import read_perf, read_enabled, set_enabled
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'timing'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "timing"))
     import timedmod
     import ctypes as ct
 
     py0 = read_perf(timedmod.wsum)
     ov0 = read_perf(timedmod.wsum, variant="weighted_sum")
-    py_count0 = py0['call_count']
-    ov_count0 = ov0['call_count']
+    py_count0 = py0["call_count"]
+    ov_count0 = ov0["call_count"]
 
     arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
     for i in range(10):
@@ -257,14 +255,18 @@ def test_timing():
     py = read_perf(timedmod.wsum)
     ov = read_perf(timedmod.wsum, variant="weighted_sum")
 
-    assert py['call_count'] == py_count0 + 10, (
-        "py call_count expected %d, got %d" % (py_count0 + 10, py['call_count']))
-    assert py['c_mean_ns'] > 0
-    assert py['wrap_mean_ns'] >= 0
-    assert ov['call_count'] == ov_count0 + 10, (
-        "ov call_count expected %d, got %d" % (ov_count0 + 10, ov['call_count']))
-    assert ov['c_mean_ns'] > 0
-    assert ov['wrap_dur_ns'] == 0
+    assert py["call_count"] == py_count0 + 10, "py call_count expected %d, got %d" % (
+        py_count0 + 10,
+        py["call_count"],
+    )
+    assert py["c_mean_ns"] > 0
+    assert py["wrap_mean_ns"] >= 0
+    assert ov["call_count"] == ov_count0 + 10, "ov call_count expected %d, got %d" % (
+        ov_count0 + 10,
+        ov["call_count"],
+    )
+    assert ov["c_mean_ns"] > 0
+    assert ov["wrap_dur_ns"] == 0
 
     # Test toggle off
     enabled = read_enabled(timedmod.wsum)
@@ -274,7 +276,7 @@ def test_timing():
 
     timedmod.wsum(arr, 1.0)
     py2 = read_perf(timedmod.wsum)
-    assert py2['call_count'] == py['call_count']  # should NOT have incremented
+    assert py2["call_count"] == py["call_count"]  # should NOT have incremented
     set_enabled(timedmod.wsum, 1)
 
     print("PASS: timing")
@@ -282,7 +284,7 @@ def test_timing():
 
 def test_scalar_output():
     """Test output scalar convention - C returns values via pointer args."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'scalar_output'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "scalar_output"))
     import statmod
 
     data = _double_array([3.0, 1.0, 5.0, 2.0, 4.0])
@@ -295,7 +297,7 @@ def test_scalar_output():
 
 def test_template():
     """Test template expansion - parameterized function definitions."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'template'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "template"))
     import summod
 
     data_u8 = (ctypes.c_uint8 * 5)(1, 2, 3, 4, 5)
@@ -312,7 +314,7 @@ def test_template():
 
 def test_typedispatch():
     """Test format dispatch over all 10 PEP 3118 buffer types.
-    
+
     Covers the complete format-to-ctype mapping:
       'B' -> uint8_t   'b' -> int8_t
       'H' -> uint16_t  'h' -> int16_t
@@ -320,7 +322,7 @@ def test_typedispatch():
       'Q' -> uint64_t  'q' -> int64_t
       'f' -> float     'd' -> double
     """
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'typedispatch'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "typedispatch"))
     import dispatchmod
 
     # uint8_t (format 'B')
@@ -351,17 +353,31 @@ def test_typedispatch():
     # int32_t (format 'i')
     arr_i = (ctypes.c_int32 * 4)(0, 0, 0, 0)
     dispatchmod.fill(arr_i, -1000000)
-    assert list(arr_i) == [-1000000, -1000000, -1000000, -1000000], "int32 fill failed: %s" % list(arr_i)
+    assert list(arr_i) == [
+        -1000000,
+        -1000000,
+        -1000000,
+        -1000000,
+    ], "int32 fill failed: %s" % list(arr_i)
 
     # uint64_t (format 'Q')
     arr_Q = (ctypes.c_uint64 * 3)(0, 0, 0)
     dispatchmod.fill(arr_Q, 9999999999)
-    assert list(arr_Q) == [9999999999, 9999999999, 9999999999], "uint64 fill failed: %s" % list(arr_Q)
+    assert list(arr_Q) == [
+        9999999999,
+        9999999999,
+        9999999999,
+    ], "uint64 fill failed: %s" % list(arr_Q)
 
     # int64_t (format 'q')
     arr_q = (ctypes.c_int64 * 4)(0, 0, 0, 0)
     dispatchmod.fill(arr_q, -9999999999)
-    assert list(arr_q) == [-9999999999, -9999999999, -9999999999, -9999999999], "int64 fill failed: %s" % list(arr_q)
+    assert list(arr_q) == [
+        -9999999999,
+        -9999999999,
+        -9999999999,
+        -9999999999,
+    ], "int64 fill failed: %s" % list(arr_q)
 
     # float32 (format 'f')
     arr_f = (ctypes.c_float * 4)(0, 0, 0, 0)
@@ -385,7 +401,7 @@ def test_gil_release():
     import time
     import threading
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'gil_release'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "gil_release"))
     import gilmod
 
     arr = (ctypes.c_float * 4)(0.0, 0.0, 0.0, 0.0)
@@ -403,8 +419,7 @@ def test_gil_release():
     elapsed = time.time() - t0
 
     # With GIL release, both 100ms sleeps should overlap -> < 150ms
-    assert elapsed < 0.150, \
-        "GIL release: expected < 150ms, got %.3fs (threads serialized?)" % elapsed
+    assert elapsed < 0.150, "GIL release: expected < 150ms, got %.3fs (threads serialized?)" % elapsed
     assert list(arr) == [1.0, 1.0, 1.0, 1.0], "thread 1 fill failed"
     assert list(arr2) == [2.0, 2.0, 2.0, 2.0], "thread 2 fill failed"
 
@@ -422,14 +437,14 @@ def test_gil_release():
     elapsed_no = time.time() - t0
 
     # Without GIL release, two 50ms sleeps serialize -> > 80ms
-    assert elapsed_no > 0.080, \
-        "No GIL release: expected > 80ms, got %.3fs (threads overlapped?)" % elapsed_no
+    assert elapsed_no > 0.080, "No GIL release: expected > 80ms, got %.3fs (threads overlapped?)" % elapsed_no
     assert list(arr3) == [3.0, 3.0, 3.0, 3.0], "thread 3 fill failed"
     assert list(arr4) == [4.0, 4.0, 4.0, 4.0], "thread 4 fill failed"
 
     # Test 3: Global toggle disables GIL release
     # Read the global flag pointer and set to 0
     import ctypes as ct
+
     gil_flag_ptr = gilmod._c2py_gil_release_enabled
     ct.c_int.from_address(gil_flag_ptr).value = 0
 
@@ -446,8 +461,7 @@ def test_gil_release():
     elapsed_disabled = time.time() - t0
 
     # When disabled, two 50ms sleeps should serialize -> > 80ms
-    assert elapsed_disabled > 0.080, \
-        "GIL disabled: expected > 80ms, got %.3fs (still overlapping?)" % elapsed_disabled
+    assert elapsed_disabled > 0.080, "GIL disabled: expected > 80ms, got %.3fs (still overlapping?)" % elapsed_disabled
     assert list(arr5) == [5.0, 5.0, 5.0, 5.0], "thread 5 fill failed"
     assert list(arr6) == [6.0, 6.0, 6.0, 6.0], "thread 6 fill failed"
 
@@ -470,8 +484,7 @@ def test_gil_release():
     t8.join()
     elapsed_func_disabled = time.time() - t0
 
-    assert elapsed_func_disabled > 0.050, \
-        "Per-func disabled: expected > 50ms, got %.3fs" % elapsed_func_disabled
+    assert elapsed_func_disabled > 0.050, "Per-func disabled: expected > 50ms, got %.3fs" % elapsed_func_disabled
     assert list(arr7) == [7.0, 7.0, 7.0, 7.0]
     assert list(arr8) == [8.0, 8.0, 8.0, 8.0]
 
@@ -488,7 +501,7 @@ def test_address():
     This is useful for passing GPU pointers, allocator handles, or
     other opaque addresses without Python managing the memory.
     """
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'address'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "address"))
     import addressmod
 
     # Allocate a buffer in Python, pass its address as int to C
@@ -516,19 +529,19 @@ def test_array_sig():
     if not IS_PY3:
         print("SKIP: array_sig (2D memoryview requires Python 3.x)")
         return
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'array_sig'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "array_sig"))
     import arraymod
     import ctypes as ct
 
     # sum_rows: gv[][3] -> AoS layout, C-contiguous, shape [ng, 3]
     arr = (ct.c_double * 6)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
-    mv = memoryview(arr).cast('B').cast('d', [2, 3])
+    mv = memoryview(arr).cast("B").cast("d", [2, 3])
     r = arraymod.sum_rows(mv)
     assert abs(r - 21.0) < 0.001, "sum_rows([2,3]) = %s, expected 21.0" % r
 
     # sum_33: ubi[3][3] -> fixed 3x3, C-contiguous
     arr2 = (ct.c_double * 9)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
-    mv2 = memoryview(arr2).cast('B').cast('d', [3, 3])
+    mv2 = memoryview(arr2).cast("B").cast("d", [3, 3])
     r2 = arraymod.sum_33(mv2)
     assert abs(r2 - 45.0) < 0.001, "sum_33([3,3]) = %s, expected 45.0" % r2
 
@@ -539,14 +552,14 @@ def test_array_sig():
 
     # sum_3d: blk[][5][5] -> shape [nblk, 5, 5], C-contiguous
     arr4 = (ct.c_double * 50)(*range(1, 51))
-    mv3 = memoryview(arr4).cast('B').cast('d', [2, 5, 5])
+    mv3 = memoryview(arr4).cast("B").cast("d", [2, 5, 5])
     r4 = arraymod.sum_3d(mv3)
     expected = sum(range(1, 51))
     assert abs(r4 - expected) < 0.001, "sum_3d = %s, expected %s" % (r4, expected)
 
     # Wrong shape rejection: gv[][3] needs shape[-1] == 3, reject shape[2][4]
     bad_arr = (ct.c_double * 8)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
-    bad_mv = memoryview(bad_arr).cast('B').cast('d', [2, 4])
+    bad_mv = memoryview(bad_arr).cast("B").cast("d", [2, 4])
     try:
         arraymod.sum_rows(bad_mv)
         assert False, "sum_rows should reject shape[1] != 3"
@@ -566,8 +579,7 @@ def test_array_sig():
 
 def test_simd_dispatch():
     """Test CPU feature flag dispatch: SSE2 on x86_64, NEON on aarch64."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases',
-                                     'simd_dispatch'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "simd_dispatch"))
     import simd_fillmod as m
     import platform
     from c2py23.perf import read_perf
@@ -577,8 +589,10 @@ def test_simd_dispatch():
 
     # Output correctness
     for i in range(32):
-        assert abs(buf[i] - 7.77) < 0.001, (
-            "simd_fill buf[%d] expected 7.77 got %s" % (i, buf[i]))
+        assert abs(buf[i] - 7.77) < 0.001, "simd_fill buf[%d] expected 7.77 got %s" % (
+            i,
+            buf[i],
+        )
 
     # Verify dispatch: check per-overload call counts
     arch = platform.machine()
@@ -587,33 +601,21 @@ def test_simd_dispatch():
     altivec_perf = read_perf(m.fill, variant="fill_altivec")
     scalar_perf = read_perf(m.fill, variant="fill_scalar")
 
-    if arch in ('x86_64', 'AMD64'):
-        assert sse2_perf['call_count'] >= 1, (
-            "SSE2 should be dispatched on x86_64")
-        assert neon_perf['call_count'] == 0, (
-            "NEON should not dispatch on x86_64")
-        assert altivec_perf['call_count'] == 0, (
-            "Altivec should not dispatch on x86_64")
-        assert scalar_perf['call_count'] == 0, (
-            "Scalar should not dispatch on x86_64 when SSE2 available")
-    elif arch in ('aarch64', 'arm64'):
-        assert neon_perf['call_count'] >= 1, (
-            "NEON should be dispatched on aarch64")
-        assert sse2_perf['call_count'] == 0, (
-            "SSE2 should not dispatch on aarch64")
-        assert altivec_perf['call_count'] == 0, (
-            "Altivec should not dispatch on aarch64")
-        assert scalar_perf['call_count'] == 0, (
-            "Scalar should not dispatch on aarch64 when NEON available")
-    elif arch in ('ppc64le', 'ppc64'):
-        assert altivec_perf['call_count'] >= 1, (
-            "Altivec should be dispatched on ppc64le")
-        assert sse2_perf['call_count'] == 0, (
-            "SSE2 should not dispatch on ppc64le")
-        assert neon_perf['call_count'] == 0, (
-            "NEON should not dispatch on ppc64le")
-        assert scalar_perf['call_count'] == 0, (
-            "Scalar should not dispatch on ppc64le when Altivec available")
+    if arch in ("x86_64", "AMD64"):
+        assert sse2_perf["call_count"] >= 1, "SSE2 should be dispatched on x86_64"
+        assert neon_perf["call_count"] == 0, "NEON should not dispatch on x86_64"
+        assert altivec_perf["call_count"] == 0, "Altivec should not dispatch on x86_64"
+        assert scalar_perf["call_count"] == 0, "Scalar should not dispatch on x86_64 when SSE2 available"
+    elif arch in ("aarch64", "arm64"):
+        assert neon_perf["call_count"] >= 1, "NEON should be dispatched on aarch64"
+        assert sse2_perf["call_count"] == 0, "SSE2 should not dispatch on aarch64"
+        assert altivec_perf["call_count"] == 0, "Altivec should not dispatch on aarch64"
+        assert scalar_perf["call_count"] == 0, "Scalar should not dispatch on aarch64 when NEON available"
+    elif arch in ("ppc64le", "ppc64"):
+        assert altivec_perf["call_count"] >= 1, "Altivec should be dispatched on ppc64le"
+        assert sse2_perf["call_count"] == 0, "SSE2 should not dispatch on ppc64le"
+        assert neon_perf["call_count"] == 0, "NEON should not dispatch on ppc64le"
+        assert scalar_perf["call_count"] == 0, "Scalar should not dispatch on ppc64le when Altivec available"
 
     print("PASS: simd_dispatch")
 
@@ -621,11 +623,10 @@ def test_simd_dispatch():
 def test_timing_cycle_counter():
     """Test runtime cycle counter tick source selection.
     Skips if cycle counter frequency was not detected."""
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases',
-                                     'timing'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "timing"))
     import timedmod
     import ctypes as ct
-    from c2py23.perf import read_perf, read_enabled, set_enabled
+    from c2py23.perf import read_perf
 
     # Check if cycle counter frequency is available
     try:
@@ -639,7 +640,7 @@ def test_timing_cycle_counter():
 
     arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
     p0 = read_perf(timedmod.wsum)
-    count0 = p0['call_count']
+    count0 = p0["call_count"]
 
     timedmod._c2py_set_tick_source("cycle")
     for i in range(50):
@@ -647,12 +648,12 @@ def test_timing_cycle_counter():
         assert abs(r - 30.0) < 0.001
 
     p1 = read_perf(timedmod.wsum)
-    assert p1['call_count'] == count0 + 50
+    assert p1["call_count"] == count0 + 50
     # In cycle mode we have c_mean_cycles; in clock mode only c_mean_ns.
     # The read_perf always populates c_mean_ns from the raw data assuming
     # 1e9 Hz, so c_mean_ns will be wrong in cycle mode. Just verify
     # the call counts and that data is non-zero.
-    assert p1['c_mean_ns'] >= 0, "C function should have consumed ticks"
+    assert p1["c_mean_ns"] >= 0, "C function should have consumed ticks"
 
     # Switch back to clock mode
     timedmod._c2py_set_tick_source("clock")
@@ -660,7 +661,7 @@ def test_timing_cycle_counter():
     # Call with clock mode one more time
     timedmod.wsum(arr, 1.0)
     p3 = read_perf(timedmod.wsum)
-    assert p3['call_count'] == p2['call_count'] + 1
+    assert p3["call_count"] == p2["call_count"] + 1
 
     print("PASS: timing_cycle_counter")
 
@@ -674,16 +675,15 @@ def test_freethreading():
     3. Module-level free-threading metadata is exposed
     """
     import sys
-    mod_dir = os.path.join(os.path.dirname(__file__), 'cases', 'freethreading')
+
+    mod_dir = os.path.join(os.path.dirname(__file__), "cases", "freethreading")
     sys.path.insert(0, mod_dir)
     import freethreadmod
 
-    is_ft = (_HAS_SYSCONFIG and
-              sysconfig.get_config_var('Py_GIL_DISABLED') == 1)
+    is_ft = _HAS_SYSCONFIG and sysconfig.get_config_var("Py_GIL_DISABLED") == 1
 
-    if hasattr(freethreadmod, 'free_threading'):
-        assert freethreadmod.free_threading is True, \
-            "freethreadmod should declare free_threading = True"
+    if hasattr(freethreadmod, "free_threading"):
+        assert freethreadmod.free_threading is True, "freethreadmod should declare free_threading = True"
     else:
         # Older c2py23 versions may not expose the attribute
         pass
@@ -701,7 +701,11 @@ def test_freethreading():
 
 
 def main():
-    version_str = "%d.%d.%d" % (sys.version_info[0], sys.version_info[1], sys.version_info[2])
+    version_str = "%d.%d.%d" % (
+        sys.version_info[0],
+        sys.version_info[1],
+        sys.version_info[2],
+    )
     print("Python version: %s" % version_str)
     tests = [
         ("arraysum", test_arraysum),
@@ -733,6 +737,7 @@ def main():
             print("FAIL: %s - %s" % (name, e))
             failed += 1
             import traceback
+
             traceback.print_exc()
 
     print("")
@@ -740,5 +745,5 @@ def main():
     return 0 if failed == 0 else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

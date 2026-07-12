@@ -17,6 +17,7 @@ Phase 3 (cross-test):
   ubuntu24.04, ubuntu26.04, debian10) and run the full test suite
   with each Python version (2.7 through 3.15).
 """
+
 from __future__ import print_function
 
 import os
@@ -29,9 +30,9 @@ from datetime import datetime
 # Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
-SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), 'snakepit')
-WORKSPACE_DIR = os.path.join(SCRIPT_DIR, 'test_workspace')
-LOG_FILE = os.path.join(SCRIPT_DIR, 'test_manylinux_results.log')
+SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
+WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
+LOG_FILE = os.path.join(SCRIPT_DIR, "test_manylinux_results.log")
 
 # Python versions available in the manylinux2014 container
 MANYLINUX_VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -39,40 +40,63 @@ MANYLINUX_SIF = "manylinux2014.sif"
 
 # Cross-test targets (all non-manylinux containers from the existing matrix)
 CROSS_TEST_TARGETS = [
-    ("2.7",   "ubuntu20.04.sif"),
-    ("3.6",   "debian10.sif"),
-    ("3.7",   "ubuntu24.04.sif"),
-    ("3.8",   "ubuntu20.04.sif"),
-    ("3.9",   "ubuntu24.04.sif"),
-    ("3.10",  "ubuntu24.04.sif"),
-    ("3.11",  "ubuntu24.04.sif"),
-    ("3.12",  "ubuntu24.04.sif"),
-    ("3.13",  "ubuntu24.04.sif"),
-    ("3.14",  "ubuntu24.04.sif"),
+    ("2.7", "ubuntu20.04.sif"),
+    ("3.6", "debian10.sif"),
+    ("3.7", "ubuntu24.04.sif"),
+    ("3.8", "ubuntu20.04.sif"),
+    ("3.9", "ubuntu24.04.sif"),
+    ("3.10", "ubuntu24.04.sif"),
+    ("3.11", "ubuntu24.04.sif"),
+    ("3.12", "ubuntu24.04.sif"),
+    ("3.13", "ubuntu24.04.sif"),
+    ("3.14", "ubuntu24.04.sif"),
     ("3.14t", "ubuntu24.04.sif"),
 ]
 
 _log_file = None
 
 _SIGNAL_NAMES = {
-    1: 'SIGHUP', 2: 'SIGINT', 3: 'SIGQUIT', 4: 'SIGILL',
-    5: 'SIGTRAP', 6: 'SIGABRT', 7: 'SIGBUS', 8: 'SIGFPE',
-    9: 'SIGKILL', 10: 'SIGUSR1', 11: 'SIGSEGV', 12: 'SIGUSR2',
-    13: 'SIGPIPE', 14: 'SIGALRM', 15: 'SIGTERM', 16: 'SIGSTKFLT',
-    17: 'SIGCHLD', 18: 'SIGCONT', 19: 'SIGSTOP', 20: 'SIGTSTP',
-    21: 'SIGTTIN', 22: 'SIGTTOU', 23: 'SIGURG', 24: 'SIGXCPU',
-    25: 'SIGXFSZ', 26: 'SIGVTALRM', 27: 'SIGPROF', 28: 'SIGWINCH',
-    29: 'SIGIO', 30: 'SIGPWR', 31: 'SIGSYS',
+    1: "SIGHUP",
+    2: "SIGINT",
+    3: "SIGQUIT",
+    4: "SIGILL",
+    5: "SIGTRAP",
+    6: "SIGABRT",
+    7: "SIGBUS",
+    8: "SIGFPE",
+    9: "SIGKILL",
+    10: "SIGUSR1",
+    11: "SIGSEGV",
+    12: "SIGUSR2",
+    13: "SIGPIPE",
+    14: "SIGALRM",
+    15: "SIGTERM",
+    16: "SIGSTKFLT",
+    17: "SIGCHLD",
+    18: "SIGCONT",
+    19: "SIGSTOP",
+    20: "SIGTSTP",
+    21: "SIGTTIN",
+    22: "SIGTTOU",
+    23: "SIGURG",
+    24: "SIGXCPU",
+    25: "SIGXFSZ",
+    26: "SIGVTALRM",
+    27: "SIGPROF",
+    28: "SIGWINCH",
+    29: "SIGIO",
+    30: "SIGPWR",
+    31: "SIGSYS",
 }
 
 
 def _signal_name(sig):
-    return _SIGNAL_NAMES.get(sig, 'signal {}'.format(sig))
+    return _SIGNAL_NAMES.get(sig, "signal {}".format(sig))
 
 
 def log_write(message):
     if _log_file:
-        _log_file.write(message + '\n')
+        _log_file.write(message + "\n")
         _log_file.flush()
 
 
@@ -83,7 +107,7 @@ def print_header(message):
     print(line + "\n")
     log_write(line)
     log_write(message)
-    log_write(line + '\n')
+    log_write(line + "\n")
 
 
 def print_success(message):
@@ -109,21 +133,22 @@ def run_apptainer(sif_file, command, capture_output=True, timeout=600):
         return 1, "", "SIF file not found"
 
     apptainer_cmd = [
-        "apptainer", "exec",
+        "apptainer",
+        "exec",
         "-e",
-        "-B", WORKSPACE_DIR + ":/workspace",
-        "--pwd", "/workspace",
+        "-B",
+        WORKSPACE_DIR + ":/workspace",
+        "--pwd",
+        "/workspace",
         sif_path,
-        "/bin/bash", "-c", command
+        "/bin/bash",
+        "-c",
+        command,
     ]
 
     try:
         if capture_output:
-            proc = subprocess.Popen(
-                apptainer_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
+            proc = subprocess.Popen(apptainer_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 stdout, stderr = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -132,9 +157,9 @@ def run_apptainer(sif_file, command, capture_output=True, timeout=600):
                 stdout, stderr = proc.communicate()
                 return -9, "", "TIMEOUT after {}s".format(timeout)
             if isinstance(stdout, bytes):
-                stdout = stdout.decode('utf-8', errors='replace')
+                stdout = stdout.decode("utf-8", errors="replace")
             if isinstance(stderr, bytes):
-                stderr = stderr.decode('utf-8', errors='replace')
+                stderr = stderr.decode("utf-8", errors="replace")
             return proc.returncode, stdout, stderr
         else:
             ret = subprocess.call(apptainer_cmd, timeout=timeout)
@@ -153,8 +178,8 @@ def run_apptainer(sif_file, command, capture_output=True, timeout=600):
 def _clean_so_files():
     """Remove all .so files from the workspace (test cases + examples)."""
     so_patterns = [
-        os.path.join(WORKSPACE_DIR, 'tests', 'cases', '*', '*.so'),
-        os.path.join(WORKSPACE_DIR, 'examples', '*', '*.so'),
+        os.path.join(WORKSPACE_DIR, "tests", "cases", "*", "*.so"),
+        os.path.join(WORKSPACE_DIR, "examples", "*", "*.so"),
     ]
     for pattern in so_patterns:
         for path in globmod.iglob(pattern):
@@ -176,22 +201,33 @@ def prepare_workspace():
     for item in os.listdir(PROJECT_DIR):
         src = os.path.join(PROJECT_DIR, item)
         dst = os.path.join(WORKSPACE_DIR, item)
-        if item in ('.git', '__pycache__', 'test_workspace', '*.egg-info'):
+        if item in (".git", "__pycache__", "test_workspace", "*.egg-info"):
             continue
         if os.path.isdir(src):
-            if item == 'tests':
-                shutil.copytree(src, dst,
-                                ignore=shutil.ignore_patterns(
-                                    'test_venv', 'test_workspace',
-                                    '__pycache__', '*.pyc', '*.egg-info', '*.so'))
+            if item == "tests":
+                shutil.copytree(
+                    src,
+                    dst,
+                    ignore=shutil.ignore_patterns(
+                        "test_venv",
+                        "test_workspace",
+                        "__pycache__",
+                        "*.pyc",
+                        "*.egg-info",
+                        "*.so",
+                    ),
+                )
             else:
-                shutil.copytree(src, dst,
-                                ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.so'))
+                shutil.copytree(
+                    src,
+                    dst,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.so"),
+                )
         else:
-            if not item.endswith('.pyc') and not item.endswith('.so'):
+            if not item.endswith(".pyc") and not item.endswith(".so"):
                 shutil.copy2(src, dst)
 
-    for script in ['tests/build_all.sh', 'tests/run_tests_only.sh']:
+    for script in ["tests/build_all.sh", "tests/run_tests_only.sh"]:
         sp = os.path.join(WORKSPACE_DIR, script)
         if os.path.exists(sp):
             os.chmod(sp, 0o755)
@@ -218,8 +254,7 @@ def phase1_build_verify(python_version):
             reason = "CRASHED with signal {} ({})".format(sig, _signal_name(sig))
         else:
             reason = "exit code {}".format(retcode)
-        print_error("Build failed for Python {} on manylinux2014: {}".format(
-            python_version, reason))
+        print_error("Build failed for Python {} on manylinux2014: {}".format(python_version, reason))
         log_write("STDOUT:\n" + stdout)
         log_write("STDERR:\n" + stderr)
         print("--- STDOUT ---")
@@ -291,8 +326,7 @@ def phase3_cross_test(python_version, sif_file):
             reason = "CRASHED with signal {} ({})".format(sig, _signal_name(sig))
         else:
             reason = "exit code {}".format(retcode)
-        print_error("Cross-test failed for Python {} on {}: {}".format(
-            python_version, sif_file, reason))
+        print_error("Cross-test failed for Python {} on {}: {}".format(python_version, sif_file, reason))
         log_write("STDOUT:\n" + stdout)
         log_write("STDERR:\n" + stderr)
         print("--- STDOUT ---")
@@ -302,8 +336,7 @@ def phase3_cross_test(python_version, sif_file):
         print("--- END ---")
         return False
 
-    print_success("Cross-test passed for Python {} on {}".format(
-        python_version, sif_file))
+    print_success("Cross-test passed for Python {} on {}".format(python_version, sif_file))
     print(stdout.strip())
     log_write("Test output:\n" + stdout)
     return True
@@ -312,7 +345,7 @@ def phase3_cross_test(python_version, sif_file):
 def main():
     global _log_file
 
-    _log_file = open(LOG_FILE, 'w')
+    _log_file = open(LOG_FILE, "w")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_write("c2py23 Manylinux Test Suite - " + timestamp + "\n")
 
@@ -352,8 +385,7 @@ def main():
                 print("\nStopping to debug this target first.")
                 print("To debug, run:")
                 sif_path = os.path.join(SNAKEPIT_DIR, sif_file)
-                print("  apptainer shell -e -B {}:/workspace {}".format(
-                    WORKSPACE_DIR, sif_path))
+                print("  apptainer shell -e -B {}:/workspace {}".format(WORKSPACE_DIR, sif_path))
                 return 1
 
         # --- Summary ---
@@ -375,5 +407,5 @@ def main():
             _log_file.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
