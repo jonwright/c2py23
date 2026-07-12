@@ -8,7 +8,7 @@ import ctypes
 import ctypes.wintypes
 
 kernel32 = ctypes.windll.kernel32
-psapi = ctypes.windll.psapi
+psapi = ctypes.WinDLL('psapi.dll')
 
 hProcess = kernel32.GetCurrentProcess()
 modules = (ctypes.wintypes.HMODULE * 1024)()
