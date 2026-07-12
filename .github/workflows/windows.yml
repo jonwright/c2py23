@@ -84,19 +84,12 @@ jobs:
           CC: cl
         run: python -m pytest tests/ -v --durations=10 --tb=short
 
-      - name: Run tests (free-threaded 3.x -- diag mode)
+      - name: Run tests (free-threaded 3.x -- known FT issue, see #36)
         if: matrix.python-version == '3.14t' || matrix.python-version == '3.15t'
         env:
           CC: cl
-        run: python -m pytest tests/test_abi_tag_compatibility.py tests/test_error_paths.py -v --tb=short
-        continue-on-error: true
-
-      - name: Print diag log (FT)
-        if: matrix.python-version == '3.14t' || matrix.python-version == '3.15t'
-        run: |
-          echo "--- searching for diag log ---"
-          Get-ChildItem -Path . -Recurse -Filter "c2py_init*" -ErrorAction SilentlyContinue | ForEach-Object { echo $_.FullName; Get-Content $_.FullName }
-          if (-not (Get-ChildItem -Path . -Recurse -Filter "c2py_init*" -ErrorAction SilentlyContinue)) { echo "no c2py_init_diag.log found anywhere" }
+          C2PY_FORCE_FT: 1
+        run: python -m pytest tests/ -v --durations=10 --tb=short
         continue-on-error: true
 
       - name: Run tests (2.7)
