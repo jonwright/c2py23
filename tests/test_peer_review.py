@@ -21,7 +21,8 @@ import ctypes
 import warnings
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
-import numpy as np
+import pytest
+np = pytest.importorskip("numpy")
 
 IS_PY3 = sys.version_info[0] >= 3
 
@@ -32,7 +33,7 @@ import arraysum
 
 def test_alias_slice():
     """Slice: b = a[1:] overlaps with original a."""
-    a = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
     b = a[1:]  # shares memory, offset by 8 bytes
     
     result = np.zeros(99, dtype=np.float64)
@@ -46,7 +47,7 @@ def test_alias_slice():
 
 def test_alias_reversed():
     """Reversed: b = a[::-1] overlaps with original a."""
-    a = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
     b = a[::-1]  # reversed view, same memory
     
     result = np.zeros(100, dtype=np.float64)
@@ -60,7 +61,7 @@ def test_alias_reversed():
 
 def test_alias_memoryview():
     """memoryview: b = memoryview(a) wraps same data."""
-    a = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
     b = memoryview(a)  # same underlying memory
     
     result = np.zeros(100, dtype=np.float64)
@@ -74,7 +75,7 @@ def test_alias_memoryview():
 
 def test_alias_view():
     """View: b = a.view() shares same buffer."""
-    a = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
     b = a.view()
     
     result = np.zeros(100, dtype=np.float64)
@@ -88,7 +89,7 @@ def test_alias_view():
 
 def test_alias_broadcast():
     """Broadcast: np.broadcast_to shares data pointer."""
-    a = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
     b = np.broadcast_to(a, (3, 100))  # same data, different shape
     
     result = np.zeros(100, dtype=np.float64)
@@ -102,8 +103,8 @@ def test_alias_broadcast():
 
 def test_alias_output_equals_input():
     """Output same object as input -- simplest alias."""
-    a = np.arange(100.0, dtype=np.float64)
-    b = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
+    b = np.arange(100, dtype=np.float64)
     
     try:
         arraysum.array_sum(a, b, a)  # result IS a
@@ -115,8 +116,8 @@ def test_alias_output_equals_input():
 
 def test_no_false_positive():
     """Non-aliased buffers should pass."""
-    a = np.arange(100.0, dtype=np.float64)
-    b = np.arange(100.0, dtype=np.float64)
+    a = np.arange(100, dtype=np.float64)
+    b = np.arange(100, dtype=np.float64)
     result = np.zeros(100, dtype=np.float64)
     
     n = arraysum.array_sum(a, b, result)
@@ -132,7 +133,7 @@ def test_contiguity_strided():
     sys.path.insert(0, test_dir2)
     import fillmod
     
-    a = np.arange(20.0, dtype=np.float64)
+    a = np.arange(20, dtype=np.float64)
     b = a[::2]  # stride = 16, not 8
     
     try:
@@ -148,7 +149,7 @@ def test_contiguity_reversed():
     test_dir2 = os.path.join(os.path.dirname(__file__), 'cases', 'fill')
     sys.path.insert(0, test_dir2)
     
-    a = np.arange(20.0, dtype=np.float64)
+    a = np.arange(20, dtype=np.float64)
     b = a[::-1]
     
     try:

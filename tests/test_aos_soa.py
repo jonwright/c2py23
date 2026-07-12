@@ -15,8 +15,8 @@ from __future__ import print_function
 
 import sys
 import os
-import numpy as np
 import pytest
+np = pytest.importorskip("numpy")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cases', 'transform'))
 import xfrm

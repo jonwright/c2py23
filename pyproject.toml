@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "c2py23"
 dynamic = ["version", "readme"]
 description = "Wrap C99 code to Python via the buffer protocol"
-license-files = []
 requires-python = ">=2.7"
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -34,6 +33,9 @@ yaml = [
 
 [project.scripts]
 c2py23 = "c2py23.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jonwright/c2py23"
 
 [tool.setuptools.packages.find]
 include = ["c2py23*"]
