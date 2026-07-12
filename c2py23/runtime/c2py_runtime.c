@@ -892,6 +892,32 @@ int c2py_seh_filter(unsigned int code, struct _EXCEPTION_POINTERS *ep)
     }
     fprintf(stderr, "=== end c2py SEH crash dump ===\n\n");
     fflush(stderr);
+
+    /* Walk the stack using RBP chain from the exception context.
+     * When RIP=0 (call through NULL), the stack still has the
+     * return address from the caller. */
+    if (ep && ep->ContextRecord) {
+        CONTEXT *ctx = ep->ContextRecord;
+        void **frame = (void**)ctx->Rbp;
+        void *rsp = (void*)ctx->Rsp;
+        int i;
+        fprintf(stderr, "Stack frames (RBP chain, max 12):\n");
+        /* First frame: the fault site (RIP=0).
+         * RSP should point just past the fault, check for return addr. */
+        if (rsp) {
+            fprintf(stderr, "  [fault] return-addr at RSP=%p: %p\n",
+                    rsp, rsp ? *(void**)rsp : NULL);
+        }
+        for (i = 0; frame && i < 12; i++) {
+            void *ret_addr = frame[1];  /* RBP+8 = return address */
+            void *next_rbp = frame[0]; /* RBP+0 = previous RBP */
+            if ((uintptr_t)ret_addr < 0x1000) break;
+            fprintf(stderr, "  [%d] RBP=%p  ret=%p\n", i, (void*)frame, ret_addr);
+            frame = (void**)next_rbp;
+        }
+    }
+    fflush(stderr);
+
     return EXCEPTION_EXECUTE_HANDLER;
 }
 #endif
