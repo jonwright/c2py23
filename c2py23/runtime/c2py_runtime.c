@@ -426,16 +426,7 @@ static void _c2py_runtime_init_once(void)
     }
 
 #ifdef _WIN32
-    /* On Windows, python3.dll is the stable-ABI forwarder DLL (PEP 384).
-     * It is loaded as a dependency of python3XX.dll, which in turn
-     * loads this extension module.  python3.dll exports the limited
-     * API which covers all symbols c2py23 needs.
-     * Fall back to enumerating known versioned DLL names for Python
-     * installations that do not ship python3.dll (e.g. Python 2.7). */
     {
-        /* Prefer versioned DLLs: python3.dll is the stable-ABI
-         * forwarder which may not export all symbols (e.g. Python 3.9
-         * does not export PyObject_GetBuffer from python3.dll). */
         static const char *candidates[] = {
             "python315.dll", "python314.dll", "python313.dll",
             "python312.dll", "python311.dll", "python310.dll",
@@ -449,8 +440,29 @@ static void _c2py_runtime_init_once(void)
             C2PY.dl_handle = (void*)GetModuleHandleA(candidates[i]);
             if (C2PY.dl_handle) break;
         }
+        /* On free-threaded and some embedded builds, Python symbols
+         * may be exported from the .exe itself rather than a separate
+         * DLL.  GetModuleHandleA(NULL) returns the .exe handle. */
         if (C2PY.dl_handle == NULL) {
-            fprintf(stderr, "c2py_runtime: GetModuleHandle failed "
+            C2PY.dl_handle = (void*)GetModuleHandleA(NULL);
+        }
+        /* Last resort: try to load python3.dll or python3XX.dll
+         * explicitly via LoadLibraryA.  This works when the DLL exists
+         * on disk but was not loaded as a dependency of the main
+         * executable (e.g. free-threaded Python 3.14t/3.15t on Windows
+         * where the executable may have a non-standard import table). */
+        if (C2PY.dl_handle == NULL) {
+            static const char *load_candidates[] = {
+                "python3.dll",
+                "python315.dll", "python314.dll", NULL
+            };
+            for (i = 0; load_candidates[i]; i++) {
+                C2PY.dl_handle = (void*)LoadLibraryA(load_candidates[i]);
+                if (C2PY.dl_handle) break;
+            }
+        }
+        if (C2PY.dl_handle == NULL) {
+            fprintf(stderr, "c2py_runtime: GetModuleHandle / LoadLibrary failed "
                     "(python3.dll not found). "
                     "GetLastError=%lu\n", GetLastError());
             fprintf(stderr, "c2py_runtime: interpreter may be statically "
@@ -827,20 +839,6 @@ static void _c2py_runtime_init_once(void)
 
 int c2py_runtime_init(void)
 {
-#ifdef _MSC_VER
-    {
-        char buf[128];
-        int len = _snprintf_s(buf, sizeof(buf), _TRUNCATE,
-                    "c2py: c2py_runtime_init ENTER dl_handle=%p\n",
-                    C2PY.dl_handle);
-        if (len > 0) {
-            DWORD written;
-            HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
-            if (h && h != INVALID_HANDLE_VALUE)
-                WriteFile(h, buf, (DWORD)len, &written, NULL);
-        }
-    }
-#endif
 #ifndef _WIN32
     pthread_once(&_c2py_init_once, _c2py_runtime_init_once);
     return _c2py_init_result;
@@ -860,94 +858,3 @@ int c2py_runtime_init(void)
 #endif
 }
 
-#ifdef _MSC_VER
-int c2py_seh_filter(unsigned int code, struct _EXCEPTION_POINTERS *ep)
-{
-    const char *name = "UNKNOWN";
-    switch (code) {
-    case EXCEPTION_ACCESS_VIOLATION:      name = "ACCESS_VIOLATION";      break;
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: name = "ARRAY_BOUNDS_EXCEEDED"; break;
-    case EXCEPTION_BREAKPOINT:            name = "BREAKPOINT";            break;
-    case EXCEPTION_DATATYPE_MISALIGNMENT: name = "DATATYPE_MISALIGNMENT"; break;
-    case EXCEPTION_FLT_DENORMAL_OPERAND:  name = "FLT_DENORMAL_OPERAND";  break;
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:    name = "FLT_DIVIDE_BY_ZERO";    break;
-    case EXCEPTION_FLT_INEXACT_RESULT:    name = "FLT_INEXACT_RESULT";    break;
-    case EXCEPTION_FLT_INVALID_OPERATION: name = "FLT_INVALID_OPERATION"; break;
-    case EXCEPTION_FLT_OVERFLOW:          name = "FLT_OVERFLOW";          break;
-    case EXCEPTION_FLT_STACK_CHECK:       name = "FLT_STACK_CHECK";       break;
-    case EXCEPTION_FLT_UNDERFLOW:         name = "FLT_UNDERFLOW";         break;
-    case EXCEPTION_ILLEGAL_INSTRUCTION:   name = "ILLEGAL_INSTRUCTION";   break;
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:    name = "INT_DIVIDE_BY_ZERO";    break;
-    case EXCEPTION_INT_OVERFLOW:          name = "INT_OVERFLOW";          break;
-    case EXCEPTION_IN_PAGE_ERROR:         name = "IN_PAGE_ERROR";         break;
-    case EXCEPTION_STACK_OVERFLOW:        name = "STACK_OVERFLOW";        break;
-    }
-
-    /* Write to stderr */
-    fprintf(stderr, "\n=== c2py SEH crash dump ===\n");
-    fprintf(stderr, "Exception code: 0x%08X (%s)\n", code, name);
-    if (ep && ep->ExceptionRecord) {
-        fprintf(stderr, "Exception addr: %p\n",
-                ep->ExceptionRecord->ExceptionAddress);
-        fprintf(stderr, "Exception info[0]: %p\n",
-                (void*)(uintptr_t)ep->ExceptionRecord->ExceptionInformation[0]);
-        fprintf(stderr, "Exception info[1]: %p\n",
-                (void*)(uintptr_t)ep->ExceptionRecord->ExceptionInformation[1]);
-    }
-    if (ep && ep->ContextRecord) {
-        /* Dump key registers to identify the crash instruction */
-        CONTEXT *ctx = ep->ContextRecord;
-        fprintf(stderr, "RIP:  %p  RSP:  %p  RBP:  %p\n",
-                (void*)ctx->Rip, (void*)ctx->Rsp, (void*)ctx->Rbp);
-        fprintf(stderr, "RAX:  %p  RCX:  %p  RDX:  %p\n",
-                (void*)ctx->Rax, (void*)ctx->Rcx, (void*)ctx->Rdx);
-        fprintf(stderr, "R8:   %p  R9:   %p  R10:  %p\n",
-                (void*)ctx->R8, (void*)ctx->R9, (void*)ctx->R10);
-    }
-    fprintf(stderr, "=== end c2py SEH crash dump ===\n\n");
-    fflush(stderr);
-
-    /* Walk the stack using RBP chain from the exception context.
-     * When RIP=0 (call through NULL), the stack still has the
-     * return address from the caller. */
-    if (ep && ep->ContextRecord) {
-        CONTEXT *ctx = ep->ContextRecord;
-        void **frame = (void**)ctx->Rbp;
-        void *rsp = (void*)ctx->Rsp;
-        int i;
-        fprintf(stderr, "Stack frames (RBP chain, max 12):\n");
-        if (rsp) {
-            void *ret = *(void**)rsp;
-            fprintf(stderr, "  [fault] return-addr at RSP=%p: %p\n", rsp, ret);
-            /* Identify which module contains the return address */
-            if (ret) {
-                MEMORY_BASIC_INFORMATION mbi;
-                if (VirtualQuery(ret, &mbi, sizeof(mbi))) {
-                    fprintf(stderr, "    in module base=%p alloc=%p size=%zx type=%x\n",
-                            mbi.AllocationBase, mbi.BaseAddress,
-                            mbi.RegionSize, mbi.Type);
-                    /* Try to get the module name via GetModuleFileName */
-                    {
-                        char modname[MAX_PATH];
-                        HMODULE hmod = (HMODULE)mbi.AllocationBase;
-                        DWORD len = GetModuleFileNameA(hmod, modname, sizeof(modname));
-                        if (len > 0) {
-                            fprintf(stderr, "    module: %s\n", modname);
-                        }
-                    }
-                }
-            }
-        }
-        for (i = 0; frame && i < 12; i++) {
-            void *ret_addr = frame[1];  /* RBP+8 = return address */
-            void *next_rbp = frame[0]; /* RBP+0 = previous RBP */
-            if ((uintptr_t)ret_addr < 0x1000) break;
-            fprintf(stderr, "  [%d] RBP=%p  ret=%p\n", i, (void*)frame, ret_addr);
-            frame = (void**)next_rbp;
-        }
-    }
-    fflush(stderr);
-
-    return EXCEPTION_EXECUTE_HANDLER;
-}
-#endif

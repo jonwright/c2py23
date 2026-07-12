@@ -333,14 +333,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -393,14 +393,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -486,14 +486,11 @@ static PyModuleDef_FT _module_def_ft = {
 };
 
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
-#ifdef _MSC_VER
-    { const char _m[] = "c2py: PyInit_xfrm ENTER\n"; DWORD _w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), _m, (DWORD)(sizeof(_m)-1), &_w, NULL); }
-    __try {
-#endif
-    c2py_runtime_init();
-#ifdef _MSC_VER
-    { const char _m[] = "c2py: c2py_runtime_init done\n"; DWORD _w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), _m, (DWORD)(sizeof(_m)-1), &_w, NULL); }
-#endif
+    if (c2py_runtime_init() != 0) {
+        PyErr_SetString(PyExc_ImportError,
+            "c2py_runtime_init failed (DLL not found or symbols missing)");
+        return NULL;
+    }
 
     PyObject *module = NULL;
     PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;
@@ -524,11 +521,6 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
     return module;
-#ifdef _MSC_VER
-    } __except(c2py_seh_filter(GetExceptionCode(), GetExceptionInformation())) {
-        return NULL;
-    }
-#endif
 }
 
 C2PY_EXPORT void initxfrm(void) {
