@@ -902,11 +902,27 @@ int c2py_seh_filter(unsigned int code, struct _EXCEPTION_POINTERS *ep)
         void *rsp = (void*)ctx->Rsp;
         int i;
         fprintf(stderr, "Stack frames (RBP chain, max 12):\n");
-        /* First frame: the fault site (RIP=0).
-         * RSP should point just past the fault, check for return addr. */
         if (rsp) {
-            fprintf(stderr, "  [fault] return-addr at RSP=%p: %p\n",
-                    rsp, rsp ? *(void**)rsp : NULL);
+            void *ret = *(void**)rsp;
+            fprintf(stderr, "  [fault] return-addr at RSP=%p: %p\n", rsp, ret);
+            /* Identify which module contains the return address */
+            if (ret) {
+                MEMORY_BASIC_INFORMATION mbi;
+                if (VirtualQuery(ret, &mbi, sizeof(mbi))) {
+                    fprintf(stderr, "    in module base=%p alloc=%p size=%zx type=%x\n",
+                            mbi.AllocationBase, mbi.BaseAddress,
+                            mbi.RegionSize, mbi.Type);
+                    /* Try to get the module name via GetModuleFileName */
+                    {
+                        char modname[MAX_PATH];
+                        HMODULE hmod = (HMODULE)mbi.AllocationBase;
+                        DWORD len = GetModuleFileNameA(hmod, modname, sizeof(modname));
+                        if (len > 0) {
+                            fprintf(stderr, "    module: %s\n", modname);
+                        }
+                    }
+                }
+            }
         }
         for (i = 0; frame && i < 12; i++) {
             void *ret_addr = frame[1];  /* RBP+8 = return address */
