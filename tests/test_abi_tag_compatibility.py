@@ -264,10 +264,24 @@ def test_build_wheel(tmpdir):
     ])
     if rc2 != 0:
         print("Import failed (may be due to missing c2py23 dependency): %s" % err2)
-        # On CI without c2py23 installed in the target, this may fail
-        # but that's expected for the tag validation test
     else:
         print("[OK] Module imports and functions resolve correctly")
+
+    # 4b. Verify the module can be imported in the CURRENT process too.
+    # This catches an access-violation crash during c2py_runtime_init
+    # on free-threaded Windows builds (Python 3.14t, 3.15t).
+    import importlib.machinery
+    import importlib.util
+    pyd_base = '_mysum.c2py23-linux_x86_64' if os.name != 'nt' else '_mysum'
+    pyd_files = [f for f in os.listdir(src_dir)
+                 if f.startswith('_mysum') and (f.endswith('.so') or f.endswith('.pyd'))]
+    if pyd_files:
+        pyd_path = os.path.join(src_dir, pyd_files[0])
+        loader = importlib.machinery.ExtensionFileLoader('_mysum_inline', pyd_path)
+        spec = importlib.util.spec_from_file_location('_mysum_inline', pyd_path, loader=loader)
+        inline_mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(inline_mod)
+        print("[OK] In-process import works (c2py_runtime_init succeeded)")
 
     print("[OK] ABI tag compatibility test passed")
     print("  Wheel tag: py3-none-any (c2py_loader convention)")
