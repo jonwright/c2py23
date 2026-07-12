@@ -88,7 +88,9 @@ jobs:
         if: matrix.python-version == '3.14t' || matrix.python-version == '3.15t'
         env:
           CC: cl
-        run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_aos_soa.py --ignore=tests/test_peer_review.py
+        run: |
+          $env:LIBS = "$env:pythonLocation\libs\python3.lib"
+          python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_aos_soa.py --ignore=tests/test_peer_review.py
         continue-on-error: true
 
       - name: Run tests (2.7)
