@@ -1568,7 +1568,7 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         elif attr == "len":
             return obj + "->len"
         elif attr == "n":
-            return "(" + obj + "->len / " + obj + "->itemsize)"
+            return "((" + obj + "->len == 0) ? 0 : (" + obj + "->len / " + obj + "->itemsize))"
         elif attr == "ptr":
             return obj + "->buf"
         elif attr == "shape":

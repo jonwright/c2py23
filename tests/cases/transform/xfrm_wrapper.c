@@ -252,9 +252,9 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
         return NULL;
     }
     /* check: out.n == points.n */
-    if (!(((buf_out->len / buf_out->itemsize)) == ((buf_points->len / buf_points->itemsize)))) {
+    if (!((((buf_out->len == 0) ? 0 : (buf_out->len / buf_out->itemsize))) == (((buf_points->len == 0) ? 0 : (buf_points->len / buf_points->itemsize))))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.n == points.n (got %ld vs %ld)", (long)((buf_out->len / buf_out->itemsize)), (long)((buf_points->len / buf_points->itemsize)));
+        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.n == points.n (got %ld vs %ld)", (long)(((buf_out->len == 0) ? 0 : (buf_out->len / buf_out->itemsize))), (long)(((buf_points->len == 0) ? 0 : (buf_points->len / buf_points->itemsize))));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
@@ -333,14 +333,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -393,14 +393,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         goto cleanup;
     acq_out = 1;
 
-    /* restrict check: points vs out */
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
+        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
+        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }

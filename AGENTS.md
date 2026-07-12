@@ -207,6 +207,23 @@ See `docs/specification.md` for the full grammar.
 
 ## Testing
 
+**IMPORTANT: Never guard a test.** If a test fails on a specific platform or
+Python version, fix the code, not the test.  Patterns to avoid:
+
+- `pytest.skip(...)` inside a test body for platform-specific bugs
+- `pytest.importorskip(...)` for runtime platform problems (import errors are
+  fine -- missing optional deps should skip)
+- `try: ... except ...: pytest.skip(...)` to swallow bugs
+- `@pytest.mark.skipif(...)` for version/platform gating that hides real bugs
+- `continue-on-error: true` in CI for test steps that should pass
+
+A failing test is the best signal that code is broken.  Masking the failure
+with a guard hides the bug and guarantees it will never be found.  The ONLY
+acceptable guards are:
+
+- `memoryview.cast(shape)` on Python 2.7 (API does not exist)
+- `_xxsubinterpreters` on Python < 3.12 (module does not exist)
+
 All tests use `ctypes` arrays (buffer protocol works on Python 2.7 and 3.x) and `memoryview` for shape casting. No numpy dependency.
 
 On Python 2.7, the `transform` test is skipped because `memoryview.cast(shape)` is Python 3.3+ only.
