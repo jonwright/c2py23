@@ -94,8 +94,9 @@ jobs:
       - name: Print diag log (FT)
         if: matrix.python-version == '3.14t' || matrix.python-version == '3.15t'
         run: |
-          echo "--- diag log ---"
-          if (Test-Path c2py_init_diag.log) { Get-Content c2py_init_diag.log } else { echo "no c2py_init_diag.log found" }
+          echo "--- searching for diag log ---"
+          Get-ChildItem -Path . -Recurse -Filter "c2py_init*" -ErrorAction SilentlyContinue | ForEach-Object { echo $_.FullName; Get-Content $_.FullName }
+          if (-not (Get-ChildItem -Path . -Recurse -Filter "c2py_init*" -ErrorAction SilentlyContinue)) { echo "no c2py_init_diag.log found anywhere" }
         continue-on-error: true
 
       - name: Run tests (2.7)
