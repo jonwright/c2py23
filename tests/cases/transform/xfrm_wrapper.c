@@ -487,9 +487,7 @@ static PyModuleDef_FT _module_def_ft = {
 
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     if (c2py_runtime_init() != 0) {
-        PyErr_SetString(PyExc_ImportError,
-            "c2py_runtime_init failed (DLL not found or symbols missing)");
-        return NULL;
+        return NULL;  /* Python will raise ImportError */
     }
 
     PyObject *module = NULL;

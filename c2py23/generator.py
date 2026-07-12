@@ -1040,9 +1040,7 @@ def _emit_module_init(b, module_def, has_free_threading,
     # PyInit (Python 3)
     b.emit('C2PY_EXPORT PyObject* PyInit_{}(void) {{'.format(name))
     b.emit('    if (c2py_runtime_init() != 0) {')
-    b.emit('        PyErr_SetString(PyExc_ImportError,')
-    b.emit('            "c2py_runtime_init failed (DLL not found or symbols missing)");')
-    b.emit('        return NULL;')
+    b.emit('        return NULL;  /* Python will raise ImportError */')
     b.emit('    }')
     for rc in resolve_calls:
         b.emit(rc)
