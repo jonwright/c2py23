@@ -13,16 +13,19 @@ to existing manylinux2014 strategy in snakepit).
 
 ### macOS CI (#38)
 
-No macOS runner in CI.  The code is designed to be POSIX-portable and
-should work on macOS (clang, `dlopen`/`dlsym`), but this has never
-been tested.
+macOS CI workflow created (both x86_64 and Apple Silicon runners).
+Status pending: CI must pass before this item is closed.
 
 ### SIMD dispatch: test and document on Windows and ARM (#54)
 
-CPU feature detection works on x86_64 (`cpuid`) and aarch64
-(`getauxval`/`mrs`).  MSVC detection of CPU features needs testing.
-ARM64/POWER64 SIMD kernels exist but are validated via container
-emulation only -- no real hardware testing.
+aarch64 CI already tests NEON SIMD on ubuntu-24.04-arm runner.
+Windows CI already tests SSE2 via MSVC (`__cpuidex` intrinsic).
+AArch64 tested on real hardware (not emulation) via GitHub Actions
+native ARM64 runner.
+
+Remaining: verify polysimd auto-vectorization example on macOS
+(clang) and Windows (MSVC with /arch: flags).  Documentation updated
+to treat all architectures equally.
 
 ### HPy backend for CPython, PyPy and GraalPy (#49)
 
