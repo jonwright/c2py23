@@ -50,6 +50,7 @@ nav:
   - Specification: specification.md
   - Design Decisions: design.md
   - Developer Guide: developer_guide.md
+  - Repository Audit: audit.md
   - API Reference: api.md
   - Examples:
       - KISS FFT: examples/kissfft_wrap.md
