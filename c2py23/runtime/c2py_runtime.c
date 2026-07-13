@@ -266,8 +266,9 @@ static void _c2py_probe_cpu_features(void)
 #endif /* _MSC_VER */
 #endif
 
-#if (defined(__aarch64__) || defined(__arm64__)) && !defined(_WIN32)
+#if (defined(__aarch64__) || defined(__arm64__)) && !defined(_WIN32) && !defined(__APPLE__)
     {
+        /* getauxval is Linux-specific; macOS ARM64 uses a separate path below. */
         unsigned long hwcap = getauxval(AT_HWCAP);
         unsigned long hwcap2 = getauxval(AT_HWCAP2);
 
@@ -283,8 +284,17 @@ static void _c2py_probe_cpu_features(void)
         c2py_arm64_sve2  = (hwcap2 >> 1) & 1;
     }
 #endif
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+    {
+        /* Apple Silicon: NEON (asimd) and FP are baseline on all chips.
+         * sysctlbyname() can query optional features (AES, SHA, etc.),
+         * but for now we set the baseline flags only. */
+        c2py_arm64_fp    = 1;
+        c2py_arm64_asimd = 1;
+    }
+#endif
 
-#if (defined(__powerpc64__) || defined(__powerpc__)) && !defined(_WIN32)
+#if (defined(__powerpc64__) || defined(__powerpc__)) && !defined(_WIN32) && !defined(__APPLE__)
     {
         unsigned long hwcap = getauxval(AT_HWCAP);
         unsigned long hwcap2 = getauxval(AT_HWCAP2);

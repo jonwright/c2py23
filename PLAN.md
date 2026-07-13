@@ -13,16 +13,16 @@ to existing manylinux2014 strategy in snakepit).
 
 ### macOS CI (#38)
 
-No macOS runner in CI.  The code is designed to be POSIX-portable and
-should work on macOS (clang, `dlopen`/`dlsym`), but this has never
-been tested.
+Apple Silicon CI added (macos-latest, Python 3.12, 96 tests pass).
+Intel macOS (x86_64) runner deprecated by GitHub -- Apple stopped selling
+Intel Macs in 2023.  Needs self-hosted runner or paid plan for x86_64
+SSE2/AVX2 coverage.  Reference: GitHub Actions removed macos-13 in 2025.
 
 ### SIMD dispatch: test and document on Windows and ARM (#54)
 
-CPU feature detection works on x86_64 (`cpuid`) and aarch64
-(`getauxval`/`mrs`).  MSVC detection of CPU features needs testing.
-ARM64/POWER64 SIMD kernels exist but are validated via container
-emulation only -- no real hardware testing.
+Completed. aarch64 tests NEON on real hardware (ubuntu-24.04-arm).
+macOS tests NEON on Apple Silicon. Windows tests SSE2 via MSVC.
+Documentation updated to treat all architectures equally.
 
 ### HPy backend for CPython, PyPy and GraalPy (#49)
 
