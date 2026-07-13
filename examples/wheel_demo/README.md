@@ -17,7 +17,8 @@ functions:
       - "a.n == result.n"
     c_overloads:
       - sig: "array_sum(const double *a, const double *b, double *result, int n) -> int"
-        map: {a: "a.ptr", b: "b.ptr", result: "result.ptr", n: "a.n"}```
+        map: {a: "a.ptr", b: "b.ptr", result: "result.ptr", n: "a.n"}
+```
 
 ## C Source
 
@@ -31,7 +32,8 @@ int array_sum(const double *a, const double *b, double *result, int n) {
         result[i] = a[i] + b[i];
     }
     return n;
-}```
+}
+```
 
 ## Build
 

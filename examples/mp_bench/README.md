@@ -15,7 +15,8 @@ functions:
       - sig: "mc_pi_serial(int n, int seed) -> int"
         map:
           n: n
-          seed: seed```
+          seed: seed
+```
 
 ## C Source
 
@@ -55,7 +56,8 @@ int mc_pi_serial(int n, int seed) {
             inside++;
     }
     return inside;
-}```
+}
+```
 
 ## Build
 
@@ -82,6 +84,7 @@ Usage:
 
 Python 2.7 compatible for 1 and 2; 3+ enables multiprocessing modes.
 """
+
 from __future__ import print_function, division
 
 import os
@@ -91,7 +94,6 @@ import time
 import sysconfig
 
 IS_PY3 = sys.version_info[0] >= 3
-IS_PY2 = not IS_PY3
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -103,8 +105,8 @@ except ImportError:
     print("  cd %s && c2py23 build mc_pi.c2py" % HERE)
     sys.exit(1)
 
-gil_disabled = sysconfig.get_config_var('Py_GIL_DISABLED')
-IS_FREE_THREADED = (gil_disabled == 1)
+gil_disabled = sysconfig.get_config_var("Py_GIL_DISABLED")
+IS_FREE_THREADED = gil_disabled == 1
 
 TOTAL_N = 200000000
 NUM_WORKERS = 4
@@ -127,6 +129,7 @@ def fmt_speedup(t_base, t_parallel):
 
 # ---------- Serial ----------
 
+
 def run_serial():
     t0 = time.time()
     inside = mcpimod.mc_pi(TOTAL_N, 12345)
@@ -137,6 +140,7 @@ def run_serial():
 
 # ---------- Python threads + GIL release ----------
 
+
 def run_threaded(n_workers):
     results = [0] * n_workers
 
@@ -144,8 +148,7 @@ def run_threaded(n_workers):
         seed = 12345 + idx * 7919
         results[idx] = mcpimod.mc_pi(CHUNK_N, seed)
 
-    threads = [threading.Thread(target=worker, args=(i,))
-               for i in range(n_workers)]
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_workers)]
 
     t0 = time.time()
     for t in threads:
@@ -161,13 +164,17 @@ def run_threaded(n_workers):
 
 # ---------- multiprocessing ----------
 
+
 def _worker_mp(args):
     n, seed = args
     import mcpimod as mod
+
     return mod.mc_pi(n, seed)
+
 
 def run_multiprocessing(n_workers):
     import multiprocessing
+
     chunks = [(CHUNK_N, 12345 + i * 7919) for i in range(n_workers)]
     pool = multiprocessing.Pool(processes=n_workers)
 
@@ -183,6 +190,7 @@ def run_multiprocessing(n_workers):
 
 
 # ---------- concurrent.futures ProcessPoolExecutor ----------
+
 
 def run_processpool(n_workers):
     from concurrent.futures import ProcessPoolExecutor
@@ -201,13 +209,11 @@ def run_processpool(n_workers):
 
 # ---------- Main ----------
 
+
 def main():
     print("=== Monte Carlo Pi -- Parallelism Benchmark ===")
-    print("Python: %s (free-threaded: %s)" % (
-        sys.version.split()[0],
-        "yes" if IS_FREE_THREADED else "no"))
-    print("Iterations: {:,} (%d workers, {:,} each)".format(
-        TOTAL_N).format(CHUNK_N) % NUM_WORKERS)
+    print("Python: %s (free-threaded: %s)" % (sys.version.split()[0], "yes" if IS_FREE_THREADED else "no"))
+    print("Iterations: {0:,} ({1} workers, {2:,} each)".format(TOTAL_N, NUM_WORKERS, CHUNK_N))
     print()
 
     # 1. Serial
@@ -224,8 +230,7 @@ def main():
         label = "2. Free-threading (%d threads)" % NUM_WORKERS
     print(label)
     pi_t, t_t = run_threaded(NUM_WORKERS)
-    print("   pi = %.6f, wall = %s, speedup = %s" % (
-        pi_t, fmt_time(t_t), fmt_speedup(t_base, t_t)))
+    print("   pi = %.6f, wall = %s, speedup = %s" % (pi_t, fmt_time(t_t), fmt_speedup(t_base, t_t)))
     if NUM_WORKERS > 1 and t_t > 0:
         efficiency = (t_base / t_t) / NUM_WORKERS * 100
         print("   efficiency = %.0f%%" % efficiency)
@@ -236,8 +241,7 @@ def main():
         print("3. multiprocessing.Pool (%d processes)" % NUM_WORKERS)
         try:
             pi_m, t_m = run_multiprocessing(NUM_WORKERS)
-            print("   pi = %.6f, wall = %s, speedup = %s" % (
-                pi_m, fmt_time(t_m), fmt_speedup(t_base, t_m)))
+            print("   pi = %.6f, wall = %s, speedup = %s" % (pi_m, fmt_time(t_m), fmt_speedup(t_base, t_m)))
             if NUM_WORKERS > 1 and t_m > 0:
                 efficiency = (t_base / t_m) / NUM_WORKERS * 100
                 print("   efficiency = %.0f%%" % efficiency)
@@ -249,8 +253,7 @@ def main():
         print("4. concurrent.futures ProcessPoolExecutor (%d workers)" % NUM_WORKERS)
         try:
             pi_p, t_p = run_processpool(NUM_WORKERS)
-            print("   pi = %.6f, wall = %s, speedup = %s" % (
-                pi_p, fmt_time(t_p), fmt_speedup(t_base, t_p)))
+            print("   pi = %.6f, wall = %s, speedup = %s" % (pi_p, fmt_time(t_p), fmt_speedup(t_base, t_p)))
             if NUM_WORKERS > 1 and t_p > 0:
                 efficiency = (t_base / t_p) / NUM_WORKERS * 100
                 print("   efficiency = %.0f%%" % efficiency)
@@ -268,6 +271,7 @@ def main():
         print("  stays disabled. Threads run truly in parallel.")
 
 
-if __name__ == '__main__':
-    main()```
+if __name__ == "__main__":
+    main()
+```
 

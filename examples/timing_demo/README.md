@@ -27,7 +27,8 @@ functions:
         when: "data.format == 'f'"
         name: "float"
 
-    default_raise: "TypeError: expected float or double buffer"```
+    default_raise: "TypeError: expected float or double buffer"
+```
 
 ## C Source
 
@@ -50,7 +51,8 @@ double weighted_sum_float(const float *data, intptr_t n, float weight) {
         total += (double)data[i] * (double)weight;
     }
     return total;
-}```
+}
+```
 
 ## Build
 

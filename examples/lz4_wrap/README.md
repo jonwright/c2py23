@@ -39,7 +39,8 @@ functions:
           src: "src.ptr"
           dst: "dst.ptr"
           compressedSize: "src.len"
-          dstCapacity: "dst.len"```
+          dstCapacity: "dst.len"
+```
 
 ## C Source
 
@@ -53,7 +54,8 @@ int lz4_compress(const uint8_t *src, uint8_t *dst, int srcSize, int dstCapacity)
 
 int lz4_decompress(const uint8_t *src, uint8_t *dst, int compressedSize, int dstCapacity) {
     return LZ4_decompress_safe((const char *)src, (char *)dst, compressedSize, dstCapacity);
-}```
+}
+```
 
 ## Build
 
@@ -92,5 +94,6 @@ if IS_PY2:
     result = str(bytearray(out[:decompressed_size]))
 else:
     result = bytes(out[:decompressed_size])
-print("Decompressed: %d bytes, match=%s" % (decompressed_size, result == data))```
+print("Decompressed: %d bytes, match=%s" % (decompressed_size, result == data))
+```
 

@@ -2,7 +2,7 @@
 name: c2py23
 description: Generate zero-copy C99 Python extensions from declarative YAML interface files. Use when wrapping C functions for Python, creating high-performance numerical extensions, binding SIMD-optimized C code, or when the user mentions c2py23, C extensions, or buffer-protocol wrapping. Supports Python 2.7-3.15, GIL release, free-threading, and automatic buffer shape/type dispatch.
 license: MIT
-compatibility: Requires Python 2.7+ and gcc (or compatible C99 compiler). No numpy required.
+compatibility: Requires Python 2.7+, PyYAML (for .c2py YAML files), and gcc (or compatible C99 compiler). No numpy required.
 ---
 
 # c2py23 Skill
@@ -46,7 +46,7 @@ module: mymod
 source: [kernel.c]
 
 functions:
-  - py_sig: "add_arrays(a: bytes, b: bytes, out: bytes)"
+  - py_sig: "add_arrays(a: buffer, b: buffer, out: buffer)"
     checks:
       - "a.format == 'd'"
       - "b.format == 'd'"
@@ -56,9 +56,9 @@ functions:
     c_overloads:
       - sig: "void add_double(int n, const double *a, const double *b, double *out)"
         map:
-          a.ptr: a
-          b.ptr: b
-          out.ptr: out
+          a: "a.ptr"
+          b: "b.ptr"
+          out: "out.ptr"
           n: "min(a.n, b.n)"
 ```
 
@@ -125,7 +125,7 @@ The Python dict format requires no PyYAML dependency and auto-detects:
             "c_overloads": [
                 {
                     "sig": "void add_double(int n, const double *a, const double *b, double *out)",
-                    "map": {"a.ptr": "a", "b.ptr": "b", "out.ptr": "out", "n": "min(a.n, b.n)"},
+                    "map": {"a": "a.ptr", "b": "b.ptr", "out": "out.ptr", "n": "min(a.n, b.n)"},
                 },
             ],
         },

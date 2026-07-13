@@ -43,7 +43,8 @@ functions:
         map:
           fin: "fin.ptr"
           fout: "fout.ptr"
-          n: "fin.n / 2"```
+          n: "fin.n / 2"
+```
 
 ## C Source
 
@@ -66,7 +67,8 @@ void kissfft_cfft_forward(const float *fin, float *fout, int n) {
         kiss_fft(cfg, (const kiss_fft_cpx *)fin, (kiss_fft_cpx *)fout);
         free(cfg);
     }
-}```
+}
+```
 
 ## Build
 
@@ -102,5 +104,6 @@ fin = (ctypes.c_float * (N * 2))(*(list(data) + [0.0] * N))
 fout = (ctypes.c_float * (N * 2))()
 
 kissfftmod.cfft_forward(fin, fout)
-print("cfft: fout[0]=%.2f fout[1]=%.2f" % (fout[0], fout[1]))```
+print("cfft: fout[0]=%.2f fout[1]=%.2f" % (fout[0], fout[1]))
+```
 

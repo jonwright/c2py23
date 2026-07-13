@@ -37,8 +37,8 @@ Two scripts produce flat Markdown exports of the entire repository:
 
 | Script | Output | Size (approx) |
 |--------|--------|---------------|
-| `export_full_repo.py` | `full_repo_audit.md` | ~830 KB / ~25K lines |
-| `export_wrappers.py` | `wrappers_combined.md` | ~500 KB / ~15K lines |
+| `export_full_repo.py` | `tools/audit/full_repo_audit.md` | ~830 KB / ~25K lines |
+| `export_wrappers.py` | `tools/audit/wrappers_combined.md` | ~500 KB / ~15K lines |
 
 Both files fit within a 200K-token context window, making them suitable
 for direct LLM review. The full repo audit contains every tracked text
