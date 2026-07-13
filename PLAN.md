@@ -33,6 +33,17 @@ claimed otherwise) and could provide a single binary that works across
 CPython, PyPy, and GraalPy.  Key question: does HPy support Python 2.7
 through 3.15 with the buffer protocol?
 
+### GPU support via DLPack (#40)
+
+DLPack is a viable zero-copy protocol for GPU device pointers --
+numpy's C source confirms `__dlpack__()` returns the same raw
+`PyArray_DATA()` pointer as getbuffer for CPU arrays, and device-typed
+pointers for CuPy/PyTorch GPU tensors.  The blocking question is not
+buffer access: it's whether a C99 function compiled for a GPU (nvcc,
+hipcc) exists to wrap.  All GPU libraries require JIT or pre-compiled
+device code.  Deferred until there is a concrete GPU-compiled C
+function to wrap.
+
 ---
 
 ## Outstanding (low-priority)
@@ -175,8 +186,8 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 four referee reports. All HIGH and MEDIUM severity items resolved. LOW-severity
 items (generator structural hardening, FT globals audit, 32-bit CI) tracked in
 Outstanding section above.  Design decisions intentionally unsupported (keyword
-arguments #44, named-tuple returns #42, async/await #41, GPU #40) are documented
-in `docs/design.md`.  Open issues are tracked in GitHub under the same numbers.
+arguments #44, named-tuple returns #42, async/await #41) are documented
+in `docs/design.md`.
 
 ## Design Decisions (intentionally unsupported)
 
@@ -188,4 +199,3 @@ These are settled design decisions, documented in `docs/design.md`:
 | #44 | Keyword arguments | Intentionally unsupported -- C99 is positional-only |
 | #42 | Named-tuple returns | Design discussion -- may revisit |
 | #41 | Async/await support | Not planned -- c2py23 is synchronous C wrapping |
-| #40 | GPU / array API compat | Exploratory -- no active development |
