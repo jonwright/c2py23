@@ -16,32 +16,45 @@ Demonstrates complex-number handling via interleaved float32 buffers
 --8<-- "examples/kissfft_wrap/kissfft_thin.c"
 ```
 
-## Build & Run
+## Build
 
 ```bash
 git submodule update --init kissfft
+pip install -e .            # from repo root
 cd examples/kissfft_wrap
-pip install -e ../..
 bash build.sh
-python example.py
+```
+
+## Run
+
+```python
+--8<-- "examples/kissfft_wrap/example.py"
 ```
 
 ## Output
 
 ```
-$ python example.py
 rfft: spec[0]=0.00 spec[1]=0.00
 cfft: fout[0]=0.00 fout[1]=0.00
 ```
 
-The real FFT takes N real floats and produces (N/2+1)*2 floats (interleaved
-real/imag pairs).  The complex FFT takes N*2 float32 (interleaved real/imag)
-and produces the same shape.
+## How It Works
 
-### Key Design Decisions
+### Complex numbers as float pairs
 
-- Complex data is **interleaved float pairs**, not a native `complex64` type
-- Format check is `'f'` (float32) -- the wrapper casts `float*` to `kiss_fft_cpx*`
-- `fin.n % 2 == 0` check ensures even-length buffer (complete real/imag pairs)
-- Map passes `n = fin.n / 2` (number of complex elements, not float count)
-- Real FFT output sizing: `spec.n >= data.n + 2` (N/2+1 complex bins = N+2 floats)
+c2py23 has no complex type.  The thin wrapper casts `float*` buffers to
+`kiss_fft_cpx*` (a struct of two floats).  Python callers create interleaved
+float arrays -- `[re0, im0, re1, im1, ...]`.
+
+### Buffer sizing
+
+The real FFT takes N real floats. Its output is N/2+1 complex bins stored
+as (N/2+1)*2 = N+2 floats.  The check `spec.n >= data.n + 2` enforces this.
+
+The complex FFT takes N complex numbers = N*2 floats.  The check
+`fin.n % 2 == 0` ensures an even number of floats (complete pairs).
+
+### Map expressions
+
+The C function receives `n` (number of complex elements), but the buffer
+has `N*2` floats.  The map `n: "fin.n / 2"` bridges this.

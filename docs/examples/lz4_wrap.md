@@ -1,8 +1,7 @@
-# LZ4 Compression Wrapping
+# LZ4 Compression
 
 Wraps the [LZ4](https://github.com/lz4/lz4) compression library using c2py23.
-Demonstrates uint8 buffer handling with dynamic output size (compress returns
-the compressed byte count).
+Demonstrates uint8 buffer handling with dynamic output sizing.
 
 ## Interface
 
@@ -16,27 +15,37 @@ the compressed byte count).
 --8<-- "examples/lz4_wrap/lz4_thin.c"
 ```
 
-## Build & Run
+## Build
 
 ```bash
 git submodule update --init lz4
+pip install -e .                # from repo root
 cd examples/lz4_wrap
-pip install -e ../..
 bash build.sh
-python example.py
+```
+
+## Run
+
+```python
+--8<-- "examples/lz4_wrap/example.py"
 ```
 
 ## Output
 
 ```
-$ python example.py
 Compressed 1400 -> 29 bytes
 Decompressed: 1400 bytes, match=True
 ```
 
-### Key Design Decisions
+## How It Works
 
-- Buffers use `format == 'B'` (uint8) matching LZ4's `char*` convention
-- Thin wrapper (`lz4_thin.c`) casts `uint8_t*` to `char*` and back
-- `compress` returns the compressed byte count via `outputs:`
-- Caller allocates the destination buffer and slices it to the actual compressed size
+### uint8 buffers
+
+LZ4 operates on `char*` data.  The thin wrapper casts `const uint8_t*` to
+`const char*` and back.  The format check is `'B'` (uint8).
+
+### Dynamic output size
+
+`compress` returns the actual compressed byte count via `outputs: {dst_size: int}`.
+The Python caller reads this and slices the destination buffer to the actual
+size before passing to `decompress`.

@@ -28,31 +28,11 @@ The long-term goal is a substrate for:
 
 ## Grammar
 
-### Module-Level YAML Schema
+### Python Dict Format (Canonical)
 
-```yaml
-module: <python-module-name>          # required
-source: [file1.c, file2.c, ...]       # required: C source files
-headers: [header1.h, header2.h, ...]  # optional: C headers to #include
-constants:                            # optional: module-level integer constants
-  NAME1: 42
-  NAME2: 7
-timing: true                          # optional: enable perf timing
-free_threading: true                  # optional: declare Py_MOD_GIL_NOT_USED
-
-functions:                            # required: list of wrapped functions
-  - py_sig: "name(arg: type, ...) -> return_type"
-    doc: "Custom docstring"           # optional: override auto-generated doc
-    params:                           # optional: per-parameter descriptions
-      param_name: "Description text"  #   keys must match py_sig parameter names
-    gil_release: true                 # optional: release the GIL during C calls
-    expand:                           # optional: template expansion
-      VAR1: [val_a, val_b, ...]       #   variable name -> list of values
-      VAR2: [val_a, val_b, ...]       #   all lists must have same length
-    checks:                           # optional: pre-conditions
-      - "expression"
-
-### Alternative: Python Dict Format
+The Python dict format is the canonical representation. When embedding
+c2py23 definitions in C source comments, the dict format is used because
+it parses safely via ast.literal_eval without PyYAML.
 
 Instead of YAML, the same interface can be written as a Python dict literal.
 This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
@@ -86,10 +66,10 @@ This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
 }
 ```
 
-The key names and values are identical to the YAML schema above.
+The key names and values are identical to the YAML schema below.
 Differences from YAML:
 
-- **`c_overloads`** instead of `c_overloads:` (same key name, both work)
+- Dict keys use Python strings (e.g. "c_overloads", "py_sig", "when")
 - **Boolean values**: `True`/`False` (or `true`/`false` in Python)
 - **None** (optional keys omitted or set to `None`)
 - **Strings** use Python quoting (single or double)
@@ -169,6 +149,33 @@ exec(open("mymod.c2py").read())
 running any build script -- it trusts the source.  For downloaded or
 untrusted code, always use `ast.literal_eval()` which only accepts
 Python literals (no functions, imports, or expressions).
+
+### YAML Format (Alternative)
+
+```yaml
+module: <python-module-name>          # required
+source: [file1.c, file2.c, ...]       # required: C source files
+headers: [header1.h, header2.h, ...]  # optional: C headers to #include
+constants:                            # optional: module-level integer constants
+  NAME1: 42
+  NAME2: 7
+timing: true                          # optional: enable perf timing
+free_threading: true                  # optional: declare Py_MOD_GIL_NOT_USED
+
+functions:                            # required: list of wrapped functions
+  - py_sig: "name(arg: type, ...) -> return_type"
+    doc: "Custom docstring"           # optional: override auto-generated doc
+    params:                           # optional: per-parameter descriptions
+      param_name: "Description text"  #   keys must match py_sig parameter names
+    gil_release: true                 # optional: release the GIL during C calls
+    expand:                           # optional: template expansion
+      VAR1: [val_a, val_b, ...]       #   variable name -> list of values
+      VAR2: [val_a, val_b, ...]       #   all lists must have same length
+    checks:                           # optional: pre-conditions
+      - "expression"
+
+```
+
       - ...
     c_overloads:                      # required: ordered list of alternatives
       # flat overload:
@@ -951,6 +958,39 @@ The signature line uses the CPython clinic convention (`funcname(params)`
 followed by a `\n--\n\n` separator), which allows `inspect.signature()` and
 `help()` to render a proper structured signature.
 
+#### Example of auto-generated docstrings
+
+With `doc:` set:
+
+```yaml
+functions:
+  - py_sig: "inc(x: int) -> int"
+    doc: "Increment x by 1 and return the result"
+    c_overloads:
+      - sig: "add_one(int x) -> int"
+        map: {x: x}
+```
+
+`help(inc)` in Python produces:
+
+```
+inc(x)
+--
+
+inc(x: int) -> int
+
+Increment x by 1 and return the result
+
+Parameters
+----------
+x : int
+
+Overloads
+---------
+  add_one(int x) -> int
+    Map: x = x (int)
+```
+
 ### Module Init
 
 Two entry points are provided:
@@ -1091,350 +1131,32 @@ for any glibc-linked binary.
   (user C code may use them internally; allocated memory must be freed before return)
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
-- The GIL is held during all C function calls by default.
-  Individual functions may opt into GIL release via
-  `gil_release: true` (see below).
+- The GIL is held during all C function calls by default (see [GIL Release](#gil-release-and-thread-safety))
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`
 
 ## GIL Release and Thread Safety
 
-### The GIL and Buffer Protocol
-
-CPython's Global Interpreter Lock (GIL) serializes Python bytecode execution.
-When a C extension is called, the GIL is held. This means:
-- No other Python thread can run Python code concurrently.
-- Python object reference counts are safe from races.
-- The interpreter's internal state is protected.
-
-The buffer protocol creates a reference from the C extension to a Python
-object's underlying memory. `PyObject_GetBuffer` increments the object's
-reference count indirectly through the buffer's exporter. As long as the
-buffer is held, the Python object cannot be garbage collected and its
-memory cannot be freed.
-
-**What the buffer reference does NOT protect against:** concurrent writes.
-If two Python threads each acquire a buffer reference to the same ndarray,
-both hold valid pointers to the same memory. If one thread writes while
-the other reads, there is a data race. The buffer protocol provides no
-locking mechanism for content access. This is the caller's responsibility.
-
-### Releasing the GIL
-
-When a C function does not call any Python C API (no `PyArg_ParseTuple`,
-no `PyLong_FromLong`, no exception setting), the GIL is unnecessary for
-correctness. The wrapper can release it:
+The wrapper holds the GIL by default. Set `gil_release: true` to release
+it during pure-C computation:
 
 ```yaml
 functions:
-  - py_sig: "array_stats(data: buffer) -> void"
-    gil_release: true                      # release the GIL for all overloads of this function
-    c_overloads:
-      - sig: "stats_f(const float *data, int n, ...)"
-        map: {data: "data.ptr", n: "data.n"}
+  - py_sig: "compute(data: buffer) -> void"
+    gil_release: true
 ```
 
-The `gil_release` key appears at the function level only.  If omitted,
-the GIL is held -- the safe default.  Having it at function level means
-the Python caller can know, from looking at the function name alone,
-whether the GIL will be released during the call.
-
-The generated wrapper calls `PyEval_SaveThread()` before entering the C
-function and `PyEval_RestoreThread()` after returning. Between these
-calls, other Python threads may run. The wrapper's argument parsing and
-buffer acquisition happen before the GIL is released; buffer release and
-result construction happen after it is reacquired.
-
-### OpenMP and Oversubscription
-
-A common misconception is that GIL release is required for OpenMP. It is
-not. OpenMP threads are kernel threads created by the C runtime, not
-Python threads. They run entirely within the C call and are unaffected
-by the GIL. A function using `#pragma omp parallel for` works correctly
-whether or not the GIL is released.
-
-The real concern is oversubscription: if N Python threads each call an
-OpenMP function that spawns M threads, N*M threads compete for cores.
-In this scenario, NOT releasing the GIL may be desirable -- it serializes
-the Python threads, preventing oversubscription. Whether to release
-depends on the workload.
-
-### The REAL Programmer Model
-
-The design philosophy follows the spirit of "Real Programmers can write
-FORTRAN programs in any language." c2py23 does not try to make thread
-safety foolproof. It provides mechanisms, not policies:
-
-- The default (GIL held) is safe for all cases.
-- The `gil_release` opt-in is for callers who understand their data
-  flow and can guarantee that no other thread will concurrently mutate
-  the buffers they have passed.
-- The buffer reference ensures memory is not freed. Content races are
-  the user's problem.
-
-### Global Toggle
-
-A module-level runtime flag `_c2py_gil_release_enabled` allows callers to
-globally enable or disable GIL release without recompilation.  The flag is
-exposed as a pointer to the C `int` (same scheme as `_c2py_timing_enabled`),
-so it must be accessed via `ctypes`:
-
-```python
-import ctypes
-import mymod
-
-ptr = mymod._c2py_gil_release_enabled
-# 1 = enabled, 0 = disabled (default: enabled)
-ctypes.c_int.from_address(ptr).value = 0  # disable all GIL release
-```
-
-Per-function enable/disable uses the same pattern:
-
-```python
-import ctypes
-# disable GIL release for a specific function
-ptr = mymod._c2py_gil_release_array_stats
-ctypes.c_int.from_address(ptr).value = 0
-```
-
-### Free-Threading (Python 3.14t)
-
-Free-threaded CPython (3.14+, compiled with `--disable-gil`, commonly named
-`python3.14t`) eliminates the Global Interpreter Lock. This enables true
-parallelism but introduces ABI differences that affect any C extension that
-defines its own CPython types.
-
-#### ABI Differences
-
-The `PyObject` struct layout differs between GIL-enabled and free-threaded builds:
-
-| Field              | Standard (GIL)   | Free-threaded      |
-|--------------------|------------------|--------------------|
-| sizeof(PyObject)   | 16 bytes (LP64)  | 32 bytes (LP64)    |
-| sizeof(PyModuleDef)| 80 bytes         | 120 bytes          |
-| ob_refcnt (refcount)| offset 0       | offset 16 (`ob_ref_shared`) |
-| ob_type            | offset 8         | offset 24          |
-
-The free-threaded PyObject has additional fields between the thread-id and the
-external refcount: `ob_tid` (thread ID), `ob_flags` (biased refcount flags),
-`PyMutex ob_mutex` (per-object lock), `ob_gc_bits` (GC state), `ob_ref_local`
-(local refcount), then `ob_ref_shared` (the externally visible refcount) at
-offset 16, and `ob_type` at offset 24.
-
-c2py23 defines both layouts (`PyObject` / `PyObject_FT`, `PyModuleDef` /
-`PyModuleDef_FT`) in `c2py_runtime.h`. Generated wrappers emit both a standard
-and a free-threaded `PyModuleDef` at compile time and select the appropriate
-one at module init time.
-
-#### Runtime Detection
-
-Detection happens in `c2py_runtime_init()` using multiple methods (first
-successful match wins):
-
-1. Version string -- `Py_GetVersion()` is checked for the substring
-   `"free-threading"`.
-2. `_Py_IsGILEnabled()` -- if available (CPython 3.13+), calling this
-   function returns 0 on free-threaded builds, confirming FT status.
-3. Module init uses `pthread_once` for thread safety -- ensures multiple
-   threads racing to load the module do not double-initialize the runtime.
-
-```c
-/* Method 1: version string */
-if (strstr(Py_GetVersion(), "free-threading") != NULL) is_ft = 1;
-
-/* Method 2: _Py_IsGILEnabled() fallback */
-if (!is_ft) {
-    gil_check_fn fn = dlsym(dl, "_Py_IsGILEnabled");
-    if (fn && fn() == 0) is_ft = 1;
-}
-```
-
-When detected, `C2PY.ob_refcnt_offset` is set to 16 (the `ob_ref_shared` field)
-instead of 0. Manual refcount operations (`_c2py_inc_ref_manual`) become
-fatal -- `Py_IncRef` / `Py_DecRef` must be resolved from the interpreter.
-
-**Note on Python 3.14 standard (GIL) builds:** Python 3.14 uses biased
-reference counting (PEP 763) even in standard GIL-enabled builds. This means
-`sys.getrefcount()` returns only `ob_ref_shared`, not the total refcount.
-Local variable references are tracked in `ob_ref_local` and are invisible to
-`sys.getrefcount()`. The c2py23 test suite accounts for this -- refcount
-equality assertions are skipped on Python 3.14+ regardless of FT status.
-The actual buffer refcounting by the C wrapper remains correct (verified
-by 10000-iteration loop tests with stable refcounts).
-
-#### Generated Code
-
-The generator produces dual module definition structs:
-
-```c
-/* Standard GIL layout */
-static PyModuleDef _module_def = {
-    PyModuleDef_HEAD_INIT,
-    "modname", NULL, -1, NULL /* m_methods set at init */,
-    NULL, NULL, NULL, NULL
-};
-
-/* Free-threaded layout */
-static PyModuleDef_FT _module_def_ft = {
-    PyModuleDef_HEAD_INIT_FT,
-    "modname", NULL, -1, NULL /* m_methods set at init */,
-    NULL, NULL, NULL, NULL
-};
-```
-
-At init time, the correct one is selected:
-
-```c
-PyObject* PyInit_modname(void) {
-    c2py_runtime_init();
-    PyMethodDef *methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;
-
-    if (C2PY.is_free_threaded) {
-        _module_def_ft.m_methods = methods;
-        return C2PY.Module_Create2((PyModuleDef*)&_module_def_ft, 1013);
-    } else {
-        _module_def.m_methods = methods;
-        return C2PY.Module_Create2(&_module_def, 1013);
-    }
-}
-```
-
-No compile-time Python headers are included, so a single `.so` built on any
-machine works on both standard and free-threaded interpreters without
-recompilation.
-
-#### GIL Behavior on Free-Threaded Builds
-
-When a c2py23 module is loaded on `python3.14t` (or any `--disable-gil`
-build), the module does NOT declare `Py_MOD_GIL_NOT_USED`. This triggers
-CPython's backward-compatibility mechanism (PEP 703, "Py_mod_gil Slot"):
-
-> *"If the slot is not set, the interpreter pauses all threads and enables
-> the GIL before continuing."*
-
-The GIL is re-enabled **globally** for the entire interpreter -- not per-module.
-All Python threads become serialized, exactly as on standard CPython.
-
-**What this means in practice:**
-
-- `PyEval_SaveThread()` / `PyEval_RestoreThread()` -- resolved at runtime
-  via `dlsym()` from the CPython binary -- now release and re-acquire the
-  (re-enabled) GIL. They behave identically to standard CPython.
-- The `gil_release: true` option therefore works normally: it releases the
-  GIL during C calls, allowing other Python threads to run concurrently.
-- Without `gil_release: true`, a C call blocks all other Python threads.
-- `Py_BEGIN_ALLOW_THREADS` / `Py_END_ALLOW_THREADS` work the same way.
-
-The only case where `PyEval_SaveThread` is truly a no-op is when the GIL
-has NOT been re-enabled. This happens when:
-- `PYTHON_GIL=0` or `-Xgil=0` overrides GIL re-enablement at the process
-  level (see below).
-- The module declares `Py_MOD_GIL_NOT_USED` (see next section).
-
-**RuntimeWarning:**
-
-CPython produces a warning on module load:
-
-```
-RuntimeWarning: The global interpreter lock (GIL) has been enabled to load
-module 'mymod', which has not declared that it can run safely without the GIL.
-```
-
-Users who have verified that their C code is thread-safe can suppress the
-GIL re-enablement entirely:
-
-```bash
-PYTHON_GIL=0 python3.14t -c "import mymod; ..."
-python3.14t -Xgil=0 -c "import mymod; ..."
-```
-
-Or suppress just the warning:
-
-```python
-import warnings
-warnings.filterwarnings("ignore", message=".*GIL.*")
-```
-
-#### Opting Into Free-Threading with Py_MOD_GIL_NOT_USED
-
-c2py23 provides a `free_threading: true` YAML option to add the `Py_mod_gil`
-slot with `Py_MOD_GIL_NOT_USED` (see Option 2 below).
-All other modules omit `Py_MOD_GIL_NOT_USED` by design (safe default).
-To declare a module free-threading-safe, you have three options:
-
-**Option 1: PYTHON_GIL=0 (runtime, no code changes)**
-
-```bash
-PYTHON_GIL=0 python3.14t -c "import mymod; mymod.do_stuff()"
-```
-
-This disables GIL re-enablement for the entire process. Your C code must
-be thread-safe: c2py23's buffer alias checks prevent concurrent writes to
-overlapping buffers, but internal C state (globals, static variables, file
-descriptors) and external library calls are your responsibility.
-
-**Option 2: Use `free_threading: true` in your `.c2py` file**
+On Python 3.14t (free-threading), the GIL is disabled by default but
+c2py23 modules re-enable it unless `free_threading: true` is declared at
+module level:
 
 ```yaml
 module: mymod
-source: [mymod.c]
 free_threading: true
 ```
 
-This is the recommended approach. The generator emits:
-
-```c
-if (module != NULL && C2PY.Unstable_Module_SetGIL != NULL) {
-    C2PY.Unstable_Module_SetGIL(module, 1);  /* Py_MOD_GIL_NOT_USED */
-}
-```
-
-`PyUnstable_Module_SetGIL` is resolved at runtime via dlsym. It is only
-exported from the CPython shared library on `--disable-gil` builds
-(3.13+). On standard builds the symbol is not exported, dlsym returns
-NULL, and the call is skipped -- no effect, no error. The same `.so`
-works on Python 2.7 through 3.15t without recompilation.
-
-**Option 3: Manual wrapper patch**
-
-For cases where you cannot modify the `.c2py` file, add the same call
-manually after `c2py23 generate`:
-
-```c
-if (module != NULL && C2PY.Unstable_Module_SetGIL != NULL) {
-    C2PY.Unstable_Module_SetGIL(module, 1);
-}
-```
-
-Do NOT use the `PyModuleDef_Slot` mechanism (`Py_mod_gil`) for this.
-The slot is only available on Python 3.13+ and using it in a wrapper
-compiled without `<Python.h>` requires fragile compile-time version
-guards. The `PyUnstable_Module_SetGIL` function approach resolved at
-runtime avoids this entirely.
-
-#### Refcounting on Free-Threaded Builds
-
-On free-threaded builds, `Py_INCREF` / `Py_DECREF` use atomic operations.
-c2py23 resolves `Py_IncRef` and `Py_DecRef` at runtime (available from
-CPython 3.12+). The manual refcount fallback (`_c2py_inc_ref_manual` /
-`_c2py_dec_ref_manual`) is **disabled** on free-threaded builds -- if
-`Py_IncRef`/`Py_DecRef` cannot be resolved, init fails with a fatal error.
-This prevents silent data races from non-atomic `++op->ob_refcnt`.
-
-#### Compatibility Matrix
-
-| Python Build | sizeof(PyObject) | Refcount field | GIL behavior | Supported |
-|-------------|-----------------|----------------|-------------|-----------|
-| 2.7 - 3.13 (standard) | 16 bytes | `ob_refcnt` at offset 0 | `PyEval_SaveThread` releases | Yes |
-| 3.14 (standard) | 16 bytes | Biased: `ob_ref_shared` at offset 0 | `PyEval_SaveThread` releases | Yes |
-| 3.14t (free-threaded) | 32 bytes | `ob_ref_shared` at offset 16 | GIL re-enabled globally; `PyEval_SaveThread` releases it (resolved via dlsym) | Yes |
-
-**Note:** Python 3.14 standard (GIL) uses biased reference counting (PEP 763)
-where the PyObject layout is unchanged (16 bytes) but `ob_refcnt` is replaced
-by `ob_ref_shared`. Local variable references use `ob_ref_local` (thread-local
-storage) and are invisible to `sys.getrefcount()`. The c2py23 runtime uses
-`Py_IncRef`/`Py_DecRef` (CPython 3.12+ stable ABI) which correctly handle
-biased refcounting. The manual fallback (`_c2py_inc_ref_manual`) is not used
-on Python 3.14 because `Py_IncRef`/`Py_DecRef` are always available.
+See the [User Guide](user_guide.md) for full thread safety guidance
+including static buffer hazards, OpenMP interaction, and free-threading
+compatibility.
 
 ## Performance Timing
 
