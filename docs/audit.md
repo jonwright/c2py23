@@ -95,7 +95,7 @@ the docstring still shows the old one, update it.
 Files like the old `audit/20260620_resolved/` were working notes from a
 one-time refactoring session. If the code they reference no longer exists,
 the notes should be archived or removed. This watch folder was deleted
-during the `audit/` → `tools/audit/` migration.
+during the `audit/` -> `tools/audit/` migration.
 
 ## Periodic Review Cadence
 
