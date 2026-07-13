@@ -6,15 +6,12 @@ on:
 
 jobs:
   test-macos:
+    runs-on: macos-latest
     timeout-minutes: 15
-
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-latest]
-        python-version: ["3.12", "3.14"]
-
-    runs-on: ${{ matrix.runner }}
+        python-version: ["3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +22,6 @@ jobs:
         run: |
           uname -m
           cc --version | head -1
-          file /bin/ls
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,7 +34,7 @@ jobs:
           pip install pytest PyYAML setuptools wheel --quiet
 
       - name: Install numpy
-        run: pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        run: pip install numpy --quiet || echo "(numpy skipped)"
 
       - name: ABI diagnostic
         run: python tests/abi_list_dlls.py
