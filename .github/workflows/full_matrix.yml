@@ -6,14 +6,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-full-linux:
+  test-linux-gaps:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"]
+        # Versions NOT covered by linux.yml per-push (3.7-3.11, 3.13).
+        # linux.yml already tests 2.7, 3.12, 3.14, 3.14t, 3.15, 3.15t.
+        # Python 3.6 is tested on Windows per-push; dropped from Linux.
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +27,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
 
       - name: Install c2py23 and test deps
         run: |
@@ -32,55 +34,21 @@ jobs:
           pip install pytest PyYAML setuptools wheel --quiet
 
       - name: Install numpy (skip on failure)
-        run: pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        run: pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
 
       - name: Run tests
         run: pytest tests/ -v --durations=10 --tb=short
 
-  test-full-linux-legacy:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 20
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["2.7", "3.6", "3.7", "3.8", "3.9"]
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install c2py23 and test deps
-        run: |
-          python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML setuptools wheel --quiet
-
-      - name: Install numpy (2.7)
-        if: matrix.python-version == '2.7'
-        run: python -m pip install 'numpy<1.17' --quiet 2>/dev/null || echo "(numpy skipped)"
-
-      - name: Install numpy (3.x)
-        if: matrix.python-version != '2.7'
-        run: python -m pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
-
-      - name: Run tests
-        run: python -m pytest tests/ -v --durations=10 --tb=short
-
-  test-full-windows:
+  test-windows-gaps:
     runs-on: windows-latest
     timeout-minutes: 40
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11",
-                         "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"]
+        # Versions NOT covered by windows.yml per-push (3.7-3.11, 3.13).
+        # windows.yml already tests 2.7, 3.6, 3.12, 3.14, 3.14t, 3.15, 3.15t.
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.13"]
 
     defaults:
       run:
@@ -95,7 +63,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
 
       - name: ABI diagnostic
         run: |
