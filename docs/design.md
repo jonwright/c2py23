@@ -67,13 +67,26 @@ This mirrors the Python 2 + Python 3 subset approach: where C99 and
 C++ conflict, c2py23 uses the common-denominator feature set that
 all platforms agree on.
 
-### No GPU support (#40)
+### GPU support (#40)
 
-GPU buffer access is not yet implemented.  c2py23 wraps C99 functions which
-run on CPU.  GPU data must be copied to CPU (`.cpu()`, `.numpy()`) before
-passing to c2py23.  Support for linking GPU-compiled libraries (nvcc, hipcc)
-is an open area.  See also the [address example](examples/threading_bench.md)
-for opaque pointer handling which may provide a pattern.
+Under investigation.  For CPU arrays, c2py23 already gets a raw pointer
+via PEP 3118 at zero cost -- C function pointer dispatch via the
+`tp_as_buffer` slot, no allocation on repeated calls, no dict lookup,
+no release path.
+
+For GPU arrays, DLPack provides the mechanism: a PyCapsule containing
+a device pointer, device type, shape, and strides.  NumPy's C source
+shows `__dlpack__()` returns the same `PyArray_DATA()` pointer as
+getbuffer for CPU arrays (`device_type = kDLCPU`), and device-typed
+pointers for GPU tensors from CuPy, PyTorch, etc.
+
+The open question is not buffer access -- it's whether you have a C99
+function compiled for a GPU to call.  All GPU libraries (cuBLAS,
+cuFFT, ROCm) require JIT compilation or pre-compiled device code.
+Until there is a GPU-compiled C function to wrap, DLPack vs PEP 3118
+is a moot point.
+
+Deferred for future research.  Related: HPy (#49).
 
 ### No async/await (#41)
 
