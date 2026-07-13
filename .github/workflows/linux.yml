@@ -34,7 +34,10 @@ jobs:
         run: python tests/abi_list_dlls.py
 
       - name: Install numpy (skip on failure for pre-release versions)
-        run: pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        run: |
+          pip install --only-binary=:all: numpy --quiet 2>/dev/null || \
+          pip install --only-binary=:all: --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy --quiet 2>/dev/null || \
+          echo "(numpy skipped)"
 
       - name: Run tests
         run: pytest tests/ -v --durations=10 --tb=short

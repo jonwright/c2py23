@@ -28,7 +28,8 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           pip install -e . --quiet
-          pip install pytest numpy PyYAML setuptools wheel --quiet
+          pip install --only-binary=:all: pytest numpy PyYAML setuptools wheel --quiet 2>/dev/null || \
+          pip install pytest PyYAML setuptools wheel --quiet
 
       - name: ABI diagnostic
         run: python tests/abi_list_dlls.py

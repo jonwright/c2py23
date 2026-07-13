@@ -34,7 +34,7 @@ jobs:
           pip install pytest PyYAML setuptools wheel --quiet
 
       - name: Install numpy (skip on failure)
-        run: pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        run: pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
 
       - name: Run tests
         run: pytest tests/ -v --durations=10 --tb=short
