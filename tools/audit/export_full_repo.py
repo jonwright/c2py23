@@ -8,7 +8,7 @@ Driven by ``git ls-files`` -- the repo is the source of truth.
 - Excludes binary files (.so, .o, .a, .sif, .png, etc.)
 
 Usage:
-    python3 audit/export_full_repo.py [--output FILE.md]
+    python3 tools/audit/export_full_repo.py [--output FILE.md]
 """
 from __future__ import print_function
 
@@ -18,7 +18,7 @@ import datetime
 import subprocess
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
 # Submodule paths in this repo (excluded from audit)
 _SUBMODULE_PATHS = {
