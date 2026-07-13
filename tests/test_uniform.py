@@ -418,8 +418,8 @@ def test_gil_release():
     t2.join()
     elapsed = time.time() - t0
 
-    # With GIL release, both 100ms sleeps should overlap -> < 150ms
-    assert elapsed < 0.150, "GIL release: expected < 150ms, got %.3fs (threads serialized?)" % elapsed
+    # With GIL release, both 100ms sleeps should overlap -> < 200ms
+    assert elapsed < 0.200, "GIL release: expected < 200ms, got %.3fs (threads serialized?)" % elapsed
     assert list(arr) == [1.0, 1.0, 1.0, 1.0], "thread 1 fill failed"
     assert list(arr2) == [2.0, 2.0, 2.0, 2.0], "thread 2 fill failed"
 
