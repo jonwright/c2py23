@@ -34,7 +34,8 @@ jobs:
           pip install pytest PyYAML setuptools wheel --quiet
 
       - name: Install numpy
-        run: pip install numpy --quiet || echo "(numpy skipped)"
+        run: |
+          pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
 
       - name: ABI diagnostic
         run: python tests/abi_list_dlls.py
