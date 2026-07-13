@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install mkdocs
-        run: pip install mkdocs mkdocs-material --quiet
+      - name: Install dependencies
+        run: |
+          pip install -e . --quiet
+          pip install mkdocs mkdocs-material mkdocstrings mkdocstrings-python --quiet
 
       - name: Build site
         run: mkdocs build --clean
