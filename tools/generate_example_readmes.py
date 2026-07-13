@@ -82,7 +82,7 @@ def _source_block(path, lang, label):
     content = _read_or_empty(path)
     if not content:
         return "*(%s not found)*\n" % label
-    return "```%s\n%s```\n" % (lang, content.rstrip())
+    return "```%s\n%s\n```\n" % (lang, content.rstrip())
 
 
 def build_and_demo(example_dir, example_name):
@@ -136,12 +136,12 @@ def generate_readme(example_dir, example_name, build_output, c2py_file, c_file, 
         lines.append(_source_block(c_path, "c", c_file))
 
     lines.append("## Build\n")
-    lines.append("```bash\n$ c2py23 build %s\n%s```\n" % (c2py_file, build_output.rstrip()))
+    lines.append("```bash\n$ c2py23 build %s\n%s\n```\n" % (c2py_file, build_output.rstrip()))
 
     if demo_results:
         lines.append("## Run\n")
         for py_script, output in demo_results:
-            lines.append("```bash\n$ python %s\n%s```\n" % (py_script, output.rstrip()))
+            lines.append("```bash\n$ python %s\n%s\n```\n" % (py_script, output.rstrip()))
 
     readme_path = os.path.join(example_dir, "README.md")
     content = "\n".join(lines) + "\n"
@@ -177,7 +177,7 @@ def generate_static_readme(example_dir, example_name):
         lines.append("## Run\n")
         for py_script in py_scripts:
             script_path = os.path.join(example_dir, py_script)
-            lines.append("```python\n%s```\n" % _read_or_empty(script_path).rstrip())
+            lines.append("```python\n%s\n```\n" % _read_or_empty(script_path).rstrip())
 
     readme_path = os.path.join(example_dir, "README.md")
     content = "\n".join(lines) + "\n"

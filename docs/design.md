@@ -24,8 +24,20 @@ to the GitHub issues where each decision was made.
 
 ### No keyword arguments (#44)
 
-All wrapped functions accept positional arguments only.  This matches the C
-calling model and avoids `METH_KEYWORDS` undefined behavior.
+C99 has no keyword arguments -- function parameters are positional, matched
+by order at the call site.  c2py23 maps directly to the C calling model, so
+all wrapped functions are positional-only.
+
+C99 does have `<stdarg.h>` for variadic functions, which is the C equivalent
+of optional arguments.  c2py23 supports this pattern through default values
+on positional parameters (`py_sig: "fn(a: buffer, n: int = 1) -> int"`),
+but callers must pass arguments in order: `fn(data, 5)` works, `fn(data, n=5)`
+raises `TypeError`.
+
+Keyword argument support would also introduce `METH_KEYWORDS` in the generated
+CPython wrappers, which causes undefined behavior when cast to `PyCFunction`.
+Deferred until Python 2.7 is dropped and the minimum can be raised to 3.12
+where `METH_FASTCALL` avoids this issue natively.
 
 ### No memory allocation in wrappers
 
@@ -33,7 +45,7 @@ Generated wrapper code never calls `malloc`, `calloc`, `realloc`, or `free`.
 All memory is owned by Python.  User C code may allocate internally, but must
 free before returning.
 
-### No complex type (#40)
+### No complex type (#53)
 
 c2py23 has no `complex64` or `complex128` type.  Complex numbers are
 represented as interleaved float pairs in `float` or `double` buffers, with
@@ -89,5 +101,5 @@ coverage.
 - **[SWIG](https://www.swig.org/)** -- multi-language wrapper generator
   (C/C++ to Python, Java, Ruby, etc.), mature and feature-rich
 - **[HPy](https://hpyproject.org/)** -- universal C extension API for CPython,
-  PyPy, and GraalPy.  Does not support the buffer protocol (moving-GC VMs
-  cannot expose raw C pointers).  See #49.
+  PyPy, and GraalPy.  HPy has first-class buffer support and is a serious option
+  for multi-interpreter portability.  See #49.

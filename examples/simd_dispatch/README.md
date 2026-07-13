@@ -32,7 +32,8 @@ functions:
             when: "c2py_amd64_avx512f"
           - sig: "void poly_f32_avx2(const float *a, const float *b, float *out, int n)"
             when: "c2py_amd64_avx2"
-          - sig: "void poly_f32_scalar(const float *a, const float *b, float *out, int n)"```
+          - sig: "void poly_f32_scalar(const float *a, const float *b, float *out, int n)"
+```
 
 ## C Source
 
@@ -77,7 +78,8 @@ void KERNEL_FN(const float *a, const float *b, float *out, int n)
             x = x * x + y;
         out[i] = x;
     }
-}```
+}
+```
 
 ## Build
 
@@ -212,5 +214,6 @@ for v in variants:
 
 polysimd._rebind_poly(None)
 print()
-print("Done.")```
+print("Done.")
+```
 

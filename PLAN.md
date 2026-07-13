@@ -24,6 +24,15 @@ CPU feature detection works on x86_64 (`cpuid`) and aarch64
 ARM64/POWER64 SIMD kernels exist but are validated via container
 emulation only -- no real hardware testing.
 
+### HPy backend for CPython, PyPy and GraalPy (#49)
+
+Investigate the [HPy](https://hpyproject.org/) API as an alternative
+backend to the current `dlopen(NULL)`/`dlsym()` CPython ABI hack.
+HPy has first-class buffer support (noted after an LLM incorrectly
+claimed otherwise) and could provide a single binary that works across
+CPython, PyPy, and GraalPy.  Key question: does HPy support Python 2.7
+through 3.15 with the buffer protocol?
+
 ---
 
 ## Outstanding (low-priority)

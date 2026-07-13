@@ -24,7 +24,6 @@ import time
 import sysconfig
 
 IS_PY3 = sys.version_info[0] >= 3
-IS_PY2 = not IS_PY3
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -144,7 +143,7 @@ def run_processpool(n_workers):
 def main():
     print("=== Monte Carlo Pi -- Parallelism Benchmark ===")
     print("Python: %s (free-threaded: %s)" % (sys.version.split()[0], "yes" if IS_FREE_THREADED else "no"))
-    print("Iterations: {:,} (%d workers, {:,} each)".format(TOTAL_N).format(CHUNK_N) % NUM_WORKERS)
+    print("Iterations: {0:,} ({1} workers, {2:,} each)".format(TOTAL_N, NUM_WORKERS, CHUNK_N))
     print()
 
     # 1. Serial

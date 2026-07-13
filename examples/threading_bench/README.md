@@ -23,7 +23,8 @@ functions:
       - sig: "mc_pi_omp(int n, int seed) -> int"
         map:
           n: n
-          seed: seed```
+          seed: seed
+```
 
 ## C Source
 
@@ -102,7 +103,8 @@ int mc_pi_omp(int n, int seed) {
 int mc_pi_has_omp(void) {
     return 0;
 }
-#endif```
+#endif
+```
 
 ## Build
 
@@ -289,5 +291,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()```
+    main()
+```
 
