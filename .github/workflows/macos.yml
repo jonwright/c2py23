@@ -11,8 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-latest, macos-13]
-        python-version: ["3.12"]
+        runner: [macos-latest]
+        python-version: ["3.12", "3.14"]
 
     runs-on: ${{ matrix.runner }}
 
