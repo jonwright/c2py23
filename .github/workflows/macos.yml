@@ -5,7 +5,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  test-macos:
     runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
     steps:
-      - run: echo "hello from macOS"
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Show architecture info
+        run: |
+          uname -m
+          cc --version | head -1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install c2py23 and test deps
+        run: |
+          pip install -e . --quiet
+          pip install pytest PyYAML setuptools wheel --quiet
+
+      - name: Install numpy
+        run: pip install numpy --quiet || echo "(numpy skipped)"
+
+      - name: ABI diagnostic
+        run: python tests/abi_list_dlls.py
+
+      - name: Run tests
+        run: pytest tests/ -v --durations=10 --tb=short
