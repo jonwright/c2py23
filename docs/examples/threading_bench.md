@@ -1,7 +1,7 @@
 # Threading Benchmark
 
-Monte Carlo Pi estimation benchmark demonstrating GIL release (serial) and
-OpenMP parallelism.  Declares `free_threading: true` for Python 3.14t.
+Monte Carlo Pi estimation benchmark demonstrating GIL release and OpenMP
+parallelism.  Declares `free_threading: true` for Python 3.14t.
 
 ## Interface
 
@@ -9,11 +9,17 @@ OpenMP parallelism.  Declares `free_threading: true` for Python 3.14t.
 --8<-- "examples/threading_bench/mc_pi.c2py"
 ```
 
+## C Source
+
+```c
+--8<-- "examples/threading_bench/mc_pi.c"
+```
+
 ## Build & Run
 
 ```bash
+pip install -e .                    # from repo root
 cd examples/threading_bench
-pip install -e ../..
 
 # Serial build (default)
 make serial
@@ -24,11 +30,16 @@ make omp
 python bench_mc_pi.py
 ```
 
-## Key Design Decisions
+## How It Works
 
-- `gil_release: true` on `mc_pi` -- releases the GIL during C computation,
-  allowing other Python threads to run
-- `mc_pi_omp` uses OpenMP `#pragma omp parallel for` for multi-core scaling
-- `free_threading: true` at module level declares this module safe for
-  Python 3.14t true parallelism
-- Default seed value (`seed: int = 0`) allows optional deterministic runs
+`mc_pi` releases the GIL (`gil_release: true`) during C computation,
+allowing other Python threads to run.  The C function generates random
+points in a unit square and counts how many fall inside the unit circle.
+
+`mc_pi_omp` uses OpenMP `#pragma omp parallel for` for multi-core scaling.
+It is built with `-fopenmp` and linked against `libgomp`.
+
+Both functions take an optional seed for deterministic runs (`seed: int = 0`).
+
+`free_threading: true` at module level declares this module safe for
+Python 3.14t true parallelism (no GIL re-enablement).

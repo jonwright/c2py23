@@ -41,10 +41,11 @@ even-length checks.  See [KISS FFT example](examples/kissfft_wrap.md).
 
 ### No GPU support (#40)
 
-All buffer access is CPU-only.  GPU pointers cannot be accessed via the buffer
-protocol.  For GPU data, copy to CPU first (`.cpu()`, `.numpy()`) before
-passing to c2py23.  Future DLPack support may enable direct GPU buffer
-interop with the Array API.
+GPU buffer access is not yet implemented.  c2py23 wraps C99 functions which
+run on CPU.  GPU data must be copied to CPU (`.cpu()`, `.numpy()`) before
+passing to c2py23.  Support for linking GPU-compiled libraries (nvcc, hipcc)
+is an open area.  See also the [address example](examples/threading_bench.md)
+for opaque pointer handling which may provide a pattern.
 
 ### No async/await (#41)
 
@@ -68,7 +69,12 @@ instead.
 support a limited grammar: comparisons, arithmetic, `and`/`or`/`not`,
 attribute access (`buf.n`, `buf.format`), and subscript (`buf.shape[1]`).
 
-## Projects You Might Want Instead
+## Alternative Python Wrapper Generators
+
+c2py23 is deliberately incomplete and inflexible -- it maps a narrow set of
+C99 function signatures onto Python buffers, with no copies, no allocations,
+and no type conversion overhead.  Most alternatives below aim for broader
+coverage.
 
 - **[ctypes](https://docs.python.org/3/library/ctypes.html)** -- built into
   Python, no build step, but no buffer-protocol shape/format checking
@@ -78,6 +84,10 @@ attribute access (`buf.n`, `buf.format`), and subscript (`buf.shape[1]`).
   conversion, Python 3.6+ only
 - **[Cython](https://cython.org/)** -- Python-like syntax for C extensions,
   Python 2.7-3.x support
+- **[f2py](https://numpy.org/doc/stable/f2py/)** -- wraps Fortran 77/90 and C
+  functions, generates C/API wrappers, numpy-aware
+- **[SWIG](https://www.swig.org/)** -- multi-language wrapper generator
+  (C/C++ to Python, Java, Ruby, etc.), mature and feature-rich
 - **[HPy](https://hpyproject.org/)** -- universal C extension API for CPython,
   PyPy, and GraalPy.  Does not support the buffer protocol (moving-GC VMs
   cannot expose raw C pointers).  See #49.

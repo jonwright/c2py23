@@ -25,10 +25,23 @@ theme:
     - navigation.sections
     - search.highlight
 
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_source: true
+            show_root_heading: true
+
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ['.']
 
 nav:
   - Home: index.md
@@ -37,6 +50,7 @@ nav:
   - Specification: specification.md
   - Design Decisions: design.md
   - Developer Guide: developer_guide.md
+  - API Reference: api.md
   - Examples:
       - KISS FFT: examples/kissfft_wrap.md
       - LZ4 Compression: examples/lz4_wrap.md

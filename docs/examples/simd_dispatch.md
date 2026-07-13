@@ -11,35 +11,58 @@ available variant based on CPUID feature flags.
 --8<-- "examples/simd_dispatch/polysimd.c2py"
 ```
 
+## C Source
+
+```c
+--8<-- "examples/simd_dispatch/poly_kernel.c"
+```
+
+## Makefile
+
+```makefile
+--8<-- "examples/simd_dispatch/Makefile"
+```
+
 ## Build & Run
 
 ```bash
+pip install -e .               # from repo root
 cd examples/simd_dispatch
-pip install -e ../..
 make test
 ```
 
-The Makefile compiles three `.o` files from the same source, then `c2py23 build`
-links them into `.so`.  At runtime, `_rebind_poly()` allows manual variant
-selection:
+The Makefile compiles `poly_kernel.c` three times with different `-m` flags:
+
+```bash
+gcc -c -mavx512f -O3 poly_kernel.c -o poly_f32_avx512.o
+gcc -c -mavx2   -O3 poly_kernel.c -o poly_f32_avx2.o
+gcc -c           -O3 poly_kernel.c -o poly_f32_scalar.o
+```
+
+The three `.o` files are listed in the `.c2py` `source:` key.  `c2py23 build`
+links them into a single `.so`.
+
+At runtime, CPUID flags (`c2py_amd64_avx512f`, `c2py_amd64_avx2`) select the
+best variant.  On non-x86 platforms (arm64, ppc64le) the scalar fallback is
+always used.
+
+Manual override:
 
 ```python
 import polysimd
-polysimd._rebind_poly("poly_f32_scalar")  # fall back to scalar
-polysimd._rebind_poly("poly_f32_avx2")    # select AVX2
+polysimd._rebind_poly("poly_f32_scalar")
 ```
 
-## Test Script Output
+## Platform Support
+
+The SIMD dispatch example targets x86_64.  On aarch64, the scalar fallback
+works; AVX-512/AVX2 flags are not detected.  On Windows with MSVC, the `-m`
+flags differ -- the Makefile is gcc-specific.  A CMakeLists.txt alternative
+exists alongside the Makefile.
+
+## Test Output
 
 ```
 $ python3 test_polysimd.py
 ...
 ```
-
-## Key Design Decisions
-
-- `variants:` with `when: c2py_amd64_avx512f` / `c2py_amd64_avx2` for CPU dispatch
-- Final variant (no `when:`) is the scalar fallback
-- `group: float` groups variants under a shared format/map precondition
-- `timing: true` enables per-variant cycle-counter profiling
-- Pre-built `.o` files are committed for convenience; the Makefile rebuilds them
