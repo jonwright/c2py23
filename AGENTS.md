@@ -328,6 +328,11 @@ The human uses a classic `repo`-scoped token for admin tasks.
 9. Run `python3 tests/test_all.py` for multi-version container validation
 10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
 11. Run valgrind on leak and error-path tests when changing wrapper generation
+12. **Use targeted edits.** Never rewrite an entire file when a surgical
+    edit will do.  Use `edit` tool with `oldString`/`newString` for each
+    change.  Full-file rewrites destroy history, introduce drift, and
+    make diffs unreviewable.  This applies especially to PLAN.md and
+    AGENTS.md.
 
 ## Writing Safe .c2py Definitions
 
