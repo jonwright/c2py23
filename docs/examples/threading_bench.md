@@ -3,32 +3,7 @@
 Monte Carlo Pi estimation benchmark demonstrating GIL release and OpenMP
 parallelism.  Declares `free_threading: true` for Python 3.14t.
 
-## Interface
-
-```yaml
---8<-- "examples/threading_bench/mc_pi.c2py"
-```
-
-## C Source
-
-```c
---8<-- "examples/threading_bench/mc_pi.c"
-```
-
-## Build & Run
-
-```bash
-pip install -e .                    # from repo root
-cd examples/threading_bench
-
-# Serial build (default)
-make serial
-python bench_mc_pi.py
-
-# OpenMP build
-make omp
-python bench_mc_pi.py
-```
+--8<-- "examples/threading_bench/README.md"
 
 ## How It Works
 

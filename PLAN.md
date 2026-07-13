@@ -2,48 +2,27 @@
 
 ## Deferred
 
-### P3: aarch64 / ppc64le support
+### ppc64le CI (was P3)
 
-**Status: aarch64 CI added (ubuntu-24.04-arm runner), SIMD dispatch test enabled.
-Feature flags always defined (unconditionally) for cross-arch header portability.
-CPU cycle counter now runtime-selectable via `_c2py_set_tick_source()`.
-ppc64le still needs CI.**
+**Status: aarch64 CI done. ppc64le still needs CI.**
 
-The runtime has full CPU feature detection for ARM64 (`getauxval`,
-`mrs`, `c2py_arm64.h`) and POWER (`getauxval`, `mftb`, `c2py_ppc64.h`).
-No testing on real hardware or CI.  Approach: QEMU user-mode emulation
-inside Apptainer containers (similar to existing manylinux2014 strategy
-in snakepit).
+The runtime has full CPU feature detection for POWER (`getauxval`,
+`mftb`, `c2py_ppc64.h`).  No testing on real hardware or CI.
+Approach: QEMU user-mode emulation inside Apptainer containers (similar
+to existing manylinux2014 strategy in snakepit).
 
-### P4: PyPI distribution
+### macOS CI (#38)
 
-**Status: Partially implemented** -- design complete, loader + demo working.
+No macOS runner in CI.  The code is designed to be POSIX-portable and
+should work on macOS (clang, `dlopen`/`dlsym`), but this has never
+been tested.
 
-The `c2py_loader` module (`c2py23/c2py_loader.py`) defines a filename
-convention that solves the multi-architecture wheel problem:
+### SIMD dispatch: test and document on Windows and ARM (#54)
 
-    _mymodule.c2py23-linux_x86_64.so
-    _mymodule.c2py23-linux_aarch64.so
-    _mymodule.c2py23-linux_ppc64le.so
-    _mymodule.c2py23-win_amd64.pyd
-    _mymodule.c2py23-darwin_arm64.so
-
-The .so is loaded by explicit filename via `ExtensionFileLoader` (3.x) or
-`imp.load_dynamic` (2.7).  No `EXTENSION_SUFFIXES` monkeypatching, no
-`sys.path` hacking.
-
-The wheel is tagged `py3-none-any` (setuptools `bdist_wheel.get_tag()`
-override).  Multiple platform-specific .so files coexist in one wheel.
-pip installs the same .whl on any arch; the loader picks the right .so.
-
-See `examples/wheel_demo/` for a complete working example.
-
-The convention follows the ctypes peer model: ship platform-specific .so,
-load by explicit name, Python version does not enter the filename.
-Python 2.7 users install from sdist (the wheel is py3-tagged).
-
-SIMD flags and compiler selection remain in the user's build system
-(Makefile, meson, CMake, etc.) -- not in pyproject.toml.
+CPU feature detection works on x86_64 (`cpuid`) and aarch64
+(`getauxval`/`mrs`).  MSVC detection of CPU features needs testing.
+ARM64/POWER64 SIMD kernels exist but are validated via container
+emulation only -- no real hardware testing.
 
 ---
 
@@ -70,28 +49,45 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
 Standard Visual Studio installs require `vcvarsall.bat` to be sourced
 first.  Consider using `vswhere.exe` for VS detection on user machines.
 
+### C99 complex type support (`'Z'`/`'z'` format) (#53)
+
+Buffer protocol supports complex float/double formats (`'Z'` = DCOMPLEX,
+`'z'` = FCOMPLEX) but c2py23 does not generate wrappers for them.
+Would unlock DSP/scientific use cases (FFTW, BLAS) that use interleaved
+complex arrays.
+
 ---
 
 ## Completed
 
-- **Variant dispatch enhancements (2026-06-21)** — `default: false` for
+- **P4: PyPI distribution (2026-06)** -- c2py23 is published on PyPI.  The wheel
+  packaging demo (`examples/wheel_demo/`) demonstrates multi-platform `.so`
+  coexistence in a single `py3-none-any` wheel using `c2py_loader`.  Users can
+  produce wheels for their own modules following the demo.
+
+- **P3: aarch64 CI (2026-06)** -- aarch64 CI added (ubuntu-24.04-arm native
+  runner).  CPU feature flags defined unconditionally for cross-arch header
+  portability.  Cycle counter is now a runtime selector
+  (`_c2py_set_tick_source()`).
+
+- **Variant dispatch enhancements (2026-06-21)** -- `default: false` for
   benchmark-only variants; `_variants_<name>()` enumeration API; variant
   `name` enforced to match C function name from `sig`; per-variant perf
   metadata (`variant`, `group_idx`, `variant_name`).
 
-- **Buffer layout guard (2026-06-21)** — `buf.slow_axis`, `buf.fast_axis`,
+- **Buffer layout guard (2026-06-21)** -- `buf.slow_axis`, `buf.fast_axis`,
   `buf.slow_dim` and `buf.fast_dim` expressions; contiguity check enforces C-or-F density;
   `slow_axis == 0` in `checks:` guards against transposed layouts.
 
-- **Generator structural hardening (2026-06-21)** — `c2py23/invariant_checker.py`
+- **Generator structural hardening (2026-06-21)** -- `c2py23/invariant_checker.py`
   validates brace balance, buffer acquire/release pairs, output scalar NULL-checks,
   GIL save/restore pairing, and cleanup path invariants.  Runs during `generate()`.
 
-- **Wheel packaging (2026-06-20)** — `c2py_loader` explicit-filename
+- **Wheel packaging (2026-06-20)** -- `c2py_loader` explicit-filename
   `.so` loader; `py3-none-any` wheel tag; multi-platform `.so` coexistence;
   cross-tested on all snakepit containers.
 
-- **Manylinux2014 cross-testing (2026-06-20)** — `test_manylinux.py` build-once
+- **Manylinux2014 cross-testing (2026-06-20)** -- `test_manylinux.py` build-once
   strategy across 6 manylinux Pythons and 11 cross-container test targets.
 
 - **P2: Windows port (2026-06-20)** -- `GetModuleHandle`/`GetProcAddress` runtime
@@ -176,4 +172,6 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 **Status: Completed (2026-06-20)** -- Point-by-point response addressing all
 four referee reports. All HIGH and MEDIUM severity items resolved. LOW-severity
 items (generator structural hardening, FT globals audit, 32-bit CI) tracked in
-Outstanding section above.
+Outstanding section above.  Design decisions intentionally unsupported (keyword
+arguments #44, named-tuple returns #42, async/await #41, GPU #40) are documented
+in `docs/design.md`.  Open issues are tracked in GitHub under the same numbers.

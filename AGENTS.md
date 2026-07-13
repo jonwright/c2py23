@@ -41,8 +41,8 @@ EOF
 ## Python Compatibility Requirements
 
 All Python files MUST be compatible with Python 2.7 through 3.15.
-Note: Windows CI is tested on 2.7, 3.13, 3.14.  Python 3.15+
-is currently guarded at runtime (return error).
+Note: Windows CI is tested on 2.7, 3.13, 3.14.  Python 3.16+
+is guarded at runtime (`version_minor > 15` in c2py_runtime.c).
 
 ### Required
 - `from __future__ import print_function` as the first import in every `.py` file
@@ -263,28 +263,16 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 
 ## Next Steps
 
-### P3: aarch64 / ppc64le
+All project planning and status tracking lives in `PLAN.md`.
+AGENTS.md does not duplicate it.  Check `PLAN.md` for:
 
-aarch64 CI added (ubuntu-24.04-arm native runner). CPU feature flags
-defined unconditionally for cross-arch portability. Cycle counter
-is now a runtime selector (`_c2py_set_tick_source()`), not a compile-
-time define.  ppc64le still needs CI.
+- **Deferred** items (P3 ppc64le, macOS CI, SIMD Windows/ARM)
+- **Outstanding (low-priority)** items (FT globals, 32-bit CI, MSVC, complex types)
+- **Completed** items (aarch64 CI, PyPI distribution, wheel packaging, etc.)
 
-**Migration note**: `-DC2PY_USE_CYCLE_COUNTER` build flag is a no-op.
-To use the cycle counter, call `mod._c2py_set_tick_source("cycle")`
-at runtime.  Default mode (`"clock"`) matches the old default.
-
-### P4: PyPI Distribution
-
-Loader and wheel demos complete (see `docs/user_guide.md` Packaging section).
-Next: GitHub Actions CI to build multi-platform wheels and publish to PyPI.
-
-### P5: Low Priority
-
-- FT globals audit: atomic safety review for free-threading
-- 32-bit CI: add i386/ARM32 test container
-
-All status tracked in `PLAN.md` Outstanding section.
+Design decisions that are settled as "intentionally unsupported" (keyword
+arguments #44, named-tuple returns #42, async/await #41, GPU #40) are
+documented in `docs/design.md`.
 
 ## Contributing Guidelines
 
@@ -340,6 +328,11 @@ The human uses a classic `repo`-scoped token for admin tasks.
 9. Run `python3 tests/test_all.py` for multi-version container validation
 10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
 11. Run valgrind on leak and error-path tests when changing wrapper generation
+12. **Use targeted edits.** Never rewrite an entire file when a surgical
+    edit will do.  Use `edit` tool with `oldString`/`newString` for each
+    change.  Full-file rewrites destroy history, introduce drift, and
+    make diffs unreviewable.  This applies especially to PLAN.md and
+    AGENTS.md.
 
 ## Writing Safe .c2py Definitions
 
@@ -459,7 +452,6 @@ When adding a new feature, test case, or changing the public API:
 2. Update the "Limitations" section when removing or adding restrictions
 
 ### AGENTS.md
-When completing a task listed in "Next Steps":
-1. Mark the status accurately -- do not leave "pending" after implementation
-2. Remove or archive completed items
-3. When adding new planned items, add them under "Next Steps"
+AGENTS.md is the agent-facing operational guide -- build commands, coding
+constraints, testing policy.  It intentionally does not duplicate project
+status tracking.  For that, see PLAN.md.

@@ -8,13 +8,13 @@ Binary artifacts (``.so``, ``.o``) are excluded.
 Pre-checks enforce clean git tree, build, and test pass before export.
 
 Output:
-    audit/wrappers_combined.md   -- all modules in one file, runtime once
-    audit/wrappers/<module>.md   -- one self-contained file per module
+    tools/audit/wrappers_combined.md   -- all modules in one file, runtime once
+    tools/audit/wrappers/<module>.md   -- one self-contained file per module
                                    (runtime NOT repeated; see README for
                                     LLM review workflow)
 
 Usage:
-    python3 audit/export_wrappers.py [OPTIONS]
+    python3 tools/audit/export_wrappers.py [OPTIONS]
 
 Options:
     --skip-build        Skip build verification
@@ -33,7 +33,7 @@ import subprocess
 import yaml
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_DIR = os.path.dirname(SCRIPT_DIR)
+REPO_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
 # Submodule paths (excluded)
 _SUBMODULE_PATHS = {'examples/kissfft', 'examples/lz4'}

@@ -3,33 +3,12 @@
 The simplest possible wheel packaging demo.  Builds a single `.so` and
 wraps it in a `py3-none-any` wheel using setuptools.
 
-## Interface
-
-```yaml
---8<-- "examples/wheel_demo/arraysum.c2py"
-```
-
-## C Source
-
-```c
---8<-- "examples/wheel_demo/arraysum.c"
-```
+--8<-- "examples/wheel_demo/README.md"
 
 ## Build Script
 
 ```bash
 --8<-- "examples/wheel_demo/build.sh"
-```
-
-## Build & Run
-
-```bash
-pip install c2py23
-cd examples/wheel_demo
-bash build.sh
-# Produces dist/arraysum_wheel-*.whl
-pip install dist/arraysum_wheel-*.whl
-python -c "from arraysum import add_arrays; help(add_arrays)"
 ```
 
 ## How It Works
