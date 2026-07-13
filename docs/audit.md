@@ -90,11 +90,12 @@ The Python modules in `c2py23/` should have docstrings that match the
 published documentation in `docs/`. If a function signature changed but
 the docstring still shows the old one, update it.
 
-### 5. Unused code
+### 5. Abandoned working notes
 
-Files in `audit/20260620_resolved/` were working notes from a one-time
-refactoring session. If the code they reference no longer exists, the
-notes should be archived or removed.
+Files like the old `audit/20260620_resolved/` were working notes from a
+one-time refactoring session. If the code they reference no longer exists,
+the notes should be archived or removed. This watch folder was deleted
+during the `audit/` → `tools/audit/` migration.
 
 ## Periodic Review Cadence
 
