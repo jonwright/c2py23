@@ -2,17 +2,7 @@
 
 Packages a c2py23 module as a `py3-none-any` wheel using CMake.
 
-## Interface
-
-```yaml
---8<-- "examples/cmake_demo/arraysum.c2py"
-```
-
-## C Source
-
-```c
---8<-- "examples/cmake_demo/arraysum.c"
-```
+--8<-- "examples/cmake_demo/README.md"
 
 ## CMake Configuration
 
@@ -24,17 +14,6 @@ Packages a c2py23 module as a `py3-none-any` wheel using CMake.
 
 ```bash
 --8<-- "examples/cmake_demo/build.sh"
-```
-
-## Build & Run
-
-```bash
-pip install c2py23
-cd examples/cmake_demo
-bash build.sh
-# Produces dist/arraysum_cmake-*.whl
-pip install dist/arraysum_cmake-*.whl
-python -c "from arraysum import add_arrays; help(add_arrays)"
 ```
 
 ## How It Works

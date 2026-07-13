@@ -56,6 +56,8 @@ nav:
       - LZ4 Compression: examples/lz4_wrap.md
       - SIMD Dispatch: examples/simd_dispatch.md
       - Threading Benchmark: examples/threading_bench.md
+      - Multiprocessing: examples/mp_bench.md
+      - Performance Timing: examples/timing_demo.md
       - CMake Build: examples/cmake_demo.md
       - Meson Build: examples/meson_demo.md
       - Wheel Packaging: examples/wheel_demo.md

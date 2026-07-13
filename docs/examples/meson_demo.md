@@ -2,17 +2,7 @@
 
 Packages a c2py23 module as a `py3-none-any` wheel using the Meson build system.
 
-## Interface
-
-```yaml
---8<-- "examples/meson_demo/arraysum.c2py"
-```
-
-## C Source
-
-```c
---8<-- "examples/meson_demo/arraysum.c"
-```
+--8<-- "examples/meson_demo/README.md"
 
 ## Meson Configuration
 
@@ -24,17 +14,6 @@ Packages a c2py23 module as a `py3-none-any` wheel using the Meson build system.
 
 ```bash
 --8<-- "examples/meson_demo/build.sh"
-```
-
-## Build & Run
-
-```bash
-pip install c2py23 meson
-cd examples/meson_demo
-bash build.sh
-# Produces dist/arraysum_meson-*.whl
-pip install dist/arraysum_meson-*.whl
-python -c "from arraysum import add_arrays; help(add_arrays)"
 ```
 
 ## How It Works

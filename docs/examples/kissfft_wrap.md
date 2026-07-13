@@ -4,39 +4,7 @@ Wraps the [KISS FFT](https://github.com/mborgerding/kissfft) library using c2py2
 Demonstrates complex-number handling via interleaved float32 buffers
 (c2py23 has no native complex type).
 
-## Interface
-
-```yaml
---8<-- "examples/kissfft_wrap/kissfft.c2py"
-```
-
-## C Source
-
-```c
---8<-- "examples/kissfft_wrap/kissfft_thin.c"
-```
-
-## Build
-
-```bash
-git submodule update --init kissfft
-pip install -e .            # from repo root
-cd examples/kissfft_wrap
-bash build.sh
-```
-
-## Run
-
-```python
---8<-- "examples/kissfft_wrap/example.py"
-```
-
-## Output
-
-```
-rfft: spec[0]=0.00 spec[1]=0.00
-cfft: fout[0]=0.00 fout[1]=0.00
-```
+--8<-- "examples/kissfft_wrap/README.md"
 
 ## How It Works
 
