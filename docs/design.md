@@ -33,7 +33,7 @@ Generated wrapper code never calls `malloc`, `calloc`, `realloc`, or `free`.
 All memory is owned by Python.  User C code may allocate internally, but must
 free before returning.
 
-### No complex type (#40)
+### No complex type (#53)
 
 c2py23 has no `complex64` or `complex128` type.  Complex numbers are
 represented as interleaved float pairs in `float` or `double` buffers, with
@@ -89,5 +89,5 @@ coverage.
 - **[SWIG](https://www.swig.org/)** -- multi-language wrapper generator
   (C/C++ to Python, Java, Ruby, etc.), mature and feature-rich
 - **[HPy](https://hpyproject.org/)** -- universal C extension API for CPython,
-  PyPy, and GraalPy.  Does not support the buffer protocol (moving-GC VMs
-  cannot expose raw C pointers).  See #49.
+  PyPy, and GraalPy.  HPy has first-class buffer support and is a serious option
+  for multi-interpreter portability.  See #49.
