@@ -13,10 +13,10 @@ to existing manylinux2014 strategy in snakepit).
 
 ### macOS CI (#38)
 
-macOS CI added on `macos-latest` (Apple Silicon) with Python 3.12.
-Runtime fixed for macOS: `getauxval()` is Linux-only; added `__APPLE__`
-guard with baseline NEON/FP flags set unconditionally on Apple Silicon.
-All tests pass including SIMD dispatch (NEON on ARM64, scalar on x86_64).
+Apple Silicon CI added (macos-latest, Python 3.12, 96 tests pass).
+Intel macOS (x86_64) runner deprecated by GitHub -- Apple stopped selling
+Intel Macs in 2023.  Needs self-hosted runner or paid plan for x86_64
+SSE2/AVX2 coverage.  Reference: GitHub Actions removed macos-13 in 2025.
 
 ### SIMD dispatch: test and document on Windows and ARM (#54)
 
