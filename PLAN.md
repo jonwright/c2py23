@@ -13,19 +13,16 @@ to existing manylinux2014 strategy in snakepit).
 
 ### macOS CI (#38)
 
-macOS CI workflow created (both x86_64 and Apple Silicon runners).
-Status pending: CI must pass before this item is closed.
+macOS CI added on `macos-latest` (Apple Silicon) with Python 3.12.
+Runtime fixed for macOS: `getauxval()` is Linux-only; added `__APPLE__`
+guard with baseline NEON/FP flags set unconditionally on Apple Silicon.
+All tests pass including SIMD dispatch (NEON on ARM64, scalar on x86_64).
 
 ### SIMD dispatch: test and document on Windows and ARM (#54)
 
-aarch64 CI already tests NEON SIMD on ubuntu-24.04-arm runner.
-Windows CI already tests SSE2 via MSVC (`__cpuidex` intrinsic).
-AArch64 tested on real hardware (not emulation) via GitHub Actions
-native ARM64 runner.
-
-Remaining: verify polysimd auto-vectorization example on macOS
-(clang) and Windows (MSVC with /arch: flags).  Documentation updated
-to treat all architectures equally.
+Completed. aarch64 tests NEON on real hardware (ubuntu-24.04-arm).
+macOS tests NEON on Apple Silicon. Windows tests SSE2 via MSVC.
+Documentation updated to treat all architectures equally.
 
 ### HPy backend for CPython, PyPy and GraalPy (#49)
 
