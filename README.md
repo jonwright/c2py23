@@ -90,10 +90,12 @@ The [GitHub repository](https://github.com/jonwright/c2py23) includes build exam
 
 ## Documentation
 
-- `docs/specification.md` — full `.c2py` grammar, supported types, architecture
-- `docs/user_guide.md` — thread safety, wheel packaging, GIL release
-- `AGENTS.md` — contributor guide, CI workflows, coding standards
-- `audit/` — LLM peer review toolchain
+- [c2py23 docs](https://jonwright.github.io/c2py23/) -- user guide, spec, examples, developer guide
+- `docs/specification.md` -- full `.c2py` grammar, supported types, architecture
+- `docs/user_guide.md` -- thread safety, wheel packaging, GIL release, timing
+- `docs/getting_started.md` -- installation and first build
+- `docs/developer_guide.md` -- testing with snakepit containers, CI, ABI matrix
+- `AGENTS.md` -- contributor guidelines for LLM agents
 
 ## License
 

@@ -3,6 +3,7 @@ source: [arraysum.c]
 
 functions:
   - py_sig: "array_sum(a: buffer, b: buffer, result: buffer) -> int"
+    doc: "Element-wise addition of two double arrays: out[i] = a[i] + b[i]"
     checks:
       - "a.format == 'd'"
       - "b.format == 'd'"

@@ -7,6 +7,7 @@ headers:
 
 functions:
   - py_sig: "compress(src: buffer, dst: buffer) -> int"
+    doc: "LZ4 compress. Returns size of compressed data written to dst."
     checks:
       - "src.format == 'B'"
       - "dst.format == 'B'"
@@ -21,6 +22,7 @@ functions:
           dstCapacity: "dst.len"
 
   - py_sig: "decompress(src: buffer, dst: buffer) -> int"
+    doc: "LZ4 decompress. Returns number of decompressed bytes written to dst."
     checks:
       - "src.format == 'B'"
       - "dst.format == 'B'"

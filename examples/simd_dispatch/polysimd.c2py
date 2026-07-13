@@ -14,6 +14,7 @@ timing: true
 
 functions:
   - py_sig: "poly(a: buffer, b: buffer, out: buffer) -> void"
+    doc: "Polynomial computation with CPU-feature dispatch (AVX-512/AVX2/scalar)."
     checks:
       - "a.n == b.n"
       - "a.n == out.n"

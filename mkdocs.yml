@@ -1,0 +1,47 @@
+site_name: c2py23
+site_description: Zero-copy C99 function wrapping for Python 2.7-3.15
+repo_url: https://github.com/jonwright/c2py23
+repo_name: jonwright/c2py23
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - search.highlight
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - User Guide: user_guide.md
+  - Specification: specification.md
+  - Design Decisions: design.md
+  - Developer Guide: developer_guide.md
+  - Examples:
+      - KISS FFT: examples/kissfft_wrap.md
+      - LZ4 Compression: examples/lz4_wrap.md
+      - SIMD Dispatch: examples/simd_dispatch.md
+      - Threading Benchmark: examples/threading_bench.md
+      - CMake Build: examples/cmake_demo.md
+      - Meson Build: examples/meson_demo.md
+      - Wheel Packaging: examples/wheel_demo.md
