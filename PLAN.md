@@ -58,13 +58,6 @@ with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
 Standard Visual Studio installs require `vcvarsall.bat` to be sourced
 first.  Consider using `vswhere.exe` for VS detection on user machines.
 
-### C99 complex type support (`'Z'`/`'z'` format) (#53)
-
-Buffer protocol supports complex float/double formats (`'Z'` = DCOMPLEX,
-`'z'` = FCOMPLEX) but c2py23 does not generate wrappers for them.
-Would unlock DSP/scientific use cases (FFTW, BLAS) that use interleaved
-complex arrays.
-
 ---
 
 ## Completed
@@ -184,3 +177,15 @@ items (generator structural hardening, FT globals audit, 32-bit CI) tracked in
 Outstanding section above.  Design decisions intentionally unsupported (keyword
 arguments #44, named-tuple returns #42, async/await #41, GPU #40) are documented
 in `docs/design.md`.  Open issues are tracked in GitHub under the same numbers.
+
+## Design Decisions (intentionally unsupported)
+
+These are settled design decisions, documented in `docs/design.md`:
+
+| Issue | Topic | Status |
+|-------|-------|--------|
+| #53 | C99 complex types | Intentionally unsupported -- C/C++ ABI conflict |
+| #44 | Keyword arguments | Intentionally unsupported -- C99 is positional-only |
+| #42 | Named-tuple returns | Design discussion -- may revisit |
+| #41 | Async/await support | Not planned -- c2py23 is synchronous C wrapping |
+| #40 | GPU / array API compat | Exploratory -- no active development |

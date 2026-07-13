@@ -47,9 +47,25 @@ free before returning.
 
 ### No complex type (#53)
 
-c2py23 has no `complex64` or `complex128` type.  Complex numbers are
-represented as interleaved float pairs in `float` or `double` buffers, with
-even-length checks.  See [KISS FFT example](examples/kissfft_wrap.md).
+C99 `_Complex` and C++ `std::complex<T>` have incompatible ABIs and
+different calling conventions across compilers.  gcc/clang return C99
+complex values via SSE registers; MSVC does not support C99 `_Complex`
+at all and uses a C++ struct convention that passes via pointer.
+
+The interleaved real/imag layout (AoS) also complicates SIMD
+vectorization -- most SIMD kernels prefer separate real and imaginary
+arrays (SoA) or custom layouts.
+
+Users handle complex data in their C wrapper code with plain `float*`
+or `double*` buffers and interleaved pairs.  The kissfft example
+demonstrates this: declare `buffer` with format `'f'`, validate
+`buf.n % 2 == 0`, and cast to `(kiss_fft_cpx*)buf.ptr` in the C
+wrapper.  For SIMD-friendly layouts, split into separate real and
+imaginary arrays (SoA or structure-of-arrays) in your C code.
+
+This mirrors the Python 2 + Python 3 subset approach: where C99 and
+C++ conflict, c2py23 uses the common-denominator feature set that
+all platforms agree on.
 
 ### No GPU support (#40)
 
