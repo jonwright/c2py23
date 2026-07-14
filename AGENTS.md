@@ -303,6 +303,10 @@ via the GitHub website admin override. No direct pushes to `main`.
 5. A human reviews and approves on the GitHub website
 6. Human merges via admin override (squash merge)
 
+**Never push directly to `main`.** All changes go through pull requests.
+The only exception is a human with an admin token using the GitHub website
+merge button (squash merge).  Direct `git push` to main must never happen.
+
 PR template is at `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ### LLM token access
