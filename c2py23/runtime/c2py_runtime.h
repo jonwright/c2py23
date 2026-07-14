@@ -708,7 +708,9 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         const char *name = ((c2py_type_min_t*)tp)->tp_name;
         if (name && strcmp(name, "numpy.ndarray") == 0) {
             /* First encounter: validate via buffer protocol, then
-             * scan object memory for the data pointer. */
+             * scan object memory to locate the data pointer at runtime.
+             * Note: PyObject_GetBuffer COPIES shape/strides to temporary
+             * arrays for numpy, so we cannot verify against buf.shape. */
             if (c2py_acquire_buffer(obj, &pin->buf, want_writable) != 0)
                 return -1;
 
@@ -726,12 +728,16 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                 }
             }
 
-            /* Verify the layout looks plausible:
-             * data_off+8  -> nd (int, 0 <= nd <= 32)
+            /* Verify the layout against known numpy struct:
+             * data_off+8  -> nd   (int, 0 <= nd <= 32)
+             * data_off+16 -> shape ptr (reasonable pointer)
              * data_off+40 -> descr (non-NULL pointer) */
-            nd = *(int*)(base + L->data_off + 8);
+            nd    = *(int*)(base + L->data_off + 8);
             descr = *(void**)(base + L->data_off + 40);
             if (nd < 0 || nd > 32 || descr == NULL)
+                goto probe_fail;
+            /* Sanity: shape pointer should be non-NULL if nd>0 */
+            if (nd > 0 && *(void**)(base + L->data_off + 16) == NULL)
                 goto probe_fail;
 
             L->ndarray_type = tp;
