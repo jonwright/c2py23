@@ -50,6 +50,7 @@ nav:
   - Specification: specification.md
   - Design Decisions: design.md
   - Developer Guide: developer_guide.md
+  - Benchmark Results: benchmarks.md
   - Repository Audit: audit.md
   - API Reference: api.md
   - Examples:

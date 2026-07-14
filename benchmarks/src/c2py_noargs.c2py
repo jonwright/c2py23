@@ -1,0 +1,29 @@
+{
+  "module": "c2py_noargs",
+  "source": ["tiny_kernel.c"],
+  "headers": ["tiny_kernel.h"],
+  "timing": true,
+  "functions": [
+    {
+      "py_sig": "noargs() -> void",
+      "c_overloads": [
+        {
+          "sig": "noop()",
+          "name": "noop",
+          "map": {}
+        }
+      ]
+    },
+    {
+      "py_sig": "varargs() -> void",
+      "c_overloads": [
+        {
+          "sig": "noop()",
+          "name": "noop_varargs",
+          "map": {}
+        }
+      ],
+      "checks": []
+    }
+  ]
+}

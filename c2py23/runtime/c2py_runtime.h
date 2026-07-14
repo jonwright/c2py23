@@ -299,8 +299,9 @@ typedef struct {
     PyObject* (*Err_Occurred)(void);
     PyObject* (*Err_Format)(PyObject*, const char*, ...);
 
-    /* None singleton (immortal, INCREF/DECREF unnecessary) */
+    /* None singleton (immortal on CPython 3.12+, INCREF/DECREF unnecessary) */
     PyObject *none_obj;
+    int none_immortal;  /* 1 if IncRef on None is a no-op (3.12+ immortal None) */
 
     /* Module creation */
     PyObject* (*Module_Create2)(PyModuleDef*, int);
@@ -360,7 +361,10 @@ extern c2py_api_t C2PY;
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()
 #define PyErr_Occurred()               C2PY.Err_Occurred()
-#define Py_RETURN_NONE                 do { C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; } while(0)
+#define Py_RETURN_NONE                 do { \
+    if (C2PY.none_immortal) { return C2PY.none_obj; } \
+    C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; \
+} while(0)
 #define Py_INCREF(o)                   C2PY.IncRef((PyObject*)(o))
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
