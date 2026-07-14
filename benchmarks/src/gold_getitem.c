@@ -6,6 +6,7 @@
  * to show the cost difference.
  */
 #include <Python.h>
+#include <string.h>
 
 /* ---- Per-call acquire/release (matches c2py23) ---- */
 static PyObject *
@@ -23,7 +24,7 @@ gold_getitem_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
                            PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) < 0)
         return NULL;
 
-    if (buf.format[0] != 'd') {
+    if (buf.format[0] == '\0' || buf.format[strlen(buf.format)-1] != 'd') {
         PyBuffer_Release(&buf);
         PyErr_SetString(PyExc_ValueError, "expected double format 'd'");
         return NULL;

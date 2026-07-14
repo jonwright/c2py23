@@ -5,6 +5,7 @@
  */
 #include <Python.h>
 #include <math.h>
+#include <string.h>
 
 /* ---- METH_VARARGS variant (works on all Python versions) ---- */
 static PyObject *
@@ -27,7 +28,10 @@ gold_vnorm_varargs(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    if (vec_buf.format[0] != 'd' || mods_buf.format[0] != 'd') {
+    /* PEP 3118 format strings may have endian prefix (@, =, <, >).
+     * The type character is always the last one. */
+    if (vec_buf.format[0] == '\0' || vec_buf.format[strlen(vec_buf.format)-1] != 'd' ||
+        mods_buf.format[0] == '\0' || mods_buf.format[strlen(mods_buf.format)-1] != 'd') {
         PyErr_SetString(PyExc_ValueError, "expected double format 'd'");
         goto error;
     }
@@ -89,7 +93,10 @@ gold_vnorm_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
         return NULL;
     }
 
-    if (vec_buf.format[0] != 'd' || mods_buf.format[0] != 'd') {
+    /* PEP 3118 format strings may have endian prefix (@, =, <, >).
+     * The type character is always the last one. */
+    if (vec_buf.format[0] == '\0' || vec_buf.format[strlen(vec_buf.format)-1] != 'd' ||
+        mods_buf.format[0] == '\0' || mods_buf.format[strlen(mods_buf.format)-1] != 'd') {
         PyErr_SetString(PyExc_ValueError, "expected double format 'd'");
         goto error;
     }

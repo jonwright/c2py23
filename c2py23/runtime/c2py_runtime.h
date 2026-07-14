@@ -527,12 +527,17 @@ c2py_try_ndarray(PyObject *obj, Py_buffer *buf, int want_writable)
     tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
 
     if (L->ndarray_type && tp == L->ndarray_type) {
+#ifdef C2PY_NDARRAY_EXPERIMENTAL
         goto fill;
+#else
+        return -1;  /* ndarray fast-path gated pending cross-platform validation */
+#endif
     }
 
     if (!L->probed) {
         const char *name = tp ? ((c2py_type_min_t*)tp)->tp_name : NULL;
-        if (name && strcmp(name, "numpy.ndarray") == 0) {
+        if (name && strcmp(name, "ndarray") == 0) {
+#ifdef C2PY_NDARRAY_EXPERIMENTAL
             /* First encounter: acquire via buffer protocol to validate, then
              * scan object memory to locate the data pointer at runtime. */
             if (c2py_acquire_buffer(obj, buf, want_writable) != 0)
@@ -552,6 +557,10 @@ c2py_try_ndarray(PyObject *obj, Py_buffer *buf, int want_writable)
             L->ndarray_type = tp;
             L->probed = 1;
             return 0;  /* buf already filled by c2py_acquire_buffer above */
+#else
+            (void)obj; (void)buf; (void)want_writable;
+            return -1;  /* ndarray fast-path gated pending cross-platform validation */
+#endif
         }
     }
 
