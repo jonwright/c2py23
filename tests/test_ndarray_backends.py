@@ -2,10 +2,14 @@
 """Tests that numpy ndarray fast-path works correctly for common numpy
 types and that non-numpy types correctly fall through to buffer protocol.
 
-Requires numpy (already a dependency of the peer review tests)."""
+Requires numpy (skipped gracefully via importorskip when absent)."""
 
 from __future__ import print_function
-import sys, os, pytest, numpy as np, array, ctypes
+import sys, os, array, ctypes
+
+import pytest
+
+np = pytest.importorskip("numpy")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks", "build"))
 

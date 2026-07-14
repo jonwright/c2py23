@@ -30,7 +30,7 @@ jobs:
         run: |
           pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
       - name: Run tests
-        run: pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py --ignore=tests/test_ndarray_backends.py
+        run: pytest tests/ -v --durations=10 --tb=short
 
   test-windows-gaps:
     runs-on: windows-latest
