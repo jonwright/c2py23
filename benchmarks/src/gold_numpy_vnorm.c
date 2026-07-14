@@ -78,13 +78,10 @@ gold_numpy_vnorm_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t narg
         return NULL;
     }
 
-    vec_arr = (PyArrayObject *)PyArray_FromAny(
-        args[0], PyArray_DescrFromType(NPY_DOUBLE), 2, 2,
-        NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED, NULL);
-    mods_arr = (PyArrayObject *)PyArray_FromAny(
-        args[1], PyArray_DescrFromType(NPY_DOUBLE), 1, 1,
-        NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED | NPY_ARRAY_WRITEABLE,
-        NULL);
+    vec_arr = (PyArrayObject *)PyArray_ContiguousFromAny(
+        args[0], NPY_DOUBLE, 2, 2);
+    mods_arr = (PyArrayObject *)PyArray_ContiguousFromAny(
+        args[1], NPY_DOUBLE, 1, 1);
 
     if (!vec_arr || !mods_arr) {
         Py_XDECREF(vec_arr);
@@ -92,15 +89,7 @@ gold_numpy_vnorm_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t narg
         return NULL;
     }
 
-    if (PyArray_DIMS(vec_arr)[1] != 3) {
-        PyErr_SetString(PyExc_ValueError, "vec.shape[1] must be 3");
-        goto error;
-    }
-    n = (int)PyArray_DIMS(vec_arr)[0];
-    if (n != (int)PyArray_DIMS(mods_arr)[0]) {
-        PyErr_SetString(PyExc_ValueError, "vec.shape[0] != mods.shape[0]");
-        goto error;
-    }
+    n = (int)PyArray_DIMS(mods_arr)[0];
 
     {
         const double (*vec)[3] = (const double (*)[3])PyArray_DATA(vec_arr);
@@ -116,11 +105,6 @@ gold_numpy_vnorm_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t narg
     Py_DECREF(vec_arr);
     Py_DECREF(mods_arr);
     Py_RETURN_NONE;
-
-error:
-    Py_XDECREF(vec_arr);
-    Py_XDECREF(mods_arr);
-    return NULL;
 }
 #endif
 

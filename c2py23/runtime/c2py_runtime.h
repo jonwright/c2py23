@@ -518,10 +518,12 @@ c2py_try_ndarray(PyObject *obj, Py_buffer *buf, int want_writable)
 {
     c2py_ndarray_layout_t *L = &C2PY_NDARRAY;
     void *tp;
+#ifdef C2PY_NDARRAY_EXPERIMENTAL
     char *base;
     void *dptr, *descr;
     int nd;
     char type_char;
+#endif
 
     /* Read ob_type at runtime-offset (ob_refcnt + 8 bytes) */
     tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
@@ -566,6 +568,7 @@ c2py_try_ndarray(PyObject *obj, Py_buffer *buf, int want_writable)
 
     return -1;
 
+#ifdef C2PY_NDARRAY_EXPERIMENTAL
 fill:
     base = (char*)obj;
     dptr = *(void**)(base + L->data_off);
@@ -618,6 +621,7 @@ fill:
     }
 
     return 0;
+#endif /* C2PY_NDARRAY_EXPERIMENTAL */
 }
 
 /* Multi-source buffer acquisition.
