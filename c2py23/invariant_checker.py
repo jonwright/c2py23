@@ -118,9 +118,9 @@ def _check_one_wrapper(lines, start_lineno):
         if not in_cleanup and re.match(r"\s*if\s*\(\s*(acq_\w+)\s*\)\s*c2py_release_buffer\(&(buf_\w+)\);", line):
             in_cleanup = True
 
-        m = re.match(r".*if\s*\(\s*c2py_acquire(_buffer)?\(([^,]+),\s*&(buf_\w+),", line)
+        m = re.match(r".*if\s*\(\s*c2py_acquire_buffer\(([^,]+),\s*&(buf_\w+),", line)
         if m:
-            buf_name = m.group(3)
+            buf_name = m.group(2)
             acquire_count += 1
             pending_acquires.append(buf_name)
 
