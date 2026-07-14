@@ -1,7 +1,7 @@
 # Benchmark Results
 
 **Platform**: Linux x86_64, Python 3.12.3, GCC 13.3.0, single core (`taskset -c 0`).
-All C code compiled with `-O2`.  Generated 2026-07-14 21:51.
+All C code compiled with `-O2`.  Generated 2026-07-14 21:59.
 
 ## No-arg call overhead
 
@@ -10,11 +10,11 @@ This isolates the pure Python-to-C-to-Python crossing cost.
 
 | wrapper | timing | c kernel | wrapper | ns/call |
 |---------|--------|----------|---------|---------|
-| gold METH_FASTCALL |   -- |     -- |     -- | 24.0 |
-| gold METH_NOARGS |   -- |     -- |     -- | 22.7 |
-| c2py23 |   off |     - |     -- | 21.4 |
-| c2py23 |  clock |  85.5 |  55.1 | 184.7 |
-| c2py23 |  cycle |  69.9 |  46.5 | 73.3 |
+| gold METH_FASTCALL |   -- |     -- |     -- | 21.7 |
+| gold METH_NOARGS |   -- |     -- |     -- | 23.5 |
+| c2py23 |   off |     - |     -- | 22.1 |
+| c2py23 |  clock |  88.0 |  56.6 | 187.9 |
+| c2py23 |  cycle |  71.6 |  47.1 | 72.4 |
 
 ## Vnorm wrapper overhead (tiny, N=3)
 
@@ -23,12 +23,12 @@ The C kernel runs in ~1 ns; wall-clock time is pure wrapper overhead.
 
 | wrapper | acquire | checks | timing | ns/call |
 |---------|---------|--------|--------|---------|
-| gold vnorm fastcall | getbuffer |  -- |   -- | 141 |
-| gold numpy fastcall | PyArray   |  -- |   -- | 132 |
-| c2py23 bare |   -- |  no |   off | 70 |
-| c2py23 checks only | getbuffer | yes |   off | 75 |
-| c2py23 checks + clock | getbuffer | yes |  clock | 233 |
-| c2py23 checks + cycle | getbuffer | yes |  cycle | 110 |
+| gold vnorm fastcall | getbuffer |  -- |   -- | 120 |
+| gold numpy fastcall | PyArray   |  -- |   -- | 123 |
+| c2py23 bare |   -- |  no |   off | 53 |
+| c2py23 checks only | getbuffer | yes |   off | 63 |
+| c2py23 checks + clock | getbuffer | yes |  clock | 229 |
+| c2py23 checks + cycle | getbuffer | yes |  cycle | 94 |
 
 ## Vnorm throughput (large, N=4.2M, ~134 MB)
 
@@ -37,12 +37,12 @@ All paths are zero-copy; wrapper overhead is constant regardless of N.
 
 | wrapper | acquire | checks | timing | ms | MB/s |
 |---------|---------|--------|--------|-----|------|
-| gold vnorm fastcall | getbuffer |  -- |   -- | 10.7 | 12602 |
-| gold numpy fastcall | PyArray   |  -- |   -- | 10.7 | 12508 |
-| c2py23 bare |   -- |  no |   off | 10.5 | 12752 |
-| c2py23 checks only | getbuffer | yes |   off | 10.6 | 12641 |
-| c2py23 checks + clock | getbuffer | yes |  clock | 10.7 | 12550 |
-| c2py23 checks + cycle | getbuffer | yes |  cycle | 10.6 | 12685 |
+| gold vnorm fastcall | getbuffer |  -- |   -- | 10.7 | 12497 |
+| gold numpy fastcall | PyArray   |  -- |   -- | 11.0 | 12243 |
+| c2py23 bare |   -- |  no |   off | 11.0 | 12236 |
+| c2py23 checks only | getbuffer | yes |   off | 11.0 | 12241 |
+| c2py23 checks + clock | getbuffer | yes |  clock | 10.8 | 12448 |
+| c2py23 checks + cycle | getbuffer | yes |  cycle | 11.0 | 12192 |
 
 ## Getitem overhead (per-call buffer acquisition)
 
@@ -52,15 +52,15 @@ constructs a Python float, and releases the buffer.
 
 | wrapper | timing | ns/call |
 |---------|--------|---------|
-| gold (numpy, per-call acquire) |   off | 174 |
-| gold (numpy, pre-acquire cheat) |   off | 127 |
-| gold (array.array, per-call) |   off | 125 |
-| numpy arr[i] (pure Python) |   off | 153 |
-| array.array arr[i] (pure Python) |   off | 89 |
-| c2py23 numpy (checks + clock) | clock | 270 |
-| c2py23 numpy (checks, timing off) |   off | 105 |
-| c2py23 array.array (timing off) |   off | 107 |
-| gold alternating |   off | 105 |
-| c2py23 alternating (t=off) |   off | 121 |
-| gold numpy warmup -> array |   off | 95 |
-| c2py23 numpy warmup -> array |   off | 104 |
+| gold (numpy, per-call acquire) |   off | 144 |
+| gold (numpy, pre-acquire cheat) |   off | 93 |
+| gold (array.array, per-call) |   off | 100 |
+| numpy arr[i] (pure Python) |   off | 122 |
+| array.array arr[i] (pure Python) |   off | 92 |
+| c2py23 numpy (checks + clock) | clock | 284 |
+| c2py23 numpy (checks, timing off) |   off | 122 |
+| c2py23 array.array (timing off) |   off | 125 |
+| gold alternating |   off | 134 |
+| c2py23 alternating (t=off) |   off | 111 |
+| gold numpy warmup -> array |   off | 118 |
+| c2py23 numpy warmup -> array |   off | 125 |

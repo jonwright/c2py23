@@ -755,7 +755,7 @@ fill:
     flags = *(int*)(base + L->data_off + 48);
 
     if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
-        PyErr_SetString(PyExc_BufferError,
+        PyErr_SetString(PyExc_TypeError,
                         "numpy array is not writeable");
         return -1;
     }
@@ -840,17 +840,15 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     t = &managed->dl_tensor;
 
     if (t->device.device_type != C2PY_DLCPU) {
-        if (C2PY.exc_BufferError)
-            PyErr_SetString(PyExc_BufferError,
-                "DLPack: unsupported device (expected CPU)");
+        PyErr_SetString(PyExc_TypeError,
+            "DLPack: unsupported device (expected CPU)");
         goto fail;
     }
 
     format_char = c2py_dl_format_char(&t->dtype);
     if (!format_char) {
-        if (C2PY.exc_BufferError)
-            PyErr_SetString(PyExc_BufferError,
-                "DLPack: unsupported dtype");
+        PyErr_SetString(PyExc_TypeError,
+            "DLPack: unsupported dtype");
         goto fail;
     }
 
