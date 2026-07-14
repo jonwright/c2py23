@@ -15,7 +15,8 @@ C2PY = $(PYTHON) -m c2py23.cli
 SRCDIR = src
 BUILDDIR = build
 
-all: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem c2py_noargs c2py_vnorm c2py_vnorm_bare c2py_getitem
+all: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem c2py_noargs c2py_vnorm c2py_vnorm_bare c2py_getitem \
+    c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
@@ -61,10 +62,28 @@ $(BUILDDIR)/c2py_getitem.so: $(SRCDIR)/c2py_getitem.c2py $(SRCDIR)/tiny_kernel.c
 	mv $(SRCDIR)/c2py_getitem.so $(BUILDDIR)/
 	rm -f $(SRCDIR)/c2py_getitem_wrapper.c
 
+$(BUILDDIR)/c2py_vnorm_ndarray.so: $(SRCDIR)/c2py_vnorm_ndarray.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
+	$(C2PY) build $(SRCDIR)/c2py_vnorm_ndarray.c2py
+	mv $(SRCDIR)/c2py_vnorm_ndarray.so $(BUILDDIR)/
+	rm -f $(SRCDIR)/c2py_vnorm_ndarray_wrapper.c
+
+$(BUILDDIR)/c2py_vnorm_buffer.so: $(SRCDIR)/c2py_vnorm_buffer.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
+	$(C2PY) build $(SRCDIR)/c2py_vnorm_buffer.c2py
+	mv $(SRCDIR)/c2py_vnorm_buffer.so $(BUILDDIR)/
+	rm -f $(SRCDIR)/c2py_vnorm_buffer_wrapper.c
+
+$(BUILDDIR)/c2py_vnorm_dlpack.so: $(SRCDIR)/c2py_vnorm_dlpack.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
+	$(C2PY) build $(SRCDIR)/c2py_vnorm_dlpack.c2py
+	mv $(SRCDIR)/c2py_vnorm_dlpack.so $(BUILDDIR)/
+	rm -f $(SRCDIR)/c2py_vnorm_dlpack_wrapper.c
+
 c2py_noargs: $(BUILDDIR)/c2py_noargs.so
 c2py_vnorm:  $(BUILDDIR)/c2py_vnorm.so
 c2py_vnorm_bare: $(BUILDDIR)/c2py_vnorm_bare.so
 c2py_getitem: $(BUILDDIR)/c2py_getitem.so
+c2py_vnorm_ndarray: $(BUILDDIR)/c2py_vnorm_ndarray.so
+c2py_vnorm_buffer: $(BUILDDIR)/c2py_vnorm_buffer.so
+c2py_vnorm_dlpack: $(BUILDDIR)/c2py_vnorm_dlpack.so
 
 # ---- Clean ----
 
@@ -73,6 +92,9 @@ clean:
 	rm -f $(SRCDIR)/c2py_noargs.so $(SRCDIR)/c2py_noargs_wrapper.c
 	rm -f $(SRCDIR)/c2py_vnorm.so $(SRCDIR)/c2py_vnorm_wrapper.c
 	rm -f $(SRCDIR)/c2py_vnorm_bare.so $(SRCDIR)/c2py_vnorm_bare_wrapper.c
+	rm -f $(SRCDIR)/c2py_vnorm_ndarray.so $(SRCDIR)/c2py_vnorm_ndarray_wrapper.c
+	rm -f $(SRCDIR)/c2py_vnorm_buffer.so $(SRCDIR)/c2py_vnorm_buffer_wrapper.c
+	rm -f $(SRCDIR)/c2py_vnorm_dlpack.so $(SRCDIR)/c2py_vnorm_dlpack_wrapper.c
 
 # ---- Run benchmarks (single-threaded via taskset) ----
 
@@ -101,4 +123,5 @@ results:
 
 .PHONY: all clean bench bench-noargs bench-vnorm results \
         gold_noargs gold_vnorm gold_numpy_vnorm \
-        c2py_noargs c2py_vnorm c2py_vnorm_bare
+        c2py_noargs c2py_vnorm c2py_vnorm_bare \
+        c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack

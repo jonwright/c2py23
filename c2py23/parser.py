@@ -251,6 +251,7 @@ class FuncDef(
         doc,
         gil_release,
         params=None,
+        acquire=None,
     ):
         self = super(FuncDef, cls).__new__(
             cls,
@@ -264,6 +265,7 @@ class FuncDef(
             gil_release,
         )
         self.params = params or {}
+        self.acquire = acquire
         return self
 
 
@@ -1149,6 +1151,22 @@ def _parse_func(raw, path):
         doc = _check_ascii(doc, "doc", path)
     gil_release = bool(raw.get("gil_release", False))
 
+    # Acquisition backend order. Maps to C2PY_PIN_* constants.
+    # Default: [ndarray, buffer]
+    _ACQUIRE_MAP = {
+        "ndarray": "C2PY_PIN_NDARRAY",
+        "buffer": "C2PY_PIN_PEP3118",
+        "dlpack": "C2PY_PIN_DLPACK",
+    }
+    acquire_raw = raw.get("acquire", ["ndarray", "buffer"])
+    if not isinstance(acquire_raw, list):
+        raise ValueError("acquire must be a list in {}".format(path))
+    acquire = []
+    for entry in acquire_raw:
+        if entry not in _ACQUIRE_MAP:
+            raise ValueError("Unknown acquire value '{}' in {} (expected: ndarray, buffer, dlpack)".format(entry, path))
+        acquire.append(_ACQUIRE_MAP[entry])
+
     # Derive auto-checks from array dimension notation in overload signatures
     # Map C param names to buffer names via map: expressions
     # Pre-populate seen set with user-written check sources (dedup across
@@ -1200,6 +1218,7 @@ def _parse_func(raw, path):
         doc,
         gil_release,
         params=params,
+        acquire=acquire,
     )
 
 

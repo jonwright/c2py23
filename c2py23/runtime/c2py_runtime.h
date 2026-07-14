@@ -497,14 +497,29 @@ c2py_release_buffer(Py_buffer *buf)
 /* acquisition mechanism is hidden behind pin/unpin.                  */
 /* ------------------------------------------------------------------ */
 
+/* c2py_ptr_info mirrors the leading fields of Py_buffer exactly so that
+ * c2py_pin_buffer can memcpy the acquired Py_buffer straight into it.
+ * Field order MUST match PEP 3118 Py_buffer layout (offset, type):
+ *   0: buf     (void*)       -> ptr
+ *   8: obj     (PyObject*)   -> _pin_buf_obj (unused by info, reserved)
+ *  16: len     (Py_ssize_t)
+ *  24: itemsize (Py_ssize_t)
+ *  32: readonly (int)        -> _ro (unused)
+ *  36: ndim    (int)
+ *  40: format  (char*)
+ *  48: shape   (Py_ssize_t*)
+ *  56: strides (Py_ssize_t*)
+ * Add reserved padding if the struct grows beyond what we memcpy. */
 typedef struct {
-    void *ptr;           /* data pointer */
-    int ndim;            /* number of dimensions */
-    Py_ssize_t len;      /* total length in bytes */
-    Py_ssize_t itemsize; /* size of one element */
-    char *format;        /* PEP 3118 format string (may be NULL) */
-    Py_ssize_t *shape;      /* per-dimension sizes (may be NULL for 1D) */
-    Py_ssize_t *strides;    /* per-dimension strides (may be NULL) */
+    void *ptr;                /* data pointer (matches Py_buffer.buf) */
+    PyObject *_pin_buf_obj;   /* reserved: maps to Py_buffer.obj, never accessed */
+    Py_ssize_t len;           /* total length in bytes */
+    Py_ssize_t itemsize;      /* size of one element */
+    int _ro;                  /* reserved: maps to Py_buffer.readonly */
+    int ndim;                 /* number of dimensions */
+    char *format;             /* PEP 3118 format string (may be NULL) */
+    Py_ssize_t *shape;        /* per-dimension sizes (may be NULL for 1D) */
+    Py_ssize_t *strides;      /* per-dimension strides (may be NULL) */
 } c2py_ptr_info;
 
 /* Backend tags for c2py_buf_pin.kind -- tells c2py_unpin_buffer
@@ -519,6 +534,7 @@ typedef struct {
     int kind;              /* C2PY_PIN_* tag */
     void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
     char format_buf[8];    /* stack-local format string storage (non-PEP3118) */
+    Py_ssize_t stride_buf[4]; /* temporary stride buffer for DLPack (up to 4D) */
 } c2py_buf_pin;
 
 /* ------------------------------------------------------------------ */
@@ -582,8 +598,8 @@ c2py_format_itemsize(char type_char)
 #define C2PY_DLCUDA 2
 
 typedef struct {
-    int32_t type_code;
-    uint16_t bits;
+    uint8_t code;
+    uint8_t bits;
     uint16_t lanes;
 } c2py_dl_dtype_t;
 
@@ -620,7 +636,7 @@ c2py_dl_format_char(c2py_dl_dtype_t *dt)
 {
     int bits = dt->bits;
     if (dt->lanes != 1) return 0;
-    switch (dt->type_code) {
+    switch (dt->code) {
     case C2PY_DL_INT:
         if (bits == 8)  return 'b';
         if (bits == 16) return 'h';
@@ -654,13 +670,7 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     if (c2py_acquire_buffer(obj, &pin->buf, want_writable) == -1)
         return -1;
 
-    info->ptr      = pin->buf.buf;
-    info->ndim     = pin->buf.ndim;
-    info->len      = pin->buf.len;
-    info->itemsize = pin->buf.itemsize;
-    info->format   = pin->buf.format;
-    info->shape    = pin->buf.shape;
-    info->strides  = pin->buf.strides;
+    memcpy(info, &pin->buf, sizeof(c2py_ptr_info));
 
     pin->kind = C2PY_PIN_PEP3118;
     return 0;
@@ -729,13 +739,7 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 
             /* First call: info already filled via c2py_acquire_buffer.
              * Return via pep3118 path so unpin releases the buffer. */
-            info->ptr      = pin->buf.buf;
-            info->ndim     = pin->buf.ndim;
-            info->len      = pin->buf.len;
-            info->itemsize = pin->buf.itemsize;
-            info->format   = pin->buf.format;
-            info->shape    = pin->buf.shape;
-            info->strides  = pin->buf.strides;
+            memcpy(info, &pin->buf, sizeof(c2py_ptr_info));
             pin->kind = C2PY_PIN_PEP3118;
             return 0;
 
@@ -862,7 +866,21 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     nelem = 1;
     if (t->shape && t->ndim > 0) {
         info->shape   = (Py_ssize_t*)t->shape;
-        info->strides = t->strides ? (Py_ssize_t*)t->strides : NULL;
+        if (t->strides) {
+            info->strides = (Py_ssize_t*)t->strides;
+        } else if (t->ndim <= 4) {
+            /* Implied C-contiguous strides: last dim = itemsize,
+             * each preceding dim = product of later dims * itemsize */
+            Py_ssize_t st = info->itemsize;
+            int d;
+            for (d = t->ndim - 1; d >= 0; d--) {
+                pin->stride_buf[d] = st;
+                st *= (Py_ssize_t)t->shape[d];
+            }
+            info->strides = pin->stride_buf;
+        } else {
+            info->strides = NULL;
+        }
         for (i = 0; i < t->ndim; i++)
             nelem *= (Py_ssize_t)t->shape[i];
     } else {
@@ -874,9 +892,15 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     pin->ctx  = managed;
     pin->kind = C2PY_PIN_DLPACK;
 
+    /* Keep the capsule alive: decref'ing it would invoke the
+     * capsule destructor, which might call managed->deleter
+     * prematurely.  Store it in buf.obj for later release. */
+    pin->buf.obj = capsule;
+    capsule = NULL;  /* ownership transferred to pin */
+
     Py_DECREF(dl_method);
     Py_DECREF(dl_args);
-    Py_DECREF(capsule);
+    /* capsule NOT decref'd -- stored in pin->buf.obj */
     return 0;
 
 fail:
@@ -905,13 +929,13 @@ c2py_unpin_buffer(c2py_buf_pin *pin)
         }
         break;
     case C2PY_PIN_DLPACK:
-        if (pin->ctx) {
-            c2py_dl_managed_tensor *m;
-            m = (c2py_dl_managed_tensor*)pin->ctx;
-            if (m->deleter)
-                m->deleter(m);
-            pin->ctx = NULL;
+        /* Release the capsule we kept alive -- its destructor
+         * called via Py_DECREF will invoke DLManagedTensor.deleter. */
+        if (pin->buf.obj) {
+            C2PY.DecRef(pin->buf.obj);
+            pin->buf.obj = NULL;
         }
+        pin->ctx = NULL;
         break;
     default:
         break;

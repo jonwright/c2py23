@@ -384,12 +384,11 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     buf_params = [p for p in func.py_params if p.pytype == "buffer"]
     scalar_params = [p for p in func.py_params if p.pytype != "buffer"]
 
-    # Default acquisition order: try ndarray struct-cast first, fall back to
-    # PEP 3118 buffer protocol. DLPack is deferred (slow for CPU arrays).
-    # See .c2py `acquire:` key for per-function override.
-    b._acq_order = ["C2PY_PIN_NDARRAY", "C2PY_PIN_PEP3118"]
+    # Acquisition backend order from .c2py `acquire:` key (default: [ndarray, buffer])
+    acq = getattr(func, "acquire", None) or ["C2PY_PIN_NDARRAY", "C2PY_PIN_PEP3118"]
+    b._acq_order = acq
     if buf_params:
-        vals = ", ".join(b._acq_order)
+        vals = ", ".join(acq)
         b.emit("static const uint8_t _acqord_{0}[] = {{ {1} }};".format(name, vals))
         b.emit_blank()
 
