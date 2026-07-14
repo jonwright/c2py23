@@ -497,6 +497,10 @@ c2py_release_buffer(Py_buffer *buf)
 /* acquisition mechanism is hidden behind pin/unpin.                  */
 /* ------------------------------------------------------------------ */
 
+/* Maximum supported dimensions for DLPack stride computation.
+ * Matches numpy's practical limit; arrays with >16D are vanishingly rare. */
+#define C2PY_MAX_NDIM 16
+
 /* c2py_ptr_info mirrors the leading fields of Py_buffer exactly so that
  * c2py_pin_buffer can memcpy the acquired Py_buffer straight into it.
  * Field order MUST match PEP 3118 Py_buffer layout (offset, type):
@@ -534,7 +538,7 @@ typedef struct {
     int kind;              /* C2PY_PIN_* tag */
     void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
     char format_buf[8];    /* stack-local format string storage (non-PEP3118) */
-    Py_ssize_t stride_buf[4]; /* temporary stride buffer for DLPack (up to 4D) */
+    Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
 
 /* ------------------------------------------------------------------ */
@@ -628,6 +632,9 @@ typedef struct c2py_dl_managed_tensor {
 #define C2PY_DL_INT    0
 #define C2PY_DL_UINT   1
 #define C2PY_DL_FLOAT  2
+#define C2PY_DL_BFLOAT 4
+#define C2PY_DL_COMPLEX 5
+#define C2PY_DL_BOOL   6
 
 /* Map a DLPack dtype to PEP 3118 format character.
  * Returns 0 for unsupported types. */
@@ -653,6 +660,9 @@ c2py_dl_format_char(c2py_dl_dtype_t *dt)
         if (bits == 16) return 0; /* no PEP 3118 half-float char */
         if (bits == 32) return 'f';
         if (bits == 64) return 'd';
+        return 0;
+    case C2PY_DL_BOOL:
+        if (bits == 8) return '?';
         return 0;
     default: return 0;
     }
@@ -734,7 +744,7 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
              * data_off+40 -> descr (non-NULL pointer) */
             nd    = *(int*)(base + L->data_off + 8);
             descr = *(void**)(base + L->data_off + 40);
-            if (nd < 0 || nd > 32 || descr == NULL)
+            if (nd < 0 || nd > C2PY_MAX_NDIM || descr == NULL)
                 goto probe_fail;
             /* Sanity: shape pointer should be non-NULL if nd>0 */
             if (nd > 0 && *(void**)(base + L->data_off + 16) == NULL)
@@ -808,7 +818,7 @@ fill:
 /* Acquire via DLPack capsule extraction.
  * Calls obj.__dlpack__() to get the capsule, then reads the DLTensor
  * struct fields directly.  CPU-only; GPU tensors are rejected.
- * All DLPack API symbols (CallObject, Capsule_GetPointer, exc_BufferError)
+ * All DLPack API symbols (CallObject, Capsule_GetPointer)
  * are optional: if any is NULL, this function returns -1 immediately,
  * falling through to the next backend.
  * Returns 0 on success, -1 to fall through to next backend. */
@@ -825,7 +835,10 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem;
     int i;
 
-    (void)want_writable;
+    /* DLPack has no standard mechanism for requesting writable access.
+     * Fall through to the buffer protocol which enforces writability. */
+    if (want_writable)
+        return -1;
 
     /* DLPack symbols are optional; if not resolved, skip this backend. */
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
@@ -874,7 +887,7 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         info->shape   = (Py_ssize_t*)t->shape;
         if (t->strides) {
             info->strides = (Py_ssize_t*)t->strides;
-        } else if (t->ndim <= 4) {
+        } else if (t->ndim <= C2PY_MAX_NDIM) {
             /* Implied C-contiguous strides: last dim = itemsize,
              * each preceding dim = product of later dims * itemsize */
             Py_ssize_t st = info->itemsize;
@@ -885,7 +898,10 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             }
             info->strides = pin->stride_buf;
         } else {
-            info->strides = NULL;
+            /* >8D with NULL strides: reject (would need dynamic alloc) */
+            PyErr_SetString(PyExc_ValueError,
+                "DLPack: >8 dimensions without explicit strides");
+            goto fail;
         }
         for (i = 0; i < t->ndim; i++)
             nelem *= (Py_ssize_t)t->shape[i];

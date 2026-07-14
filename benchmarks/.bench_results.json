@@ -4,7 +4,7 @@
   "acquire": "getbuffer",
   "checks": " --",
   "timing": "  --",
-  "ns_per_call": 122.595375,
+  "ns_per_call": 115.672895,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -14,7 +14,7 @@
   "acquire": "PyArray  ",
   "checks": " --",
   "timing": "  --",
-  "ns_per_call": 106.5073,
+  "ns_per_call": 103.705015,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -24,7 +24,7 @@
   "acquire": "  --",
   "checks": " no",
   "timing": "  off",
-  "ns_per_call": 75.69734,
+  "ns_per_call": 69.700605,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -34,7 +34,7 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 73.759295,
+  "ns_per_call": 73.458505,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -44,7 +44,7 @@
   "acquire": "ndarray ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 72.070695,
+  "ns_per_call": 73.000655,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -54,7 +54,7 @@
   "acquire": "buffer  ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 157.76662,
+  "ns_per_call": 155.813595,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -64,7 +64,7 @@
   "acquire": "dlpack  ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 384.519395,
+  "ns_per_call": 0,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -74,9 +74,9 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " clock",
-  "ns_per_call": 226.447025,
-  "c_mean": "92",
-  "wrap": "67",
+  "ns_per_call": 220.54971,
+  "c_mean": "91",
+  "wrap": "64",
   "section": "vnorm_tiny"
  },
  {
@@ -84,9 +84,9 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " cycle",
-  "ns_per_call": 104.66385,
-  "c_mean": "75",
-  "wrap": "65",
+  "ns_per_call": 103.90796,
+  "c_mean": "73",
+  "wrap": "59",
   "section": "vnorm_tiny"
  },
  {
@@ -94,8 +94,8 @@
   "acquire": "getbuffer",
   "checks": " --",
   "timing": "  --",
-  "ms": 11.638283,
-  "mb_s": 11532.43377910642,
+  "ms": 10.477026,
+  "mb_s": 12810.670508978406,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -105,8 +105,8 @@
   "acquire": "PyArray  ",
   "checks": " --",
   "timing": "  --",
-  "ms": 10.612115,
-  "mb_s": 12647.594565268091,
+  "ms": 10.547226,
+  "mb_s": 12725.405523689356,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -116,8 +116,8 @@
   "acquire": "  --",
   "checks": " no",
   "timing": "  off",
-  "ms": 10.475555,
-  "mb_s": 12812.469410928587,
+  "ms": 10.578486,
+  "mb_s": 12687.801260029082,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -127,8 +127,8 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.509934,
-  "mb_s": 12770.558597228108,
+  "ms": 10.579606,
+  "mb_s": 12686.45807792842,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -138,8 +138,8 @@
   "acquire": "ndarray ",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.491775,
-  "mb_s": 12792.661680220934,
+  "ms": 10.607216,
+  "mb_s": 12653.435925128706,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -149,8 +149,8 @@
   "acquire": "buffer  ",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.483055,
-  "mb_s": 12803.302853986743,
+  "ms": 10.585186,
+  "mb_s": 12679.770388541117,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -160,8 +160,8 @@
   "acquire": "dlpack  ",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.506145,
-  "mb_s": 12775.164249113257,
+  "ms": 0,
+  "mb_s": 0,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -171,10 +171,10 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " clock",
-  "ms": 10.456075,
-  "mb_s": 12836.339448598063,
-  "c_mean": "10456958",
-  "wrap": "1320",
+  "ms": 10.544866,
+  "mb_s": 12728.253540632948,
+  "c_mean": "10533610",
+  "wrap": "1753",
   "section": "vnorm_large"
  },
  {
@@ -182,10 +182,10 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " cycle",
-  "ms": 10.518275,
-  "mb_s": 12760.431534638523,
-  "c_mean": "25238392",
-  "wrap": "4400",
+  "ms": 10.547856,
+  "mb_s": 12724.64546349514,
+  "c_mean": "25301320",
+  "wrap": "4432",
   "section": "vnorm_large"
  }
 ]
