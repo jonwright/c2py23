@@ -518,6 +518,7 @@ typedef struct {
     Py_buffer buf;         /* opaque Py_buffer, valid when kind == PEP3118 */
     int kind;              /* C2PY_PIN_* tag */
     void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
+    char format_buf[8];    /* stack-local format string storage (non-PEP3118) */
 } c2py_buf_pin;
 
 /* ------------------------------------------------------------------ */
@@ -681,7 +682,6 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     int nd, flags;
     Py_ssize_t nelem, i;
     char type_char;
-    char format_stack[2];
 
     /* Free-threaded Python: type-object layout differs; skip the
      * fast path and fall through to buffer protocol. */
@@ -721,17 +721,14 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
              * data_off+40 -> descr (non-NULL pointer) */
             nd = *(int*)(base + L->data_off + 8);
             descr = *(void**)(base + L->data_off + 40);
-            if (nd < 0 || nd > 32 || descr == NULL) {
-                /* Layout verification failed -- fall back to buffer
-                 * and do NOT cache this type. */
-                c2py_release_buffer(&pin->buf);
-                return -1;
-            }
+            if (nd < 0 || nd > 32 || descr == NULL)
+                goto probe_fail;
 
             L->ndarray_type = tp;
             L->probed = 1;
 
-            /* First call already filled info via getbuffer. */
+            /* First call: info already filled via c2py_acquire_buffer.
+             * Return via pep3118 path so unpin releases the buffer. */
             info->ptr      = pin->buf.buf;
             info->ndim     = pin->buf.ndim;
             info->len      = pin->buf.len;
@@ -741,6 +738,10 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             info->strides  = pin->buf.strides;
             pin->kind = C2PY_PIN_PEP3118;
             return 0;
+
+        probe_fail:
+            c2py_release_buffer(&pin->buf);
+            return -1;
         }
     }
 
@@ -764,9 +765,9 @@ fill:
         /* type char at offset 25 within PyArray_Descr
          * (stable since numpy 1.0 through 2.x on GIL builds) */
         type_char = ((char*)descr)[25];
-        format_stack[0] = type_char;
-        format_stack[1] = '\0';
-        info->format = format_stack;
+        pin->format_buf[0] = type_char;
+        pin->format_buf[1] = '\0';
+        info->format = pin->format_buf;
         info->itemsize = c2py_format_itemsize(type_char);
     } else {
         info->format = NULL;
@@ -811,7 +812,6 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     c2py_dl_managed_tensor *managed;
     c2py_dl_tensor_t *t;
     char format_char;
-    char format_stack[2];
     Py_ssize_t nelem;
     int i;
 
@@ -854,9 +854,9 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         goto fail;
     }
 
-    format_stack[0] = format_char;
-    format_stack[1] = '\0';
-    info->format   = format_stack;
+    pin->format_buf[0] = format_char;
+    pin->format_buf[1] = '\0';
+    info->format   = pin->format_buf;
     info->itemsize = (t->dtype.bits / 8) * (t->dtype.lanes > 0 ? t->dtype.lanes : 1);
     info->ptr      = (char*)t->data + t->byte_offset;
     info->ndim     = t->ndim;
