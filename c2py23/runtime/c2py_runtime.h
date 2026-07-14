@@ -295,6 +295,7 @@ typedef struct {
     void *exc_ValueError;
     void *exc_RuntimeError;
     void *exc_MemoryError;
+    void *exc_BufferError;    /* PyExc_BufferError (optional, may be NULL) */
     void (*Err_SetString)(PyObject*, const char*);
     PyObject* (*Err_Occurred)(void);
     PyObject* (*Err_Format)(PyObject*, const char*, ...);
@@ -314,6 +315,12 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
     PyObject* (*GetAttrString)(PyObject*, const char*);
+
+    /* General call support (optional, used by DLPack) */
+    PyObject* (*CallObject)(PyObject*, PyObject*);
+
+    /* Capsule API (optional, used by DLPack) */
+    void* (*Capsule_GetPointer)(PyObject*, const char*);
 
     /* Pointer-to-int conversion (for exposing perf struct addresses) */
     PyObject* (*Long_FromVoidPtr)(void*);
@@ -379,6 +386,10 @@ extern c2py_api_t C2PY;
 #define PyExc_ValueError               ((PyObject*)C2PY.exc_ValueError)
 #define PyExc_RuntimeError             ((PyObject*)C2PY.exc_RuntimeError)
 #define PyExc_MemoryError              ((PyObject*)C2PY.exc_MemoryError)
+#define PyExc_BufferError              ((PyObject*)C2PY.exc_BufferError)
+#define PyObject_CallObject(c, a)      C2PY.CallObject((PyObject*)(c), (PyObject*)(a))
+#define PyCapsule_GetPointer(c, n)     C2PY.Capsule_GetPointer((PyObject*)(c), (n))
+#define Py_XDECREF(o)                  do { if (o) C2PY.DecRef((PyObject*)(o)); } while(0)
 
 /* ------------------------------------------------------------------ */
 /* Reference counting fallbacks (for CPython < 3.12 where Py_IncRef   */
@@ -496,15 +507,145 @@ typedef struct {
     Py_ssize_t *strides;    /* per-dimension strides (may be NULL) */
 } c2py_ptr_info;
 
+/* Backend tags for c2py_buf_pin.kind -- tells c2py_unpin_buffer
+ * which release path to use.  Zero-init = C2PY_PIN_NONE = no-op. */
+#define C2PY_PIN_NONE     0
+#define C2PY_PIN_PEP3118  1   /* pin->buf is valid; call PyBuffer_Release */
+#define C2PY_PIN_NDARRAY  2   /* struct-cast; pin->buf.obj is the INCREF'd ndarray */
+#define C2PY_PIN_DLPACK   3   /* DLPack; pin->ctx is the DLManagedTensor* */
+
 typedef struct {
-    Py_buffer buf;       /* opaque Py_buffer (80/96 bytes), zero-initialized */
-    int acquired;        /* 1 if buf has been filled by a successful acquire */
+    Py_buffer buf;         /* opaque Py_buffer, valid when kind == PEP3118 */
+    int kind;              /* C2PY_PIN_* tag */
+    void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
 } c2py_buf_pin;
 
-/* Acquire a buffer via the standard PEP 3118 path, then unpack
- * the relevant fields into *info.  Returns 0 on success, -1 on
- * failure (Python exception set).  pin->acquired is set to 1 on
- * success so c2py_unpin_buffer knows to release. */
+/* ------------------------------------------------------------------ */
+/* NumPy ndarray struct-cast fast path (lazy-probed, no import)       */
+/* ------------------------------------------------------------------ */
+
+/* Minimal PyTypeObject overlay to read tp_name without importing numpy.
+ * Layout (GIL-only LP64): ob_refcnt(8) + ob_type(8) + ob_size(8) +
+ * tp_name(8).  Free-threaded builds skip the fast path. */
+typedef struct {
+    Py_ssize_t ob_refcnt;
+    void     *ob_type;
+    Py_ssize_t ob_size;
+    const char *tp_name;
+} c2py_type_min_t;
+
+/* Runtime-discovered ndarray layout cache.
+ * data_off is the offset of the data pointer from the PyObject base.
+ * The remaining fields live at fixed relative offsets from data_off
+ * (stable since numpy 1.0 through 2.x):
+ *   data_off + 8:  nd          (int)
+ *   data_off + 16: dimensions  (npy_intp*)
+ *   data_off + 24: strides     (npy_intp*)
+ *   data_off + 40: descr       (PyArray_Descr*)
+ *   data_off + 48: flags       (int)      */
+typedef struct {
+    void *ndarray_type;     /* cached ob_type of numpy.ndarray, NULL if unknown */
+    int data_off;           /* offset of data ptr from PyObject base */
+    int probed;             /* 1 = layout known, 0 = probing deferred */
+} c2py_ndarray_layout_t;
+
+extern c2py_ndarray_layout_t C2PY_NDARRAY;
+
+/* NPY_ARRAY_WRITEABLE = 0x0400 (stable since numpy 1.0) */
+#define C2PY_NPY_WRITEABLE  0x0400
+
+/* Map a PEP 3118 type character to itemsize.
+ * Excludes 'l'/'L' (platform-sized -- callers use sizeof(long) at
+ * the expression level).  Used by both ndarray and DLPack backends. */
+static inline int
+c2py_format_itemsize(char type_char)
+{
+    switch (type_char) {
+    case 'b': case 'B': case '?': return 1;
+    case 'h': case 'H':          return 2;
+    case 'i': case 'I':          return 4;
+    case 'l': case 'L':          return (int)sizeof(long);
+    case 'q': case 'Q':          return 8;
+    case 'f':                    return 4;
+    case 'd':                    return 8;
+    case 'g':                    return (int)sizeof(long double);
+    default:                     return 1;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* DLPack struct definitions (hard-coded, no external headers)        */
+/* ------------------------------------------------------------------ */
+
+#define C2PY_DLCPU  1
+#define C2PY_DLCUDA 2
+
+typedef struct {
+    int32_t type_code;
+    uint16_t bits;
+    uint16_t lanes;
+} c2py_dl_dtype_t;
+
+typedef struct {
+    int32_t device_type;
+    int32_t device_id;
+} c2py_dl_device_t;
+
+typedef struct {
+    void *data;
+    c2py_dl_device_t device;
+    int32_t ndim;
+    c2py_dl_dtype_t dtype;
+    int64_t *shape;
+    int64_t *strides;
+    int64_t byte_offset;
+} c2py_dl_tensor_t;
+
+typedef struct c2py_dl_managed_tensor {
+    c2py_dl_tensor_t dl_tensor;
+    void *manager_ctx;
+    void (*deleter)(struct c2py_dl_managed_tensor *);
+} c2py_dl_managed_tensor;
+
+/* DLPack type codes */
+#define C2PY_DL_INT    0
+#define C2PY_DL_UINT   1
+#define C2PY_DL_FLOAT  2
+
+/* Map a DLPack dtype to PEP 3118 format character.
+ * Returns 0 for unsupported types. */
+static inline char
+c2py_dl_format_char(c2py_dl_dtype_t *dt)
+{
+    int bits = dt->bits;
+    if (dt->lanes != 1) return 0;
+    switch (dt->type_code) {
+    case C2PY_DL_INT:
+        if (bits == 8)  return 'b';
+        if (bits == 16) return 'h';
+        if (bits == 32) return 'i';
+        if (bits == 64) return 'q';
+        return 0;
+    case C2PY_DL_UINT:
+        if (bits == 8)  return 'B';
+        if (bits == 16) return 'H';
+        if (bits == 32) return 'I';
+        if (bits == 64) return 'Q';
+        return 0;
+    case C2PY_DL_FLOAT:
+        if (bits == 16) return 0; /* no PEP 3118 half-float char */
+        if (bits == 32) return 'f';
+        if (bits == 64) return 'd';
+        return 0;
+    default: return 0;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Acquisition functions                                              */
+/* ------------------------------------------------------------------ */
+
+/* Acquire via the standard PEP 3118 path. */
 static inline int
 c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                 int want_writable)
@@ -520,19 +661,294 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     info->shape    = pin->buf.shape;
     info->strides  = pin->buf.strides;
 
-    pin->acquired = 1;
+    pin->kind = C2PY_PIN_PEP3118;
     return 0;
 }
 
-/* Release a buffer acquired by c2py_pin_buffer.  No-op if
- * acquired == 0.  Resets the pin to zero so double-release is safe. */
+/* Acquire via numpy ndarray struct-cast (no PyObject_GetBuffer).
+ * Returns 0 on success, -1 to signal "try next backend" or real failure.
+ * On first encounter of a numpy.ndarray, probes the data-pointer
+ * offset by acquiring a buffer then scanning object memory.  All
+ * subsequent calls use a ~1 ns type-pointer comparison. */
+static inline int
+c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
+                 int want_writable)
+{
+    c2py_ndarray_layout_t *L = &C2PY_NDARRAY;
+    void *tp;
+    char *base;
+    void *dptr, *descr;
+    int nd, flags;
+    Py_ssize_t nelem, i;
+    char type_char;
+    char format_stack[2];
+
+    /* Free-threaded Python: type-object layout differs; skip the
+     * fast path and fall through to buffer protocol. */
+    if (C2PY.is_free_threaded)
+        return -1;
+
+    tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
+
+    if (L->ndarray_type && tp == L->ndarray_type) {
+        goto fill;
+    }
+
+    if (!L->probed && tp) {
+        const char *name = ((c2py_type_min_t*)tp)->tp_name;
+        if (name && strcmp(name, "numpy.ndarray") == 0) {
+            /* First encounter: validate via buffer protocol, then
+             * scan object memory for the data pointer. */
+            if (c2py_acquire_buffer(obj, &pin->buf, want_writable) != 0)
+                return -1;
+
+            base = (char*)obj;
+            {
+                int off;
+                dptr = pin->buf.buf;
+                for (off = (int)C2PY.pyobject_size;
+                     off < (int)C2PY.pyobject_size + 80;
+                     off += (int)sizeof(void*)) {
+                    if (*(void**)(base + off) == dptr) {
+                        L->data_off = off;
+                        break;
+                    }
+                }
+            }
+
+            /* Verify the layout looks plausible:
+             * data_off+8  -> nd (int, 0 <= nd <= 32)
+             * data_off+40 -> descr (non-NULL pointer) */
+            nd = *(int*)(base + L->data_off + 8);
+            descr = *(void**)(base + L->data_off + 40);
+            if (nd < 0 || nd > 32 || descr == NULL) {
+                /* Layout verification failed -- fall back to buffer
+                 * and do NOT cache this type. */
+                c2py_release_buffer(&pin->buf);
+                return -1;
+            }
+
+            L->ndarray_type = tp;
+            L->probed = 1;
+
+            /* First call already filled info via getbuffer. */
+            info->ptr      = pin->buf.buf;
+            info->ndim     = pin->buf.ndim;
+            info->len      = pin->buf.len;
+            info->itemsize = pin->buf.itemsize;
+            info->format   = pin->buf.format;
+            info->shape    = pin->buf.shape;
+            info->strides  = pin->buf.strides;
+            pin->kind = C2PY_PIN_PEP3118;
+            return 0;
+        }
+    }
+
+    return -1;
+
+fill:
+    base = (char*)obj;
+
+    dptr  = *(void**)(base + L->data_off);
+    nd    = *(int*)(base + L->data_off + 8);
+    flags = *(int*)(base + L->data_off + 48);
+
+    if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
+        PyErr_SetString(PyExc_BufferError,
+                        "numpy array is not writeable");
+        return -1;
+    }
+
+    descr = *(void**)(base + L->data_off + 40);
+    if (descr) {
+        /* type char at offset 25 within PyArray_Descr
+         * (stable since numpy 1.0 through 2.x on GIL builds) */
+        type_char = ((char*)descr)[25];
+        format_stack[0] = type_char;
+        format_stack[1] = '\0';
+        info->format = format_stack;
+        info->itemsize = c2py_format_itemsize(type_char);
+    } else {
+        info->format = NULL;
+        info->itemsize = 1;
+    }
+
+    info->ptr     = dptr;
+    info->ndim    = nd;
+    info->shape   = *(Py_ssize_t**)(base + L->data_off + 16);
+    info->strides = *(Py_ssize_t**)(base + L->data_off + 24);
+
+    nelem = 1;
+    if (info->shape) {
+        for (i = 0; i < nd && info->shape[i] >= 0; i++)
+            nelem *= info->shape[i];
+    }
+    info->len = nelem * (Py_ssize_t)(info->itemsize > 0 ? info->itemsize : 1);
+
+    /* Hold a reference on the ndarray: we skipped PyObject_GetBuffer
+     * which normally INCREFs the exporter.  Store it in buf.obj so
+     * unpin can DECREF it. */
+    C2PY.IncRef(obj);
+    pin->buf.obj = obj;
+    pin->kind = C2PY_PIN_NDARRAY;
+    return 0;
+}
+
+/* Acquire via DLPack capsule extraction.
+ * Calls obj.__dlpack__() to get the capsule, then reads the DLTensor
+ * struct fields directly.  CPU-only; GPU tensors are rejected.
+ * All DLPack API symbols (CallObject, Capsule_GetPointer, exc_BufferError)
+ * are optional: if any is NULL, this function returns -1 immediately,
+ * falling through to the next backend.
+ * Returns 0 on success, -1 to fall through to next backend. */
+static inline int
+c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
+                int want_writable)
+{
+    PyObject *dl_method = NULL;
+    PyObject *dl_args = NULL;
+    PyObject *capsule = NULL;
+    c2py_dl_managed_tensor *managed;
+    c2py_dl_tensor_t *t;
+    char format_char;
+    char format_stack[2];
+    Py_ssize_t nelem;
+    int i;
+
+    (void)want_writable;
+
+    /* DLPack symbols are optional; if not resolved, skip this backend. */
+    if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
+        return -1;
+
+    dl_method = C2PY.GetAttrString(obj, "__dlpack__");
+    if (!dl_method) { PyErr_Clear(); return -1; }
+
+    dl_args = PyTuple_New(0);
+    if (!dl_args) goto fail;
+
+    capsule = C2PY.CallObject(dl_method, dl_args);
+    if (!capsule) { PyErr_Clear(); goto fail; }
+
+    managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor");
+    if (!managed) {
+        PyErr_Clear();
+        managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor_versioned");
+    }
+    if (!managed) { PyErr_Clear(); goto fail; }
+
+    t = &managed->dl_tensor;
+
+    if (t->device.device_type != C2PY_DLCPU) {
+        if (C2PY.exc_BufferError)
+            PyErr_SetString(PyExc_BufferError,
+                "DLPack: unsupported device (expected CPU)");
+        goto fail;
+    }
+
+    format_char = c2py_dl_format_char(&t->dtype);
+    if (!format_char) {
+        if (C2PY.exc_BufferError)
+            PyErr_SetString(PyExc_BufferError,
+                "DLPack: unsupported dtype");
+        goto fail;
+    }
+
+    format_stack[0] = format_char;
+    format_stack[1] = '\0';
+    info->format   = format_stack;
+    info->itemsize = (t->dtype.bits / 8) * (t->dtype.lanes > 0 ? t->dtype.lanes : 1);
+    info->ptr      = (char*)t->data + t->byte_offset;
+    info->ndim     = t->ndim;
+
+    nelem = 1;
+    if (t->shape && t->ndim > 0) {
+        info->shape   = (Py_ssize_t*)t->shape;
+        info->strides = t->strides ? (Py_ssize_t*)t->strides : NULL;
+        for (i = 0; i < t->ndim; i++)
+            nelem *= (Py_ssize_t)t->shape[i];
+    } else {
+        info->shape   = NULL;
+        info->strides = NULL;
+    }
+    info->len = nelem * info->itemsize;
+
+    pin->ctx  = managed;
+    pin->kind = C2PY_PIN_DLPACK;
+
+    Py_DECREF(dl_method);
+    Py_DECREF(dl_args);
+    Py_DECREF(capsule);
+    return 0;
+
+fail:
+    Py_XDECREF(dl_method);
+    Py_XDECREF(dl_args);
+    Py_XDECREF(capsule);
+    pin->kind = C2PY_PIN_NONE;
+    return -1;
+}
+
+/* Release any backend acquired via c2py_pin_buffer/ndarray/dlpack.
+ * No-op if kind == C2PY_PIN_NONE. */
 static inline void
 c2py_unpin_buffer(c2py_buf_pin *pin)
 {
-    if (pin->acquired) {
+    switch (pin->kind) {
+    case C2PY_PIN_PEP3118:
         c2py_release_buffer(&pin->buf);
-        pin->acquired = 0;
+        break;
+    case C2PY_PIN_NDARRAY:
+        /* We INCREF'd the ndarray in c2py_pin_ndarray;
+         * release that reference now. */
+        if (pin->buf.obj) {
+            C2PY.DecRef(pin->buf.obj);
+            pin->buf.obj = NULL;
+        }
+        break;
+    case C2PY_PIN_DLPACK:
+        if (pin->ctx) {
+            c2py_dl_managed_tensor *m;
+            m = (c2py_dl_managed_tensor*)pin->ctx;
+            if (m->deleter)
+                m->deleter(m);
+            pin->ctx = NULL;
+        }
+        break;
+    default:
+        break;
     }
+    pin->kind = C2PY_PIN_NONE;
+}
+
+/* Multi-source acquisition: tries each backend in order.
+ * src_order is a uint8_t[] emitted by the generator from the
+ * acquire: key in the .c2py file.  0 on success, -1 on failure
+ * (Python exception set). */
+static inline int
+c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
+         int want_writable, const uint8_t *src_order, int n_src)
+{
+    int i;
+    for (i = 0; i < n_src; i++) {
+        switch (src_order[i]) {
+        case C2PY_PIN_NDARRAY:
+            if (c2py_pin_ndarray(obj, pin, info, want_writable) == 0)
+                return 0;
+            break;
+        case C2PY_PIN_DLPACK:
+            if (c2py_pin_dlpack(obj, pin, info, want_writable) == 0)
+                return 0;
+            break;
+        case C2PY_PIN_PEP3118:
+            if (c2py_pin_buffer(obj, pin, info, want_writable) == 0)
+                return 0;
+            break;
+        default:
+            break;
+        }
+    }
+    return -1;
 }
 
 /* ------------------------------------------------------------------ */

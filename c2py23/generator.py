@@ -43,6 +43,7 @@ class CBuilder:
         self._buf_names = []  # declared buffer names in order
         self._acq_names = set()  # declared acq flag names
         self._acquired = []  # buffers acquired (stack, in order)
+        self._acq_order = []  # backend source order (C2PY_PIN_* values)
         self._gil_depth = 0
         self._in_wrapper = False
         self._in_cleanup = False
@@ -79,15 +80,19 @@ class CBuilder:
     def emit_buf_memset(self, buf_var):
         pass  # pin struct is zero-initialized at declaration
 
-    def acquire_buffer(self, buf_var, py_var, flags):
-        """Emits c2py_pin_buffer with correct failure path.
+    def acquire_buffer(self, buf_var, py_var, flags, func_name):
+        """Emits c2py_pin with correct failure path.
 
         First buffer: return NULL on failure (nothing to clean up).
         Subsequent: goto cleanup on failure.
         """
         first = len(self._acquired) == 0
         base = buf_var.replace("info_", "", 1)
-        self.emit("    if (c2py_pin_buffer({0}, &pin_{1}, &info_{1}, {2}) == -1)".format(py_var, base, flags))
+        self.emit(
+            "    if (c2py_pin({0}, &pin_{1}, &info_{1}, {2}, _acqord_{3}, {4}) == -1)".format(
+                py_var, base, flags, func_name, len(self._acq_order)
+            )
+        )
         if first:
             self.emit("        return NULL;")
         else:
@@ -378,6 +383,15 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     name = func.name
     buf_params = [p for p in func.py_params if p.pytype == "buffer"]
     scalar_params = [p for p in func.py_params if p.pytype != "buffer"]
+
+    # Default acquisition order: try ndarray struct-cast first, fall back to
+    # PEP 3118 buffer protocol. DLPack is deferred (slow for CPU arrays).
+    # See .c2py `acquire:` key for per-function override.
+    b._acq_order = ["C2PY_PIN_NDARRAY", "C2PY_PIN_PEP3118"]
+    if buf_params:
+        vals = ", ".join(b._acq_order)
+        b.emit("static const uint8_t _acqord_{0}[] = {{ {1} }};".format(name, vals))
+        b.emit_blank()
 
     b.emit("/* " + "-" * 44 + " */")
     b.emit("/* Wrapper for: {0} */".format(name))
@@ -1362,8 +1376,6 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     perf_name = "_perf_" + name
 
     # Buffers are zero-initialized at declaration (c2py_buf_pin = {{0}})
-    for p in buf_params:
-        b.emit("    (void)pin_{0}; /* pin is unused after acquire, suppress warning */".format(p.name))
     b.emit("")
 
     # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)
@@ -1371,7 +1383,7 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         flags = _get_buf_flags(p, func)
         want_write = "PyBUF_WRITABLE" in flags
         write_val = "C2PY_BUF_WRITE" if want_write else "C2PY_BUF_READ"
-        b.acquire_buffer("info_" + p.name, "py_" + p.name, write_val)
+        b.acquire_buffer("info_" + p.name, "py_" + p.name, write_val, name)
         b.emit("")
 
     # Restrict checks

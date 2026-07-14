@@ -41,6 +41,9 @@
 
 /* Global API table */
 c2py_api_t C2PY = {0};
+
+/* Runtime-discovered numpy ndarray layout (zero = not yet probed) */
+c2py_ndarray_layout_t C2PY_NDARRAY = {0};
 static volatile int _c2py_runtime_initialized = 0;
 static int _c2py_init_result = 0;
 
@@ -732,6 +735,7 @@ static void _c2py_runtime_init_once(void)
     C2PY.exc_ValueError = *(void **)C2PY.exc_ValueError;
     C2PY.exc_RuntimeError = *(void **)C2PY.exc_RuntimeError;
     C2PY.exc_MemoryError = *(void **)C2PY.exc_MemoryError;
+    C2PY.exc_BufferError = C2PY.exc_BufferError ? *(void **)C2PY.exc_BufferError : NULL;
 
     /* --- Module creation --- */
     {
@@ -775,6 +779,13 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.SetAttrString == NULL) return;
     RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
     if (C2PY.GetAttrString == NULL) return;
+
+    /* --- DLPack capsule API (optional) --- */
+    C2PY.CallObject = (PyObject*(*)(PyObject*, PyObject*))
+        C2PY_RESOLVE(dl, "PyObject_CallObject");
+    C2PY.Capsule_GetPointer = (void*(*)(PyObject*, const char*))
+        C2PY_RESOLVE(dl, "PyCapsule_GetPointer");
+    C2PY.exc_BufferError = (void*)C2PY_RESOLVE(dl, "PyExc_BufferError");
 
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");

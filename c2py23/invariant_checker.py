@@ -117,7 +117,7 @@ def _check_one_wrapper(lines, start_lineno):
         if not in_cleanup and re.match(r"\s*c2py_unpin_buffer\(&(pin_\w+)\);", line):
             in_cleanup = True
 
-        m = re.match(r".*if\s*\(\s*c2py_pin_buffer\(([^,]+),\s*&(pin_\w+),\s*&(info_\w+),", line)
+        m = re.match(r".*if\s*\(\s*c2py_pin\(([^,]+),\s*&(pin_\w+),\s*&(info_\w+),", line)
         if m:
             buf_name = m.group(3)
             acquire_count += 1
