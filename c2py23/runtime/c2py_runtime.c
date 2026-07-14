@@ -805,6 +805,20 @@ static void _c2py_runtime_init_once(void)
             fprintf(stderr, "c2py_runtime: could not resolve Py_None\n");
             return;
         }
+        /* Probe whether IncRef on None is a no-op (immortal sentinel).
+         * Call IncRef once; if the refcount doesn't change, the Python VM
+         * has made None immortal (CPython 3.12+, some PyPy builds).
+         * If it did change, undo the increment.  No version guessing. */
+        {
+            Py_ssize_t before, after;
+            before = *(Py_ssize_t*)((char*)C2PY.none_obj + C2PY.ob_refcnt_offset);
+            C2PY.IncRef(C2PY.none_obj);
+            after = *(Py_ssize_t*)((char*)C2PY.none_obj + C2PY.ob_refcnt_offset);
+            C2PY.none_immortal = (before == after) ? 1 : 0;
+            if (!C2PY.none_immortal) {
+                C2PY.DecRef(C2PY.none_obj);
+            }
+        }
     }
 
     /* --- Runtime Py_buffer size probe ---
