@@ -72,29 +72,27 @@ class CBuilder:
 
     def declare_buffer(self, name):
         self._buf_names.append(name)
-        self.emit("    Py_buffer {0};".format(name))
-        acq_name = self._acq_name(name)
-        self._acq_names.add(acq_name)
-        self.emit("    int {0} = 0;".format(acq_name))
+        base = name.replace("info_", "", 1)
+        self.emit("    c2py_buf_pin pin_{0} = {{{{0}}, 0}};".format(base))
+        self.emit("    c2py_ptr_info info_{0};".format(base))
 
     def emit_buf_memset(self, buf_var):
-        self.emit("    memset(&{0}, 0, C2PY.pybuffer_size);".format(buf_var))
+        pass  # pin struct is zero-initialized at declaration
 
     def acquire_buffer(self, buf_var, py_var, flags):
-        """Emits c2py_acquire_buffer with correct failure path.
+        """Emits c2py_pin_buffer with correct failure path.
 
         First buffer: return NULL on failure (nothing to clean up).
         Subsequent: goto cleanup on failure.
         """
         first = len(self._acquired) == 0
-        acq_flag = self._acq_name(buf_var)
-        self.emit("    if (c2py_acquire_buffer({0}, &{1}, {2}) == -1)".format(py_var, buf_var, flags))
+        base = buf_var.replace("info_", "", 1)
+        self.emit("    if (c2py_pin_buffer({0}, &pin_{1}, &info_{1}, {2}) == -1)".format(py_var, base, flags))
         if first:
             self.emit("        return NULL;")
         else:
             self.emit("        goto cleanup;")
             self._has_goto_cleanup = True
-        self.emit("    {0} = 1;".format(acq_flag))
         self._acquired.append(buf_var)
 
     def enter_cleanup(self):
@@ -104,13 +102,14 @@ class CBuilder:
         if self._has_goto_cleanup:
             self.emit("cleanup:")
         for buf_var in reversed(self._acquired):
-            acq_flag = self._acq_name(buf_var)
-            self.emit("    if ({0}) c2py_release_buffer(&{1});".format(acq_flag, buf_var))
+            base = buf_var.replace("info_", "", 1)
+            self.emit("    c2py_unpin_buffer(&pin_{0});".format(base))
         self._acquired = []
         self._has_goto_cleanup = False
 
     def _acq_name(self, buf_var):
-        return "acq_" + buf_var.replace("buf_", "", 1)
+        base = buf_var.replace("info_", "", 1)
+        return "pin_{0}.acquired".format(base)
 
     # -- GIL management --
 
@@ -196,14 +195,14 @@ class CBuilder:
                     continue
                 checked.add(pair)
                 self.emit("    /* restrict check: {} vs {} */".format(wn, other))
-                self.emit("    if ((char*)buf_{0}.buf >= (char*)buf_{1}.buf && ".format(wn, other))
-                self.emit("        (char*)buf_{0}.buf < (char*)buf_{1}.buf + buf_{1}.len) {{".format(wn, other))
+                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(wn, other))
+                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(wn, other))
                 self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
                 self.emit("        goto cleanup;")
                 self._has_goto_cleanup = True
                 self.emit("    }")
-                self.emit("    if ((char*)buf_{0}.buf >= (char*)buf_{1}.buf && ".format(other, wn))
-                self.emit("        (char*)buf_{0}.buf < (char*)buf_{1}.buf + buf_{1}.len) {{".format(other, wn))
+                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(other, wn))
+                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(other, wn))
                 self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
                 self.emit("        goto cleanup;")
                 self._has_goto_cleanup = True
@@ -223,42 +222,42 @@ class CBuilder:
         for p in buf_params:
             name = p.name
             fmt = lambda s: s.format(name)
-            self.emit("    int _c2py_slow_axis_buf_{0} = -1;".format(name))
-            self.emit("    int _c2py_fast_axis_buf_{0} = -1;".format(name))
-            self.emit("    (void)_c2py_slow_axis_buf_{0};".format(name))
-            self.emit("    (void)_c2py_fast_axis_buf_{0};".format(name))
+            self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(name))
+            self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(name))
+            self.emit("    (void)_c2py_slow_axis_info_{0};".format(name))
+            self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
             self.emit("    do {")
             self.emit("        int _ok = 1;")
-            self.emit("        if (buf_{0}->strides == NULL && buf_{0}->ndim <= 1) {{".format(name))
-            self.emit("            _c2py_slow_axis_buf_{0} = 0;".format(name))
-            self.emit("            _c2py_fast_axis_buf_{0} = (int)(buf_{0}->ndim - 1);".format(name))
+            self.emit("        if (info_{0}->strides == NULL && info_{0}->ndim <= 1) {{".format(name))
+            self.emit("            _c2py_slow_axis_info_{0} = 0;".format(name))
+            self.emit("            _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1);".format(name))
             self.emit("            break;")
             self.emit("        }")
-            self.emit(fmt("        if (buf_{0}->ndim >= 1) {{"))
-            self.emit(fmt("            Py_ssize_t _expected = buf_{0}->itemsize;"))
+            self.emit(fmt("        if (info_{0}->ndim >= 1) {{"))
+            self.emit(fmt("            Py_ssize_t _expected = info_{0}->itemsize;"))
             self.emit("            int _d;")
             self.emit("            /* check F-contiguous (column-major): first dim varies fastest */")
-            self.emit(fmt("            for (_d = 0; _d < buf_{0}->ndim; _d++) {{"))
-            self.emit(fmt("                if (buf_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= buf_{0}->shape[_d];"))
+            self.emit(fmt("            for (_d = 0; _d < info_{0}->ndim; _d++) {{"))
+            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
+            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
+            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
             self.emit("            }")
             self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_buf_{0} = (int)(buf_{0}->ndim - 1); _c2py_fast_axis_buf_{0} = 0; break; }}".format(
+                "            if (_ok) {{ _c2py_slow_axis_info_{0} = (int)(info_{0}->ndim - 1); _c2py_fast_axis_info_{0} = 0; break; }}".format(
                     name
                 )
             )
             self.emit("            /* check C-contiguous (row-major): last dim varies fastest */")
             self.emit("            _ok = 1;")
-            self.emit(fmt("            _expected = buf_{0}->itemsize;"))
-            self.emit(fmt("            for (_d = buf_{0}->ndim - 1; _d >= 0; _d--) {{"))
-            self.emit(fmt("                if (buf_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (buf_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= buf_{0}->shape[_d];"))
+            self.emit(fmt("            _expected = info_{0}->itemsize;"))
+            self.emit(fmt("            for (_d = info_{0}->ndim - 1; _d >= 0; _d--) {{"))
+            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
+            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
+            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
             self.emit("            }")
             self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_buf_{0} = 0; _c2py_fast_axis_buf_{0} = (int)(buf_{0}->ndim - 1); }}".format(
+                "            if (_ok) {{ _c2py_slow_axis_info_{0} = 0; _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1); }}".format(
                     name
                 )
             )
@@ -520,7 +519,7 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
 
     params_c = []
     for p in buf_params:
-        params_c.append("Py_buffer *buf_" + p.name)
+        params_c.append("c2py_ptr_info *info_" + p.name)
     for p in scalar_params:
         if p.pytype == "int":
             if p.name in void_ptr_names:
@@ -1340,7 +1339,7 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
                 b.emit("    double c_%s = %s;" % (p.name, _float_literal(default_val)))
 
     for p in buf_params:
-        b.declare_buffer("buf_" + p.name)
+        b.declare_buffer("info_" + p.name)
 
     b.emit("    PyObject *ret = NULL;")
 
@@ -1362,9 +1361,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
 
-    # Initialize buffers
+    # Buffers are zero-initialized at declaration (c2py_buf_pin = {{0}})
     for p in buf_params:
-        b.emit("    memset(&buf_{0}, 0, C2PY.pybuffer_size);".format(p.name))
+        b.emit("    (void)pin_{0}; /* pin is unused after acquire, suppress warning */".format(p.name))
     b.emit("")
 
     # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)
@@ -1372,7 +1371,7 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         flags = _get_buf_flags(p, func)
         want_write = "PyBUF_WRITABLE" in flags
         write_val = "C2PY_BUF_WRITE" if want_write else "C2PY_BUF_READ"
-        b.acquire_buffer("buf_" + p.name, "py_" + p.name, write_val)
+        b.acquire_buffer("info_" + p.name, "py_" + p.name, write_val)
         b.emit("")
 
     # Restrict checks
@@ -1381,7 +1380,7 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     # Call impl (with timing ticks around it)
     impl_args = []
     for p in buf_params:
-        impl_args.append("&buf_" + p.name)
+        impl_args.append("&info_" + p.name)
     for p in scalar_params:
         impl_args.append("c_" + p.name)
 

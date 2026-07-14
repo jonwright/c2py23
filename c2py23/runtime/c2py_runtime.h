@@ -480,6 +480,62 @@ c2py_release_buffer(Py_buffer *buf)
 }
 
 /* ------------------------------------------------------------------ */
+/* Unified buffer info struct -- the common interface for all         */
+/* acquisition backends (PEP 3118, ndarray struct cast, DLPack).     */
+/* Generated wrappers operate on c2py_ptr_info; the underlying       */
+/* acquisition mechanism is hidden behind pin/unpin.                  */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    void *ptr;           /* data pointer */
+    int ndim;            /* number of dimensions */
+    Py_ssize_t len;      /* total length in bytes */
+    Py_ssize_t itemsize; /* size of one element */
+    char *format;        /* PEP 3118 format string (may be NULL) */
+    Py_ssize_t *shape;      /* per-dimension sizes (may be NULL for 1D) */
+    Py_ssize_t *strides;    /* per-dimension strides (may be NULL) */
+} c2py_ptr_info;
+
+typedef struct {
+    Py_buffer buf;       /* opaque Py_buffer (80/96 bytes), zero-initialized */
+    int acquired;        /* 1 if buf has been filled by a successful acquire */
+} c2py_buf_pin;
+
+/* Acquire a buffer via the standard PEP 3118 path, then unpack
+ * the relevant fields into *info.  Returns 0 on success, -1 on
+ * failure (Python exception set).  pin->acquired is set to 1 on
+ * success so c2py_unpin_buffer knows to release. */
+static inline int
+c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
+                int want_writable)
+{
+    if (c2py_acquire_buffer(obj, &pin->buf, want_writable) == -1)
+        return -1;
+
+    info->ptr      = pin->buf.buf;
+    info->ndim     = pin->buf.ndim;
+    info->len      = pin->buf.len;
+    info->itemsize = pin->buf.itemsize;
+    info->format   = pin->buf.format;
+    info->shape    = pin->buf.shape;
+    info->strides  = pin->buf.strides;
+
+    pin->acquired = 1;
+    return 0;
+}
+
+/* Release a buffer acquired by c2py_pin_buffer.  No-op if
+ * acquired == 0.  Resets the pin to zero so double-release is safe. */
+static inline void
+c2py_unpin_buffer(c2py_buf_pin *pin)
+{
+    if (pin->acquired) {
+        c2py_release_buffer(&pin->buf);
+        pin->acquired = 0;
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* Performance timing (optional, enabled via timing: true in .c2py)   */
 /* ------------------------------------------------------------------ */
 

@@ -1549,7 +1549,7 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         # Is it a buffer param?
         for p in buf_params:
             if p.name == name:
-                return "buf_" + name
+                return "info_" + name
         # Is it a scalar param?
         for p in scalar_params:
             if p.name == name:
@@ -1570,7 +1570,7 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         elif attr == "n":
             return "((" + obj + "->len == 0) ? 0 : (" + obj + "->len / " + obj + "->itemsize))"
         elif attr == "ptr":
-            return obj + "->buf"
+            return obj + "->ptr"
         elif attr == "shape":
             return obj + "->shape"
         elif attr == "strides":
