@@ -145,6 +145,9 @@ _c2py_perf_set_enabled(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+static const uint8_t _acqord_transform[] = { C2PY_SRC_NDARRAY, C2PY_SRC_BUFFER };
+static int _acq_last_transform = 0;
+
 /* -------------------------------------------- */
 /* Wrapper for: transform */
 /* -------------------------------------------- */
@@ -325,11 +328,11 @@ _transform_wrapper(PyObject *self, PyObject *args)
     memset(&buf_points, 0, C2PY.pybuffer_size);
     memset(&buf_out, 0, C2PY.pybuffer_size);
 
-    if (c2py_acquire_buffer(py_points, &buf_points, C2PY_BUF_WRITE) == -1)
+    if (c2py_acquire(py_points, &buf_points, C2PY_BUF_WRITE, _acqord_transform, 2, &_acq_last_transform) == -1)
         return NULL;
     acq_points = 1;
 
-    if (c2py_acquire_buffer(py_out, &buf_out, C2PY_BUF_WRITE) == -1)
+    if (c2py_acquire(py_out, &buf_out, C2PY_BUF_WRITE, _acqord_transform, 2, &_acq_last_transform) == -1)
         goto cleanup;
     acq_out = 1;
 
@@ -385,11 +388,11 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     memset(&buf_points, 0, C2PY.pybuffer_size);
     memset(&buf_out, 0, C2PY.pybuffer_size);
 
-    if (c2py_acquire_buffer(py_points, &buf_points, C2PY_BUF_WRITE) == -1)
+    if (c2py_acquire(py_points, &buf_points, C2PY_BUF_WRITE, _acqord_transform, 2, &_acq_last_transform) == -1)
         return NULL;
     acq_points = 1;
 
-    if (c2py_acquire_buffer(py_out, &buf_out, C2PY_BUF_WRITE) == -1)
+    if (c2py_acquire(py_out, &buf_out, C2PY_BUF_WRITE, _acqord_transform, 2, &_acq_last_transform) == -1)
         goto cleanup;
     acq_out = 1;
 

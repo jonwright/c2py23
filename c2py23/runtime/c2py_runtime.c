@@ -41,6 +41,8 @@
 
 /* Global API table */
 c2py_api_t C2PY = {0};
+/* Global ndarray layout (lazily probed on first ndarray encounter) */
+c2py_ndarray_layout_t C2PY_NDARRAY = {0};
 static volatile int _c2py_runtime_initialized = 0;
 static int _c2py_init_result = 0;
 

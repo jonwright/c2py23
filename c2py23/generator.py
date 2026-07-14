@@ -80,15 +80,19 @@ class CBuilder:
     def emit_buf_memset(self, buf_var):
         self.emit("    memset(&{0}, 0, C2PY.pybuffer_size);".format(buf_var))
 
-    def acquire_buffer(self, buf_var, py_var, flags):
-        """Emits c2py_acquire_buffer with correct failure path.
+    def acquire_buffer(self, buf_var, py_var, flags, func_name):
+        """Emits c2py_acquire with correct failure path.
 
         First buffer: return NULL on failure (nothing to clean up).
         Subsequent: goto cleanup on failure.
         """
         first = len(self._acquired) == 0
         acq_flag = self._acq_name(buf_var)
-        self.emit("    if (c2py_acquire_buffer({0}, &{1}, {2}) == -1)".format(py_var, buf_var, flags))
+        self.emit(
+            "    if (c2py_acquire({0}, &{1}, {2}, _acqord_{3}, 2, &_acq_last_{3}) == -1)".format(
+                py_var, buf_var, flags, func_name
+            )
+        )
         if first:
             self.emit("        return NULL;")
         else:
@@ -353,6 +357,15 @@ def generate(module_def):
             if func.gil_release:
                 b.emit("static int _gil_release_{0} = 1;".format(func.name))
         b.emit_blank()
+
+    # Buffer acquisition order: ndarray fast path first, then buffer protocol.
+    # DLPack slot reserved but not yet implemented.
+    for func in module_def.functions:
+        bps = [p for p in func.py_params if p.pytype == "buffer"]
+        if bps:
+            b.emit("static const uint8_t _acqord_{0}[] = {{ C2PY_SRC_NDARRAY, C2PY_SRC_BUFFER }};".format(func.name))
+            b.emit("static int _acq_last_{0} = 0;".format(func.name))
+    b.emit_blank()
 
     # Per-function emission (each function gets its own CBuilder to
     # prevent state leaks -- _has_goto_cleanup, _acquired, _gil_depth
@@ -1372,7 +1385,7 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         flags = _get_buf_flags(p, func)
         want_write = "PyBUF_WRITABLE" in flags
         write_val = "C2PY_BUF_WRITE" if want_write else "C2PY_BUF_READ"
-        b.acquire_buffer("buf_" + p.name, "py_" + p.name, write_val)
+        b.acquire_buffer("buf_" + p.name, "py_" + p.name, write_val, name)
         b.emit("")
 
     # Restrict checks
