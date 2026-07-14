@@ -499,7 +499,7 @@ c2py_release_buffer(Py_buffer *buf)
 
 /* Maximum supported dimensions for DLPack stride computation.
  * Matches numpy's practical limit; arrays with >16D are vanishingly rare. */
-#define C2PY_MAX_NDIM 16
+#define C2PY_MAX_NDIM 32
 
 /* c2py_ptr_info mirrors the leading fields of Py_buffer exactly so that
  * c2py_pin_buffer can memcpy the acquired Py_buffer straight into it.
