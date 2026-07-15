@@ -82,7 +82,7 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
     return include_dirs
 
 
-def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False):
+def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False, target="cpython"):
     """Compile a wrapper .c file (plus runtime and user sources) to a .so/.pyd."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     runtime_dir = os.path.join(script_dir, "runtime")
@@ -116,6 +116,9 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         _default_cflags = "-O2 -Wall -Werror -Wpointer-arith"
     cflags = [f for f in os.environ.get("CFLAGS", _default_cflags).split() if f]
     ldflags = [f for f in os.environ.get("LDFLAGS", "").split() if f]
+
+    if target == "pypy":
+        cflags.insert(0, "-DC2PY_TARGET_PYPY")
 
     if asan:
         if is_msvc:
@@ -216,6 +219,7 @@ def cmd_build(args):
             include_dirs,
             output_so,
             asan=getattr(args, "asan", False),
+            target=getattr(args, "target", "cpython"),
         )
         return
 
@@ -235,6 +239,7 @@ def cmd_build(args):
         include_dirs,
         output_so,
         asan=getattr(args, "asan", False),
+        target=getattr(args, "target", "cpython"),
     )
 
 
@@ -267,6 +272,12 @@ def _add_build_parser(sub):
         "--compile-only",
         action="store_true",
         help="Compile an existing wrapper .c file (skip parse+generate)",
+    )
+    build_p.add_argument(
+        "--target",
+        choices=["cpython", "pypy"],
+        default="cpython",
+        help="Target Python runtime (default: cpython, for PyPy: pypy)",
     )
     build_p.add_argument(
         "-s",

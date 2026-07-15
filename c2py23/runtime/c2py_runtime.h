@@ -94,6 +94,9 @@ typedef long Py_ssize_t;
 /* GIL-enabled PyObject layout (standard CPython) */
 typedef struct _c2py_object {
     Py_ssize_t ob_refcnt;
+#ifdef C2PY_TARGET_PYPY
+    void *ob_pypy_link;  /* PyPy cpyext inserts this field */
+#endif
     void *ob_type;
 } PyObject;
 
@@ -224,7 +227,11 @@ typedef struct {
 #define METH_FASTCALL  0x0080
 
 /* Module init macro - initializes the PyModuleDef_Base embedded in PyModuleDef. */
+#ifdef C2PY_TARGET_PYPY
+#define PyModuleDef_HEAD_INIT { {1, NULL, NULL}, NULL, 0, NULL }
+#else
 #define PyModuleDef_HEAD_INIT { {1, NULL}, NULL, 0, NULL }
+#endif
 
 /* Module init macro for free-threaded builds (PyObject is 32 bytes).
  * ob_type = NULL, m_init = NULL, m_index = 0, m_copy = NULL.
@@ -550,9 +557,13 @@ typedef struct {
 
 /* Minimal PyTypeObject overlay to read tp_name without importing numpy.
  * Layout (GIL-only LP64): ob_refcnt(8) + ob_type(8) + ob_size(8) +
- * tp_name(8).  Free-threaded builds skip the fast path. */
+ * tp_name(8).  Free-threaded builds skip the fast path.
+ * On PyPy, ob_pypy_link sits between ob_refcnt and ob_type. */
 typedef struct {
     Py_ssize_t ob_refcnt;
+#ifdef C2PY_TARGET_PYPY
+    void     *ob_pypy_link;
+#endif
     void     *ob_type;
     Py_ssize_t ob_size;
     const char *tp_name;
