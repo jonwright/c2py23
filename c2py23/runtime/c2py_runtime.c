@@ -553,7 +553,7 @@ static void _c2py_runtime_init_once(void)
     /* --- Detect Python version --- */
     {
         typedef const char* (*ver_fn)(void);
-        ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
+        ver_fn getver = (ver_fn)_resolve_raw("Py_GetVersion");
         if (getver) {
             const char *v = getver();
 #ifdef _MSC_VER
@@ -564,7 +564,7 @@ static void _c2py_runtime_init_once(void)
         }
         if (C2PY.version_major == 0) {
             /* Fallback: check for Py3-only symbol */
-            if (C2PY_RESOLVE(dl, "PyModule_Create2")) {
+            if (_resolve_raw("PyModule_Create2")) {
                 C2PY.version_major = 3;
             } else {
                 C2PY.version_major = 2;
