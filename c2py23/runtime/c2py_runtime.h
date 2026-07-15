@@ -746,10 +746,9 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     char type_char;
 
     /* Free-threaded Python and PyPy: type-object layout differs from
-     * standard GIL CPython.  Skip the fast path and fall through to
-     * buffer protocol.  PyPy struct-cast needs further work:
-     * ob_type_offset is correct but the data_off probe reads
-     * dimensions/strides at offsets that differ on PyPy cpyext. */
+     * standard GIL CPython.  PyPy cpyext wraps ndarray objects in
+     * proxies -- the data pointer is not at a fixed offset from id().
+     * Skip the fast path and fall through to buffer protocol. */
     if (C2PY.is_free_threaded || C2PY.is_pypy)
         return -1;
 
@@ -797,6 +796,7 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 
             L->ndarray_type = tp;
             L->probed = 1;
+
 
             /* First call: info already filled via c2py_acquire_buffer.
              * Return via pep3118 path so unpin releases the buffer. */
