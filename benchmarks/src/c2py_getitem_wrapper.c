@@ -418,11 +418,11 @@ C2PY_EXPORT PyObject* PyInit_c2py_getitem(void) {
     }
 
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_getitem",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_getitem",
             PyLong_FromVoidPtr(&_perf_getitem));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_getitem__get_item",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_getitem__get_item",
             PyLong_FromVoidPtr(&_perf_getitem__get_item));
     }
     return module;
@@ -434,11 +434,11 @@ C2PY_EXPORT void initc2py_getitem(void) {
     PyObject *module = C2PY.InitModule_2_7("c2py_getitem",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_getitem",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_getitem",
             PyLong_FromVoidPtr(&_perf_getitem));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_getitem__get_item",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_getitem__get_item",
             PyLong_FromVoidPtr(&_perf_getitem__get_item));
     }
 }

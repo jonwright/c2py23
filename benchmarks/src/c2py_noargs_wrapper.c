@@ -409,15 +409,15 @@ C2PY_EXPORT PyObject* PyInit_c2py_noargs(void) {
     }
 
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_noargs",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_noargs",
             PyLong_FromVoidPtr(&_perf_noargs));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_noargs__noop",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_noargs__noop",
             PyLong_FromVoidPtr(&_perf_noargs__noop));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_varargs",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_varargs",
             PyLong_FromVoidPtr(&_perf_varargs));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_varargs__noop",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_varargs__noop",
             PyLong_FromVoidPtr(&_perf_varargs__noop));
     }
     return module;
@@ -429,15 +429,15 @@ C2PY_EXPORT void initc2py_noargs(void) {
     PyObject *module = C2PY.InitModule_2_7("c2py_noargs",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_noargs",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_noargs",
             PyLong_FromVoidPtr(&_perf_noargs));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_noargs__noop",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_noargs__noop",
             PyLong_FromVoidPtr(&_perf_noargs__noop));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_varargs",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_varargs",
             PyLong_FromVoidPtr(&_perf_varargs));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_varargs__noop",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_varargs__noop",
             PyLong_FromVoidPtr(&_perf_varargs__noop));
     }
 }
