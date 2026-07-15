@@ -83,7 +83,7 @@ def _read_buf(buf, idx):
         return buf[idx]
     import struct
 
-    return struct.unpack_from("<Q", str(buf), idx * 8)[0]
+    return struct.unpack_from("<Q", bytes(buf), idx * 8)[0]
 
 
 def _to_ns(ticks, freq_hz):

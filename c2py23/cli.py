@@ -119,6 +119,14 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 
     if target == "pypy":
         cflags.insert(0, "-DC2PY_TARGET_PYPY")
+        # -O2 causes segfault on PyPy cpyext module import
+        # (likely DSE removing needed initializations in static structs).
+        # -O1 is safe; user can override via CFLAGS env var.
+        if not os.environ.get("CFLAGS"):
+            for j in range(len(cflags)):
+                if cflags[j] == "-O2":
+                    cflags[j] = "-O1"
+                    break
 
     if asan:
         if is_msvc:

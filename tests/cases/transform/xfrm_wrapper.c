@@ -74,11 +74,15 @@ __c2py_set_tick_source(PyObject *self, PyObject *args) {
 static PyObject*
 _c2py_perf_read(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
+    PyObject *buf_obj;
     Py_buffer buf;
     (void)self;
-    if (!PyArg_ParseTuple(args, "Kw*", &ptr_val, &buf))
+    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))
+        return NULL;
+    if (PyObject_GetBuffer(buf_obj, &buf, PyBUF_SIMPLE) != 0)
         return NULL;
     if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
+        PyBuffer_Release(&buf);
         PyErr_SetString(PyExc_ValueError,
             "buffer too small for perf data (need 11 uint64)");
         return NULL;
@@ -339,14 +343,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: points vs out */
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -397,14 +401,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: points vs out */
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    /* restrict check: out vs points */
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
