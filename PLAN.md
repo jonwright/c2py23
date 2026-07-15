@@ -2,7 +2,7 @@
 
 ## In Progress
 
-### PyPy support via `--target pypy` (issue-pypy branch)
+### PyPy support via `--target pypy`
 
 **Status: functional, not in CI.  Separate .so per target.**
 

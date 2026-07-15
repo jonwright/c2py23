@@ -184,9 +184,8 @@ c2py23 installed -- see the README for the gcc command.
 
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
 - Build with `c2py23 build --target pypy file.c2py`
-- See `issue-pypy` branch for current status (15-18/18 uniform tests)
-- No CI — likely to regress if not maintained. Pyodide is the next
-  non-CPython target (WASM, shares CPython ABI).
+- Experimental, use at your own risk. No CI — likely to regress if not maintained.
+  Pyodide is the next non-CPython target (WASM, shares CPython ABI).
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 
