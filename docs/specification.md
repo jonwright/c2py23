@@ -14,13 +14,21 @@ categories of bugs -- leaks, use-after-free, ownership confusion -- while keepin
 the C code trivially simple.
 
 The project defines a strict subset language: Python on one side (memory
-blocks with metadata -- acquired via NumPy struct-cast, DLPack, or the
+blocks with metadata — acquired via NumPy struct-cast, DLPack, or the
 PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
 The interface is described declaratively in YAML. The code generator
 transpiles this into a CPython C extension that acquires pointers to the
 underlying memory, then dispatches to the right C function based on buffer
 properties: element type, dimensionality, and layout. The wrapper itself is
 zero-copy and allocation-free.
+
+c2py23 targets the narrow intersection of C99, Python 2.7, and Python 3.x
+that avoids the Unicode/bytes schism entirely: parameters are parsed as
+flat pointers (buffers) or numbers (int, float). Error messages and
+attribute names are C string literals. Variant names use ASCII bytes.
+There are no keyword arguments, no Python strings, no Unicode objects,
+and no string encodings anywhere in the wrapper ABI or the generated C code.
+This design eliminates an entire category of Python 2/3 portability bugs.
 
 The long-term goal is a substrate for:
 - SIMD dispatch within C functions, potentially at the wrapper level
@@ -1298,6 +1306,14 @@ Makefile and Python test harness).
 
 ## Future Work
 
+- **PyPy support** — `c2py23 build --target pypy` produces PyPy-compatible
+  `.so` files (tested on PyPy 2.7, 3.9, 3.11 via `ubuntu24.04_pypy.sif`
+  container).  No CI — likely to regress without maintenance.
+  See `PLAN.md` for current test matrix.
+- **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
+  `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
+  Needs `--target emscripten` CLI flag (emcc, CPU feature guards).
+  DLPack works on Pyodide (numpy exports `__dlpack__`).
 - **aarch64 CI** -- native ARM64 GitHub runner (ubuntu-24.04-arm) added;
   CPU feature flags, SIMD dispatch, and cycle counter timer tested on
   x86_64 and validated on aarch64 hardware.

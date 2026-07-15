@@ -74,11 +74,12 @@ class CBuilder:
     def declare_buffer(self, name):
         self._buf_names.append(name)
         base = name.replace("info_", "", 1)
-        self.emit("    c2py_buf_pin pin_{0} = {{{{0}}, 0}};".format(base))
+        self.emit("    c2py_buf_pin pin_{0};".format(base))
         self.emit("    c2py_ptr_info info_{0};".format(base))
 
     def emit_buf_memset(self, buf_var):
-        pass  # pin struct is zero-initialized at declaration
+        base = buf_var.replace("info_", "", 1)
+        self.emit("    memset(&pin_{0}.buf, 0, C2PY.pybuffer_size);".format(base))
 
     def acquire_buffer(self, buf_var, py_var, flags, func_name):
         """Emits c2py_pin with correct failure path.
@@ -511,11 +512,9 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
             all_names.append(v.name)
     b.emit("    PyObject *tuple = PyTuple_New({0});".format(len(all_names)))
     for idx, vname in enumerate(all_names):
-        b.emit("    if (C2PY.version_major >= 3) {{")
-        b.emit('        PyTuple_SetItem(tuple, {0}, C2PY.Unicode_FromString("{1}"));'.format(idx, vname))
-        b.emit("    }} else {{")
-        b.emit('        PyTuple_SetItem(tuple, {0}, C2PY.String_FromString("{1}"));'.format(idx, vname))
-        b.emit("    }}")
+        b.emit(
+            '        PyTuple_SetItem(tuple, {0}, PyBytes_FromStringAndSize("{1}", {2}));'.format(idx, vname, len(vname))
+        )
     b.emit("    return tuple;")
     b.emit("}")
     b.emit_blank()
@@ -1374,7 +1373,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
 
-    # Buffers are zero-initialized at declaration (c2py_buf_pin = {{0}})
+    # Zero-initialize buffer pins (size varies by runtime: CPython 80/96, PyPy ~660)
+    for p in buf_params:
+        b.emit_buf_memset("info_" + p.name)
     b.emit("")
 
     # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)
@@ -1662,36 +1663,36 @@ def _emit_constants(b, mod):
         return
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
-            b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
+            b.emit('        c2py_set_module_attr(module, "{}",'.format(_escape_c_str(cname)))
             b.emit("            PyLong_FromLong({}));".format(cvalue))
     if mod.timing:
-        b.emit('        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",')
+        b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
         b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")
         for func in mod.functions:
-            b.emit('        PyObject_SetAttrString(module, "_c2py_perf_ptr_{0}",'.format(func.name))
+            b.emit('        c2py_set_module_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
             b.emit("            PyLong_FromVoidPtr(&_perf_{0}));".format(func.name))
             for ol in func.overloads:
                 if ol.variants:
-                    b.emit('        PyObject_SetAttrString(module, "_c2py_active_ptr_{0}",'.format(func.name))
+                    b.emit('        c2py_set_module_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
                     b.emit("            PyLong_FromVoidPtr((void*)&_active_perf_{0}));".format(func.name))
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split("(")[0].strip().split()[-1]
                         perf_name = "_perf_{0}__{1}".format(func.name, c_name)
                         b.emit(
-                            '        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
+                            '        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
                         )
                         b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split("(")[0].strip().split()[-1]
                     perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                    b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                    b.emit('        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
                     b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
     if has_gil:
-        b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
+        b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_enabled",')
         b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));")
         for func in mod.functions:
             if func.gil_release:
-                b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
+                b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
                 b.emit("            PyLong_FromVoidPtr(&_gil_release_{0}));".format(func.name))
 
 
@@ -1705,43 +1706,52 @@ def _emit_perf_accessors(b):
     b.emit("static PyObject*")
     b.emit("_c2py_perf_read(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
-    b.emit("    Py_buffer buf;")
+    b.emit("    PyObject *buf_obj;")
+    b.emit("    c2py_buf_pin pin;")
+    b.emit("    Py_buffer *buf = &pin.buf;")
     b.emit("    (void)self;")
-    b.emit('    if (!PyArg_ParseTuple(args, "Kw*", &ptr_val, &buf))')
+    b.emit("    memset(&pin.buf, 0, C2PY.pybuffer_size);")
+    b.emit('    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))')
     b.emit("        return NULL;")
-    b.emit("    if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {")
+    b.emit("    if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)")
+    b.emit("        return NULL;")
+    b.emit("    if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {")
+    b.emit("        PyBuffer_Release(buf);")
     b.emit("        PyErr_SetString(PyExc_ValueError,")
     b.emit('            "buffer too small for perf data (need 11 uint64)");')
     b.emit("        return NULL;")
     b.emit("    }")
     b.emit("    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,")
-    b.emit("                           (uint64_t*)buf.buf);")
-    b.emit("    PyBuffer_Release(&buf);")
+    b.emit("                           (uint64_t*)buf->buf);")
+    b.emit("    PyBuffer_Release(buf);")
     b.emit("    Py_RETURN_NONE;")
     b.emit("}")
     b.emit("")
-    b.emit("/* Return (variant, group_idx, variant_name) metadata tuple. */")
+    b.emit("/* Return (variant, group_idx, variant_name=None) metadata tuple. */")
     b.emit("static PyObject*")
     b.emit("_c2py_perf_meta(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
     b.emit("    c2py_perf_t *p;")
     b.emit("    PyObject *tuple;")
-    b.emit("    const char *vn;")
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
     b.emit("        return NULL;")
     b.emit("    p = (c2py_perf_t*)(uintptr_t)ptr_val;")
     b.emit("    tuple = PyTuple_New(3);")
     b.emit("    if (!tuple) return NULL;")
-    b.emit("    PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)p->variant));")
-    b.emit("    PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)p->group_idx));")
-    b.emit("    vn = p->variant_name;")
-    b.emit('    if (!vn) vn = "";')
-    b.emit("    if (C2PY.version_major >= 3) {")
-    b.emit("        PyTuple_SetItem(tuple, 2, C2PY.Unicode_FromString(vn));")
-    b.emit("    } else {")
-    b.emit("        PyTuple_SetItem(tuple, 2, C2PY.String_FromString(vn));")
+    b.emit("    /* Extract to locals: nested p->variant inside PyLong_FromLong")
+    b.emit("     * fails on PyPy cpyext (calling-convention issue). */")
+    b.emit("    {")
+    b.emit("        int _v = p->variant;")
+    b.emit("        int _gi = p->group_idx;")
+    b.emit("        PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)_v));")
+    b.emit("        PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)_gi));")
     b.emit("    }")
+    b.emit("    /* variant_name is diagnostic-only; return None to avoid")
+    b.emit("     * Python string/unicode API.  Callers can use _variants_<name>()")
+    b.emit("     * to map variant indices to names (returned as bytes). */")
+    b.emit("    Py_INCREF(C2PY.none_obj);")
+    b.emit("    PyTuple_SetItem(tuple, 2, C2PY.none_obj);")
     b.emit("    return tuple;")
     b.emit("}")
     b.emit("")

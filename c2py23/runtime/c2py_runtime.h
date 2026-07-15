@@ -18,6 +18,18 @@
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+/* Symbol resolution helper — dlsym on Unix, GetProcAddress on Windows */
+#ifdef _WIN32
+#define C2PY_RESOLVE(handle, name) GetProcAddress((HMODULE)(handle), (name))
+#else
+#define C2PY_RESOLVE(handle, name) dlsym((handle), (name))
+#endif
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -94,6 +106,9 @@ typedef long Py_ssize_t;
 /* GIL-enabled PyObject layout (standard CPython) */
 typedef struct _c2py_object {
     Py_ssize_t ob_refcnt;
+#ifdef C2PY_TARGET_PYPY
+    void *ob_pypy_link;  /* PyPy cpyext inserts this field */
+#endif
     void *ob_type;
 } PyObject;
 
@@ -224,7 +239,11 @@ typedef struct {
 #define METH_FASTCALL  0x0080
 
 /* Module init macro - initializes the PyModuleDef_Base embedded in PyModuleDef. */
+#ifdef C2PY_TARGET_PYPY
+#define PyModuleDef_HEAD_INIT { {1, NULL, NULL}, NULL, 0, NULL }
+#else
 #define PyModuleDef_HEAD_INIT { {1, NULL}, NULL, 0, NULL }
+#endif
 
 /* Module init macro for free-threaded builds (PyObject is 32 bytes).
  * ob_type = NULL, m_init = NULL, m_index = 0, m_copy = NULL.
@@ -251,11 +270,13 @@ typedef struct {
 
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
+    int is_pypy;                    /* 1 = running on PyPy (cpyext, PyPy_* symbols) */
     Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
     Py_ssize_t pyobject_size;      /* actual sizeof(PyObject) for this Python version */
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
     ptrdiff_t ob_refcnt_offset;    /* offset of ob_refcnt (or ob_ref_shared on FT) in PyObject */
+    ptrdiff_t ob_type_offset;      /* offset of ob_type field in PyObject */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
@@ -267,9 +288,8 @@ typedef struct {
     void (*Err_Clear)(void);
     int buffer_api_is_pep3118;  /* 0 = old API only, 1 = PEP 3118 available */
 
-    /* Argument parsing */
+    /* Argument parsing (positional-only, no keyword support) */
     int (*ParseTuple)(PyObject*, const char*, ...);
-    int (*ParseTupleAndKeywords)(PyObject*, PyObject*, const char*, char**, ...);
 
     /* Value construction */
     PyObject* (*Long_FromLong)(long);
@@ -281,9 +301,8 @@ typedef struct {
     PyObject* (*Tuple_New)(Py_ssize_t);
     int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
 
-    /* String construction */
-    PyObject* (*Unicode_FromString)(const char*);   /* Python 3.x str */
-    PyObject* (*String_FromString)(const char*);    /* Python 2.7 str */
+    /* String construction (ASCII bytes only, no unicode/encodings) */
+    PyObject* (*Bytes_FromStringAndSize)(const char*, Py_ssize_t);
 
     /* Scalar conversion from objects */
     long (*Long_AsLong)(PyObject*);
@@ -315,6 +334,9 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
     PyObject* (*GetAttrString)(PyObject*, const char*);
+    PyObject* (*Module_GetDict)(PyObject*);    /* for perf attr registration */
+    void *_ds_set_item_string;  /* PyDict_SetItemString, resolved at init */
+    int _ds_pypy_workaround;   /* 1 if PyPy 2.7-style dict-based attr set */
 
     /* General call support (optional, used by DLPack) */
     PyObject* (*CallObject)(PyObject*, PyObject*);
@@ -348,13 +370,9 @@ extern c2py_api_t C2PY;
  * MSVC 2022+ (conformant preprocessor) behaves like GCC and also needs ##. */
 #ifdef _MSC_VER
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
-#define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #else
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
-#define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #endif
 
@@ -362,6 +380,7 @@ extern c2py_api_t C2PY;
 #define PyLong_FromLongLong(v)         C2PY.Long_FromLongLong(v)
 #define PyLong_FromUnsignedLongLong(v) C2PY.Long_FromUnsignedLongLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
+#define PyBytes_FromStringAndSize(s, n) C2PY.Bytes_FromStringAndSize((s), (n))
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
 #define PyLong_AsLongLong(o)           C2PY.Long_AsLongLong((PyObject*)(o))
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))
@@ -376,6 +395,22 @@ extern c2py_api_t C2PY;
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
 #define PyObject_GetAttrString(o, n)   C2PY.GetAttrString((PyObject*)(o), (n))
+#define PyModule_GetDict(m)            C2PY.Module_GetDict((PyObject*)(m))
+
+/* Set a module attribute.  PyObject_SetAttrString silently fails
+ * on PyPy 2.7 cpyext modules; C2PY._ds_pypy_workaround gates the
+ * dict-based fallback (resolved once at init, zero runtime dlsym). */
+#define c2py_set_module_attr(m, name, val) do { \
+    if (C2PY._ds_pypy_workaround) { \
+        PyObject *_d = C2PY.Module_GetDict((PyObject*)(m)); \
+        if (_d && C2PY._ds_set_item_string) { \
+            typedef int (*_ds_fn)(PyObject*, const char*, PyObject*); \
+            ((_ds_fn)C2PY._ds_set_item_string)(_d, (name), (PyObject*)(val)); \
+        } \
+    } else { \
+        C2PY.SetAttrString((PyObject*)(m), (name), (PyObject*)(val)); \
+    } \
+} while(0)
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
@@ -534,10 +569,13 @@ typedef struct {
 #define C2PY_PIN_DLPACK   3   /* DLPack; pin->ctx is the DLManagedTensor* */
 
 typedef struct {
-    Py_buffer buf;         /* opaque Py_buffer, valid when kind == PEP3118 */
-    int kind;              /* C2PY_PIN_* tag */
-    void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
-    char format_buf[8];    /* stack-local format string storage (non-PEP3118) */
+    Py_buffer buf;          /* opaque Py_buffer, valid when kind == PEP3118 */
+    char _buf_pad[1200];    /* extra space: PyPy's Py_buffer is up to 1112 bytes
+                               (PyBUF_MAX_NDIM=64 with inline arrays), but we
+                               compiled with CPython's sizeof(~80) */
+    int kind;               /* C2PY_PIN_* tag */
+    void *ctx;              /* back-end context (DLManagedTensor* for DLPack) */
+    char format_buf[8];     /* stack-local format string storage (non-PEP3118) */
     Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
 
@@ -547,9 +585,13 @@ typedef struct {
 
 /* Minimal PyTypeObject overlay to read tp_name without importing numpy.
  * Layout (GIL-only LP64): ob_refcnt(8) + ob_type(8) + ob_size(8) +
- * tp_name(8).  Free-threaded builds skip the fast path. */
+ * tp_name(8).  Free-threaded builds skip the fast path.
+ * On PyPy, ob_pypy_link sits between ob_refcnt and ob_type. */
 typedef struct {
     Py_ssize_t ob_refcnt;
+#ifdef C2PY_TARGET_PYPY
+    void     *ob_pypy_link;
+#endif
     void     *ob_type;
     Py_ssize_t ob_size;
     const char *tp_name;
@@ -703,12 +745,14 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem, i;
     char type_char;
 
-    /* Free-threaded Python: type-object layout differs; skip the
-     * fast path and fall through to buffer protocol. */
-    if (C2PY.is_free_threaded)
+    /* Free-threaded Python and PyPy: type-object layout differs from
+     * standard GIL CPython.  PyPy cpyext wraps ndarray objects in
+     * proxies -- the data pointer is not at a fixed offset from id().
+     * Skip the fast path and fall through to buffer protocol. */
+    if (C2PY.is_free_threaded || C2PY.is_pypy)
         return -1;
 
-    tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
+    tp = *(void**)((char*)obj + C2PY.ob_type_offset);
 
     if (L->ndarray_type && tp == L->ndarray_type) {
         goto fill;
@@ -752,6 +796,7 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 
             L->ndarray_type = tp;
             L->probed = 1;
+
 
             /* First call: info already filled via c2py_acquire_buffer.
              * Return via pep3118 path so unpin releases the buffer. */
@@ -835,10 +880,7 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem;
     int i;
 
-    /* DLPack has no standard mechanism for requesting writable access.
-     * Fall through to the buffer protocol which enforces writability. */
-    if (want_writable)
-        return -1;
+    (void)want_writable;
 
     /* DLPack symbols are optional; if not resolved, skip this backend. */
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
@@ -977,8 +1019,10 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     for (i = 0; i < n_src; i++) {
         switch (src_order[i]) {
         case C2PY_PIN_NDARRAY:
-            if (c2py_pin_ndarray(obj, pin, info, want_writable) == 0)
-                return 0;
+            if (!C2PY.is_pypy) {
+                if (c2py_pin_ndarray(obj, pin, info, want_writable) == 0)
+                    return 0;
+            }
             break;
         case C2PY_PIN_DLPACK:
             if (c2py_pin_dlpack(obj, pin, info, want_writable) == 0)
@@ -992,6 +1036,8 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             break;
         }
     }
+    PyErr_SetString(PyExc_TypeError,
+                    "buffer acquisition failed (all backends exhausted)");
     return -1;
 }
 

@@ -54,6 +54,8 @@ def _get_mod(func):
     On Python 3.x, C function objects expose ``func.__self__`` directly.
     On Python 2.7, ``PyCFunction`` has no ``__self__``, so we fall back
     to ``func.__module__`` and look it up in ``sys.modules``.
+    On PyPy 2.7 cpyext, ``__module__`` is also None; search sys.modules
+    for the module containing a function of this name.
     """
     mod = getattr(func, "__self__", None)
     if mod is not None:
@@ -61,6 +63,11 @@ def _get_mod(func):
     modname = getattr(func, "__module__", None)
     if modname:
         return sys.modules[modname]
+    # PyPy 2.7 cpyext: __module__ is None, search all loaded modules
+    name = func.__name__
+    for m in list(sys.modules.values()):
+        if hasattr(m, name) and getattr(m, name) is func:
+            return m
     return None
 
 
@@ -83,7 +90,7 @@ def _read_buf(buf, idx):
         return buf[idx]
     import struct
 
-    return struct.unpack_from("<Q", str(buf), idx * 8)[0]
+    return struct.unpack_from("<Q", bytes(buf), idx * 8)[0]
 
 
 def _to_ns(ticks, freq_hz):

@@ -74,43 +74,52 @@ __c2py_set_tick_source(PyObject *self, PyObject *args) {
 static PyObject*
 _c2py_perf_read(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
-    Py_buffer buf;
+    PyObject *buf_obj;
+    c2py_buf_pin pin;
+    Py_buffer *buf = &pin.buf;
     (void)self;
-    if (!PyArg_ParseTuple(args, "Kw*", &ptr_val, &buf))
+    memset(&pin.buf, 0, C2PY.pybuffer_size);
+    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))
         return NULL;
-    if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
+    if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)
+        return NULL;
+    if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
+        PyBuffer_Release(buf);
         PyErr_SetString(PyExc_ValueError,
             "buffer too small for perf data (need 11 uint64)");
         return NULL;
     }
     c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,
-                           (uint64_t*)buf.buf);
-    PyBuffer_Release(&buf);
+                           (uint64_t*)buf->buf);
+    PyBuffer_Release(buf);
     Py_RETURN_NONE;
 }
 
-/* Return (variant, group_idx, variant_name) metadata tuple. */
+/* Return (variant, group_idx, variant_name=None) metadata tuple. */
 static PyObject*
 _c2py_perf_meta(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
     c2py_perf_t *p;
     PyObject *tuple;
-    const char *vn;
     (void)self;
     if (!PyArg_ParseTuple(args, "K", &ptr_val))
         return NULL;
     p = (c2py_perf_t*)(uintptr_t)ptr_val;
     tuple = PyTuple_New(3);
     if (!tuple) return NULL;
-    PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)p->variant));
-    PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)p->group_idx));
-    vn = p->variant_name;
-    if (!vn) vn = "";
-    if (C2PY.version_major >= 3) {
-        PyTuple_SetItem(tuple, 2, C2PY.Unicode_FromString(vn));
-    } else {
-        PyTuple_SetItem(tuple, 2, C2PY.String_FromString(vn));
+    /* Extract to locals: nested p->variant inside PyLong_FromLong
+     * fails on PyPy cpyext (calling-convention issue). */
+    {
+        int _v = p->variant;
+        int _gi = p->group_idx;
+        PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)_v));
+        PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)_gi));
     }
+    /* variant_name is diagnostic-only; return None to avoid
+     * Python string/unicode API.  Callers can use _variants_<name>()
+     * to map variant indices to names (returned as bytes). */
+    Py_INCREF(C2PY.none_obj);
+    PyTuple_SetItem(tuple, 2, C2PY.none_obj);
     return tuple;
 }
 
@@ -312,9 +321,9 @@ _transform_wrapper(PyObject *self, PyObject *args)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_buf_pin pin_points;
     c2py_ptr_info info_points;
-    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_buf_pin pin_out;
     c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
@@ -324,6 +333,8 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OO", &py_points, &py_out))
         return NULL;
 
+    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
+    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
 
     if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
@@ -331,14 +342,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: out vs points */
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -362,9 +373,9 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_buf_pin pin_points;
     c2py_ptr_info info_points;
-    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_buf_pin pin_out;
     c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
@@ -380,6 +391,8 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     py_points = args[0];
     py_out = args[1];
 
+    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
+    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
 
     if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
@@ -387,14 +400,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: out vs points */
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -503,13 +516,13 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     }
 
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
         if (C2PY.Unstable_Module_SetGIL != NULL) {
             C2PY.Unstable_Module_SetGIL(module, (void*)1);  /* Py_MOD_GIL_NOT_USED */
@@ -524,13 +537,13 @@ C2PY_EXPORT void initxfrm(void) {
     PyObject *module = C2PY.InitModule_2_7("xfrm",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
-        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",
+        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        PyObject_SetAttrString(module, "_c2py_perf_ptr_transform",
+        c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
             PyLong_FromVoidPtr(&_perf_transform));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_aos",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
             PyLong_FromVoidPtr(&_perf_transform__transform_aos));
-        PyObject_SetAttrString(module, "_c2py_ol_ptr_transform__transform_soa",
+        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
             PyLong_FromVoidPtr(&_perf_transform__transform_soa));
     }
 }

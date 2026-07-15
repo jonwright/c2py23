@@ -114,11 +114,34 @@ static int _resolve(void **ptr, const char *name)
 {
     *ptr = C2PY_RESOLVE(C2PY.dl_handle, name);
     if (*ptr == NULL) {
-        /* Some symbols may legitimately not exist on old Python versions.
-         * We only warn for critical ones. */
-        return -1;
+        /* Try PyPy symbol prefix: "Py_Xxx" -> "PyPy_Xxx",
+         *                           "_Py_Xxx" -> "_PyPy_Xxx".
+         * PyPy's cpyext exports all CPython API symbols under
+         * the PyPy_* prefix from libpypy3.X-c.so.  This
+         * fallback lets a single .so work on both runtimes. */
+        char pypy_name[256];
+        int prefix_len = (name[0] == '_') ? 3 : 2;
+        snprintf(pypy_name, sizeof(pypy_name), "%.*sPy%s",
+                 prefix_len, name, name + prefix_len);
+        *ptr = C2PY_RESOLVE(C2PY.dl_handle, pypy_name);
+        if (*ptr == NULL) {
+            return -1;
+        }
     }
     return 0;
+}
+
+/* Same as _resolve but returns the pointer directly (for raw C2PY_RESOLVE
+ * call sites that need the PyPy fallback). */
+static void *_resolve_raw(const char *name)
+{
+    void *p = C2PY_RESOLVE(C2PY.dl_handle, name);
+    if (p) return p;
+    char pypy_name[256];
+    int prefix_len = (name[0] == '_') ? 3 : 2;
+    snprintf(pypy_name, sizeof(pypy_name), "%.*sPy%s",
+             prefix_len, name, name + prefix_len);
+    return C2PY_RESOLVE(C2PY.dl_handle, pypy_name);
 }
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -140,22 +163,59 @@ static int _resolve(void **ptr, const char *name)
 static PyObject*
 _init_module_2_7(const char *name, PyMethodDef *methods)
 {
-    void *dl = C2PY.dl_handle;
-
     /* Try Py_InitModule4 first (Python 2.7 preferred) */
     typedef PyObject* (*init4_fn)(const char*, PyMethodDef*, const char*,
                                    PyObject*, int);
-    init4_fn fn4 = (init4_fn)C2PY_RESOLVE(dl, "Py_InitModule4_64");
-    if (fn4 == NULL) fn4 = (init4_fn)C2PY_RESOLVE(dl, "Py_InitModule4");
+    init4_fn fn4 = (init4_fn)_resolve_raw("Py_InitModule4_64");
+    if (fn4 == NULL) fn4 = (init4_fn)_resolve_raw("Py_InitModule4");
     if (fn4 != NULL) {
         return fn4(name, methods, NULL, NULL, 1013 /* PYTHON_API_VERSION */);
     }
 
     /* Fallback: Py_InitModule3 */
     typedef PyObject* (*init3_fn)(const char*, PyMethodDef*, const char*);
-    init3_fn fn3 = (init3_fn)C2PY_RESOLVE(dl, "Py_InitModule3");
+    init3_fn fn3 = (init3_fn)_resolve_raw("Py_InitModule3");
     if (fn3 != NULL) {
         return fn3(name, methods, NULL);
+    }
+
+    /* PyPy 2.7 cpyext: no Py_InitModule*, use PyModule_New + manual
+     * method registration via PyModule_GetDict + PyDict_SetItemString.
+     * Resolve these symbols on demand (only needed for this fallback). */
+    {
+        typedef PyObject* (*mod_new_fn)(const char*);
+        typedef PyObject* (*mod_dict_fn)(PyObject*);
+        typedef PyObject* (*cfn_new_fn)(PyMethodDef*, PyObject*, PyObject*);
+        typedef PyObject* (*imp_add_fn)(const char*);
+
+        imp_add_fn imp_add = (imp_add_fn)_resolve_raw("PyImport_AddModule");
+        mod_new_fn mnew = imp_add
+            ? NULL : (mod_new_fn)_resolve_raw("PyModule_New");
+        mod_dict_fn mdict = (mod_dict_fn)_resolve_raw("PyModule_GetDict");
+        cfn_new_fn cfn_new = (cfn_new_fn)_resolve_raw("PyCFunction_NewEx");
+
+        /* Prefer PyImport_AddModule: it registers in sys.modules
+         * and returns a module that supports attribute setting.
+         * On PyPy 2.7 cpyext, PyModule_New creates a module that
+         * cannot have attributes set via SetAttrString. */
+        PyObject *module = imp_add ? imp_add(name) : (mnew ? mnew(name) : NULL);
+        if (module && mdict && cfn_new) {
+            PyObject *dict = mdict(module);
+            if (dict) {
+                while (methods && methods->ml_name) {
+                PyObject *fn = cfn_new(methods, NULL, NULL);
+                if (fn) {
+                    if (C2PY._ds_set_item_string) {
+                        typedef int (*dset_fn)(PyObject*, const char*, PyObject*);
+                        ((dset_fn)C2PY._ds_set_item_string)(dict, methods->ml_name, fn);
+                    }
+                    Py_DECREF(fn);
+                }
+                    methods++;
+                }
+                return module;
+            }
+        }
     }
 
     fprintf(stderr, "c2py_runtime: could not find module init function\n");
@@ -449,6 +509,10 @@ static void _c2py_runtime_init_once(void)
             /* Free-threaded builds may use 't' suffix DLL names */
             "python315t.dll", "python314t.dll", "python313t.dll",
             "python3t.dll",
+            /* PyPy on Windows exports cpyext symbols from libpypy3.X-c.dll */
+            "libpypy3.11-c.dll", "libpypy3.10-c.dll",
+            "libpypy3.9-c.dll",  "libpypy3-c.dll",
+            "libpypy2.7-c.dll",  "libpypy-c.dll",
             NULL
         };
         int i;
@@ -497,6 +561,28 @@ static void _c2py_runtime_init_once(void)
                 "(requires --enable-shared or export-dynamic).\n");
         return;
     }
+    /* If no CPython symbols found, try PyPy's separate C library.
+     * PyPy exports cpyext symbols with a PyPy_* prefix from
+     * libpypy3.X-c.so rather than the main executable. */
+    {
+        void *test = dlsym(C2PY.dl_handle, "Py_GetVersion");
+        test = test ? test : dlsym(C2PY.dl_handle, "PyPy_GetVersion");
+        if (test == NULL) {
+            static const char *pypy_libs[] = {
+                "libpypy3.11-c.so", "libpypy3.10-c.so",
+                "libpypy3.9-c.so",  "libpypy3-c.so",
+                "libpypy2.7-c.so",  "libpypy-c.so", NULL
+            };
+            int i;
+            for (i = 0; pypy_libs[i]; i++) {
+                void *h = dlopen(pypy_libs[i], RTLD_LAZY | RTLD_GLOBAL);
+                if (h) {
+                    C2PY.dl_handle = h;
+                    break;
+                }
+            }
+        }
+    }
 #endif
 
     void *dl = C2PY.dl_handle;
@@ -504,7 +590,7 @@ static void _c2py_runtime_init_once(void)
     /* --- Detect Python version --- */
     {
         typedef const char* (*ver_fn)(void);
-        ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
+        ver_fn getver = (ver_fn)_resolve_raw("Py_GetVersion");
         if (getver) {
             const char *v = getver();
 #ifdef _MSC_VER
@@ -515,13 +601,27 @@ static void _c2py_runtime_init_once(void)
         }
         if (C2PY.version_major == 0) {
             /* Fallback: check for Py3-only symbol */
-            if (C2PY_RESOLVE(dl, "PyModule_Create2")) {
+            if (_resolve_raw("PyModule_Create2")) {
                 C2PY.version_major = 3;
             } else {
                 C2PY.version_major = 2;
             }
             C2PY.version_minor = 0;
         }
+    }
+
+    /* --- Detect PyPy cpyext ---
+     * PyPy's cpyext emulates the CPython C API but with different struct
+     * layouts: PyObject is 24 bytes (ob_pypy_link at +8, ob_type at +16),
+     * and manual ob_refcnt manipulation is unsafe (must use PyPy_IncRef). */
+    {
+        void *test = C2PY_RESOLVE(dl, "PyPy_IncRef");
+        C2PY.is_pypy = (test != NULL) ? 1 : 0;
+    }
+    if (C2PY.is_pypy) {
+        C2PY.pyobject_size = 24;
+        C2PY.ob_refcnt_offset = 0;
+        C2PY.ob_type_offset = 16;  /* ob_pypy_link at 8 pushes ob_type to 16 */
     }
 
     /* --- Reject unsupported Python versions --- */
@@ -559,6 +659,7 @@ static void _c2py_runtime_init_once(void)
      *    On the rare builds where neither 1 nor 2 works, the user should
      *    set C2PY_FORCE_FT=1 environment variable at load time.
      */
+    if (C2PY.is_pypy) goto ft_detection_done;  /* PyPy: no FT, known layout */
     {
         int found_ft = 0;
 
@@ -593,25 +694,29 @@ static void _c2py_runtime_init_once(void)
         /* Nothing to do here; detection logic uses goto to skip above when C2PY_FORCE_FT is set */
 
     /* --- Set ABI layout (provisional; runtime probe refines below) --- */
-    if (C2PY.is_free_threaded) {
+    if (C2PY.is_pypy) {
+        /* PyPy cpyext layout already set above (pyobject_size=24) */
+    } else if (C2PY.is_free_threaded) {
         /* Free-threaded PyObject layout (32 bytes LP64):
          *   ob_tid:0 ob_flags:8 ob_mutex:10 ob_gc_bits:11
          *   ob_ref_local:12 ob_ref_shared:16 ob_type:24 */
         C2PY.pyobject_size = 32;
         C2PY.ob_refcnt_offset = 16;  /* ob_ref_shared */
+        C2PY.ob_type_offset = 24;
     } else {
         /* Standard GIL-enabled PyObject layout (16 bytes LP64):
          *   ob_refcnt:0 ob_type:8 */
         C2PY.pyobject_size = 16;
         C2PY.ob_refcnt_offset = 0;   /* ob_refcnt */
+        C2PY.ob_type_offset = 8;
     }
     C2PY.pyobject_size_ft = 32;
 
     /* Sanity-check detected layout consistency */
     assert(C2PY.pyobject_size > 0);
     assert(C2PY.ob_refcnt_offset >= 0);
-
-    assert(C2PY.ob_refcnt_offset + (Py_ssize_t)sizeof(Py_ssize_t) <= C2PY.pyobject_size);
+    assert(C2PY.ob_type_offset >= 0);
+    assert(C2PY.ob_type_offset + (Py_ssize_t)sizeof(void*) <= C2PY.pyobject_size);
 
     /* pymoduledef_max_size: pad generously for both layouts */
     {
@@ -627,10 +732,10 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Old buffer protocol (Python 2.x only) --- */
     C2PY.AsReadBuffer = (int (*)(PyObject*, const void**, Py_ssize_t*))
-        C2PY_RESOLVE(dl, "PyObject_AsReadBuffer");
+        _resolve_raw("PyObject_AsReadBuffer");
     C2PY.AsWriteBuffer = (int (*)(PyObject*, void**, Py_ssize_t*))
-        C2PY_RESOLVE(dl, "PyObject_AsWriteBuffer");
-    C2PY.Err_Clear = (void (*)(void))C2PY_RESOLVE(dl, "PyErr_Clear");
+        _resolve_raw("PyObject_AsWriteBuffer");
+    C2PY.Err_Clear = (void (*)(void))_resolve_raw("PyErr_Clear");
     RESOLVE_REQ(C2PY.Err_Clear, "PyErr_Clear");
     if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
@@ -646,9 +751,8 @@ static void _c2py_runtime_init_once(void)
     /* --- Fastcall support (METH_FASTCALL stable ABI since 3.12) --- */
     C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
 
-    /* --- Argument parsing (required) --- */
+    /* --- Argument parsing (positional-only, required) --- */
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
-    RESOLVE(C2PY.ParseTupleAndKeywords, "PyArg_ParseTupleAndKeywords");
     if (C2PY.ParseTuple == NULL) return;
 
     /* --- Error detection for fastcall scalar conversion --- */
@@ -683,12 +787,13 @@ static void _c2py_runtime_init_once(void)
                 C2PY.is_free_threaded = 1;
                 C2PY.pyobject_size = 32;
                 C2PY.ob_refcnt_offset = 16;
+                C2PY.ob_type_offset = 24;
             }
             /* DecRef: use direct dlsym (C2PY.DecRef not resolved yet) */
             {
                 typedef void (*dref_fn)(PyObject*);
-                dref_fn dref = (dref_fn)C2PY_RESOLVE(dl, "Py_DecRef");
-                if (!dref) dref = (dref_fn)C2PY_RESOLVE(dl, "_Py_DecRef");
+                dref_fn dref = (dref_fn)_resolve_raw("Py_DecRef");
+                if (!dref) dref = (dref_fn)_resolve_raw("_Py_DecRef");
                 if (dref) dref(tmp);
             }
         }
@@ -699,9 +804,8 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
     if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL) return;
 
-    /* --- String construction (optional, needed for _variants_*) --- */
-    RESOLVE(C2PY.Unicode_FromString, "PyUnicode_FromString");
-    RESOLVE(C2PY.String_FromString, "PyString_FromString");
+    /* --- ASCII bytes construction (for variant names, diagnostics) --- */
+    RESOLVE(C2PY.Bytes_FromStringAndSize, "PyBytes_FromStringAndSize");
 
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");
@@ -739,7 +843,7 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Module creation --- */
     {
-        void *mc = C2PY_RESOLVE(dl, "PyModule_Create2");
+        void *mc = _resolve_raw("PyModule_Create2");
         C2PY.Module_Create2 = (PyObject* (*)(PyModuleDef*, int))mc;
     }
     C2PY.InitModule_2_7 = _init_module_2_7;
@@ -779,13 +883,25 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.SetAttrString == NULL) return;
     RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
     if (C2PY.GetAttrString == NULL) return;
+    RESOLVE(C2PY.Module_GetDict, "PyModule_GetDict");
+
+    /* PyDict_SetItemString for c2py_set_module_attr fallback.
+     * Resolve once at init; PyPy 2.7 needs the PyPy_* prefix.
+     * If found, enable the dict-based workaround for module attr set. */
+    {
+        void *p = C2PY_RESOLVE(dl, "PyPyDict_SetItemString");
+        if (!p) p = C2PY_RESOLVE(dl, "PyDict_SetItemString");
+        C2PY._ds_set_item_string = p;
+    }
+    C2PY._ds_pypy_workaround = (C2PY._ds_set_item_string != NULL
+                                && C2PY.version_major < 3) ? 1 : 0;
 
     /* --- DLPack capsule API (optional) --- */
     C2PY.CallObject = (PyObject*(*)(PyObject*, PyObject*))
-        C2PY_RESOLVE(dl, "PyObject_CallObject");
+        _resolve_raw("PyObject_CallObject");
     C2PY.Capsule_GetPointer = (void*(*)(PyObject*, const char*))
-        C2PY_RESOLVE(dl, "PyCapsule_GetPointer");
-    C2PY.exc_BufferError = (void*)C2PY_RESOLVE(dl, "PyExc_BufferError");
+        _resolve_raw("PyCapsule_GetPointer");
+    C2PY.exc_BufferError = (void*)_resolve_raw("PyExc_BufferError");
 
     /* --- Pointer-to-int --- */
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
@@ -802,13 +918,13 @@ static void _c2py_runtime_init_once(void)
      * _Py_NoneStruct is a static PyObject; dlsym returns &_Py_NoneStruct,
      * which is the same as Py_None (the macro: (&_Py_NoneStruct)).
      * Py_None is immortal so INCREF/DECREF is unnecessary but harmless.
-     */
+     * On PyPy, the symbol is named _PyPy_NoneStruct. */
     {
-        void *none = C2PY_RESOLVE(dl, "_Py_NoneStruct");
+        void *none = _resolve_raw("_Py_NoneStruct");
         if (none == NULL) {
             /* On some platforms Py_None is a pointer variable pointing
              * to the struct. Try loading it and dereferencing. */
-            void **pnone = (void**)C2PY_RESOLVE(dl, "Py_None");
+            void **pnone = (void**)_resolve_raw("Py_None");
             if (pnone) none = *pnone;
         }
         C2PY.none_obj = (PyObject*)none;
@@ -833,19 +949,23 @@ static void _c2py_runtime_init_once(void)
     }
 
     /* --- Runtime Py_buffer size probe ---
+     * Skip on PyPy: PyPy's Py_buffer is ~660 bytes (different internal
+     * layout), but the critical fields (buf, format, shape, strides)
+     * are at standard offsets within the first 80 bytes.  memset(96)
+     * is sufficient to zero the fields we use.
      * PyBuffer_FillInfo sets view->internal = NULL. For a bytes object,
      * this writes to offset 72 (80-byte layout) or 88 (96-byte layout).
      * We probe with a sentinel to determine the real sizeof(Py_buffer).
      * This is needed for non-Debian CPython 3.0-3.11 which still have
      * smalltable[2] (96 bytes LP64); Debian/Ubuntu backported the removal.
      */
-    {
+    if (!C2PY.is_pypy) {
         unsigned char probe[96];
         Py_buffer *pb = (Py_buffer*)probe;
         typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
-        bytes_fn mkbytes = (bytes_fn)C2PY_RESOLVE(dl, "PyBytes_FromStringAndSize");
+        bytes_fn mkbytes = (bytes_fn)_resolve_raw("PyBytes_FromStringAndSize");
         if (!mkbytes)
-            mkbytes = (bytes_fn)C2PY_RESOLVE(dl, "PyString_FromStringAndSize");
+            mkbytes = (bytes_fn)_resolve_raw("PyString_FromStringAndSize");
         PyObject *by = mkbytes ? mkbytes("x", 1) : NULL;
         if (by) {
             memset(probe, 0xAA, sizeof(probe));

@@ -1,5 +1,38 @@
 # c2py23 Remaining Work
 
+## In Progress
+
+### PyPy support via `--target pypy`
+
+**Status: functional, not in CI.  Separate .so per target.**
+
+Build with `c2py23 build --target pypy file.c2py` produces a PyPy-compatible
+`.so` that resolves `PyPy_*`-prefixed cpyext symbols from `libpypy3.X-c.so`.
+Test matrix:
+
+| | PyPy 2.7 | PyPy 3.9 | PyPy 3.11 |
+|---|---|---|---|
+| Uniform (18) | 18 | 18 | 18 |
+| Peer review (10) | 9 | 10 | 10 |
+| Regression (31) | 25 | 31 | 31 |
+
+One `.so` for CPython+PyPy is structurally impossible: PyPy's `PyObject`
+is 24 bytes (includes `ob_pypy_link`) vs CPython's 16, and `sizeof`
+differences are baked into the compiled binary.  HPy was the path to
+single-binary cross-implementation support but is not in released PyPy.
+
+No CI — will regress without maintenance.  Pyodide is the next priority.
+
+### Pyodide/WASM support
+
+**Status: gold benchmarks working, no c2py23 build target yet.**
+
+Pyodide is CPython compiled to WASM via Emscripten.  `dlopen(NULL)` +
+`dlsym()` both work.  Gold `vnorm` and `noargs` benchmarks run at
+177ns and 1204ns respectively.  Needs `--target emscripten` in CLI
+(emcc instead of gcc, `#ifndef __EMSCRIPTEN__` guards for CPU feature
+probes).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
+
 ## Deferred
 
 ### ppc64le CI (was P3)
@@ -73,7 +106,19 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 
 ## Completed
 
-- **P4: PyPI distribution (2026-06)** -- c2py23 is published on PyPI.  The wheel
+- **Multi-backend buffer acquisition (2026-07)** — NumPy struct-cast, PEP 3118
+  buffer protocol, and DLPack capsule extraction, selectable via `acquire:` YAML key.
+  Default is `[ndarray, buffer]`; ndarray struct-cast is 2-3x faster than gold
+  baselines for small arrays (~70ns vs 120ns).  `c2py_ptr_info` abstracts the
+  buffer metadata into a unified struct shared by all backends.
+
+- **ABI cleanup (2026-07)** — `ob_type_offset` resolved at runtime instead of
+  assuming `ob_refcnt + 8`.  Python string/unicode API removed from wrapper ABI
+  (no `Unicode_FromString`, `String_FromString`, or `ParseTupleAndKeywords`).
+  Variant names use ASCII bytes via `PyBytes_FromStringAndSize`.  `c2py_pin`
+  fallback error prevents silent `SystemError` when all backends fail.
+
+- **PyPI distribution (2026-06)** -- c2py23 is published on PyPI.  The wheel
   packaging demo (`examples/wheel_demo/`) demonstrates multi-platform `.so`
   coexistence in a single `py3-none-any` wheel using `c2py_loader`.  Users can
   produce wheels for their own modules following the demo.

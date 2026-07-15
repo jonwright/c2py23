@@ -94,6 +94,11 @@ Build with ASan for leak detection:
 c2py23 build --asan path/to/module.c2py
 ```
 
+Build for PyPy (experimental, no CI):
+```bash
+c2py23 build --target pypy path/to/module.c2py
+```
+
 Install c2py23 in development mode:
 ```bash
 pip install -e .
@@ -174,6 +179,13 @@ c2py23 installed -- see the README for the gcc command.
 - **ubuntu24.04.sif**: Python 3.7, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 - **ubuntu26.04.sif**: Python 3.14, 3.15
 - **manylinux2014.sif**: Python 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
+
+### Experimental: PyPy (no CI, not tested regularly)
+
+- **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
+- Build with `c2py23 build --target pypy file.c2py`
+- Experimental, use at your own risk. No CI — likely to regress if not maintained.
+  Pyodide is the next non-CPython target (WASM, shares CPython ABI).
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 
@@ -339,14 +351,18 @@ The human uses a classic `repo`-scoped token for admin tasks.
 2. **Maintain Python 2.7 compatibility** in all Python files
 3. **Never include `<Python.h>`** in any C file
 4. **No memory allocation in wrappers** -- all memory from Python
-5. Test across all supported Python versions before committing
-6. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
-7. Generated C code should compile with `gcc -Wall -Werror`
-8. Run the full test suite before committing: `bash tests/run_tests.sh python3`
-9. Run `python3 tests/test_all.py` for multi-version container validation
-10. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
-11. Run valgrind on leak and error-path tests when changing wrapper generation
-12. **Use targeted edits.** Never rewrite an entire file when a surgical
+5. **No Python string/unicode in wrapper ABI** -- generated C code never
+   creates Python strings or unicode objects.  Error messages are C string
+   literals.  Variant names use ASCII bytes (`PyBytes_FromStringAndSize`).
+   No `PyArg_ParseTupleAndKeywords` (c2py23 is positional-only).
+6. Test across all supported Python versions before committing
+7. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
+8. Generated C code should compile with `gcc -Wall -Werror`
+9. Run the full test suite before committing: `bash tests/run_tests.sh python3`
+10. Run `python3 tests/test_all.py` for multi-version container validation
+11. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
+12. Run valgrind on leak and error-path tests when changing wrapper generation
+13. **Use targeted edits.** Never rewrite an entire file when a surgical
     edit will do.  Use `edit` tool with `oldString`/`newString` for each
     change.  Full-file rewrites destroy history, introduce drift, and
     make diffs unreviewable.  This applies especially to PLAN.md and
