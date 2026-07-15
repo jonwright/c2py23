@@ -203,13 +203,14 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
             PyObject *dict = mdict(module);
             if (dict) {
                 while (methods && methods->ml_name) {
-                    PyObject *fn = cfn_new(methods, NULL, NULL);
-                    if (fn) {
+                PyObject *fn = cfn_new(methods, NULL, NULL);
+                if (fn) {
+                    if (C2PY._ds_set_item_string) {
                         typedef int (*dset_fn)(PyObject*, const char*, PyObject*);
-                        dset_fn dset = (dset_fn)_resolve_raw("PyDict_SetItemString");
-                        if (dset) dset(dict, methods->ml_name, fn);
-                        Py_DECREF(fn);
+                        ((dset_fn)C2PY._ds_set_item_string)(dict, methods->ml_name, fn);
                     }
+                    Py_DECREF(fn);
+                }
                     methods++;
                 }
                 return module;
@@ -879,6 +880,17 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
     if (C2PY.GetAttrString == NULL) return;
     RESOLVE(C2PY.Module_GetDict, "PyModule_GetDict");
+
+    /* PyDict_SetItemString for c2py_set_module_attr fallback.
+     * Resolve once at init; PyPy 2.7 needs the PyPy_* prefix.
+     * If found, enable the dict-based workaround for module attr set. */
+    {
+        void *p = C2PY_RESOLVE(dl, "PyPyDict_SetItemString");
+        if (!p) p = C2PY_RESOLVE(dl, "PyDict_SetItemString");
+        C2PY._ds_set_item_string = p;
+    }
+    C2PY._ds_pypy_workaround = (C2PY._ds_set_item_string != NULL
+                                && C2PY.version_major < 3) ? 1 : 0;
 
     /* --- DLPack capsule API (optional) --- */
     C2PY.CallObject = (PyObject*(*)(PyObject*, PyObject*))

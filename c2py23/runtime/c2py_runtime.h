@@ -334,6 +334,8 @@ typedef struct {
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
     PyObject* (*GetAttrString)(PyObject*, const char*);
     PyObject* (*Module_GetDict)(PyObject*);    /* for perf attr registration */
+    void *_ds_set_item_string;  /* PyDict_SetItemString, resolved at init */
+    int _ds_pypy_workaround;   /* 1 if PyPy 2.7-style dict-based attr set */
 
     /* General call support (optional, used by DLPack) */
     PyObject* (*CallObject)(PyObject*, PyObject*);
@@ -395,16 +397,15 @@ extern c2py_api_t C2PY;
 #define PyModule_GetDict(m)            C2PY.Module_GetDict((PyObject*)(m))
 
 /* Set a module attribute.  PyObject_SetAttrString silently fails
- * on PyPy 2.7 cpyext modules; on version_major < 3 (Python 2.7),
- * fall back to PyDict_SetItemString via the module's __dict__. */
+ * on PyPy 2.7 cpyext modules; C2PY._ds_pypy_workaround gates the
+ * dict-based fallback (resolved once at init, zero runtime dlsym). */
 #define c2py_set_module_attr(m, name, val) do { \
-    PyObject *_d = C2PY.Module_GetDict((PyObject*)(m)); \
-    if (_d) { \
-        typedef int (*_ds_fn)(PyObject*, const char*, PyObject*); \
-        void *_p = C2PY_RESOLVE(C2PY.dl_handle, "PyPyDict_SetItemString"); \
-        if (!_p) _p = C2PY_RESOLVE(C2PY.dl_handle, "PyDict_SetItemString"); \
-        _ds_fn _ds = (_ds_fn)(uintptr_t)_p; \
-        if (_ds) _ds(_d, (name), (PyObject*)(val)); \
+    if (C2PY._ds_pypy_workaround) { \
+        PyObject *_d = C2PY.Module_GetDict((PyObject*)(m)); \
+        if (_d && C2PY._ds_set_item_string) { \
+            typedef int (*_ds_fn)(PyObject*, const char*, PyObject*); \
+            ((_ds_fn)C2PY._ds_set_item_string)(_d, (name), (PyObject*)(val)); \
+        } \
     } else { \
         C2PY.SetAttrString((PyObject*)(m), (name), (PyObject*)(val)); \
     } \
