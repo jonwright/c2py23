@@ -1306,6 +1306,14 @@ Makefile and Python test harness).
 
 ## Future Work
 
+- **PyPy support** — `c2py23 build --target pypy` produces PyPy-compatible
+  `.so` files (tested on PyPy 2.7, 3.9, 3.11 via `ubuntu24.04_pypy.sif`
+  container).  No CI — likely to regress without maintenance.
+  See `PLAN.md` for current test matrix.
+- **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
+  `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
+  Needs `--target emscripten` CLI flag (emcc, CPU feature guards).
+  DLPack works on Pyodide (numpy exports `__dlpack__`).
 - **aarch64 CI** -- native ARM64 GitHub runner (ubuntu-24.04-arm) added;
   CPU feature flags, SIMD dispatch, and cycle counter timer tested on
   x86_64 and validated on aarch64 hardware.
