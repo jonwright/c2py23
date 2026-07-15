@@ -75,21 +75,23 @@ static PyObject*
 _c2py_perf_read(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
     PyObject *buf_obj;
-    Py_buffer buf;
+    c2py_buf_pin pin;
+    Py_buffer *buf = &pin.buf;
     (void)self;
+    memset(&pin.buf, 0, C2PY.pybuffer_size);
     if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))
         return NULL;
-    if (PyObject_GetBuffer(buf_obj, &buf, PyBUF_SIMPLE) != 0)
+    if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)
         return NULL;
-    if (buf.len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
-        PyBuffer_Release(&buf);
+    if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
+        PyBuffer_Release(buf);
         PyErr_SetString(PyExc_ValueError,
             "buffer too small for perf data (need 11 uint64)");
         return NULL;
     }
     c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,
-                           (uint64_t*)buf.buf);
-    PyBuffer_Release(&buf);
+                           (uint64_t*)buf->buf);
+    PyBuffer_Release(buf);
     Py_RETURN_NONE;
 }
 
