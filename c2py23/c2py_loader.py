@@ -37,8 +37,8 @@ import sys
 import platform as _platform
 
 
-def _platform_key():
-    """Return 'linux_x86_64', 'win_amd64', 'linux_ppc64le', etc."""
+def _platform_key(target="cpython"):
+    """Return 'linux_x86_64', 'win_amd64', 'pypy-linux_x86_64', etc."""
     _os = sys.platform
     if _os == "linux2":
         _os = "linux"
@@ -50,6 +50,8 @@ def _platform_key():
             _arch = "amd64"
         else:
             _arch = "x86_64"
+    if target == "pypy":
+        return "pypy-%s_%s" % (_os, _arch)
     return "%s_%s" % (_os, _arch)
 
 
