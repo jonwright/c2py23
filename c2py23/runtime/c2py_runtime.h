@@ -880,10 +880,7 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem;
     int i;
 
-    /* DLPack has no standard mechanism for requesting writable access.
-     * Fall through to the buffer protocol which enforces writability. */
-    if (want_writable)
-        return -1;
+    (void)want_writable;
 
     /* DLPack symbols are optional; if not resolved, skip this backend. */
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
