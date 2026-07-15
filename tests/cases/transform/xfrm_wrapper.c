@@ -102,8 +102,14 @@ _c2py_perf_meta(PyObject *self, PyObject *args) {
     p = (c2py_perf_t*)(uintptr_t)ptr_val;
     tuple = PyTuple_New(3);
     if (!tuple) return NULL;
-    PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)p->variant));
-    PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)p->group_idx));
+    /* Extract to locals: nested p->variant inside PyLong_FromLong
+     * fails on PyPy cpyext (calling-convention issue). */
+    {
+        int _v = p->variant;
+        int _gi = p->group_idx;
+        PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)_v));
+        PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)_gi));
+    }
     vn = p->variant_name;
     if (!vn) vn = "";
     if (C2PY.version_major >= 3) {
