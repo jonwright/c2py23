@@ -179,6 +179,44 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
         return fn3(name, methods, NULL);
     }
 
+    /* PyPy 2.7 cpyext: no Py_InitModule*, use PyModule_New + manual
+     * method registration via PyModule_GetDict + PyDict_SetItemString.
+     * Resolve these symbols on demand (only needed for this fallback). */
+    {
+        typedef PyObject* (*mod_new_fn)(const char*);
+        typedef PyObject* (*mod_dict_fn)(PyObject*);
+        typedef PyObject* (*cfn_new_fn)(PyMethodDef*, PyObject*, PyObject*);
+        typedef PyObject* (*imp_add_fn)(const char*);
+
+        imp_add_fn imp_add = (imp_add_fn)_resolve_raw("PyImport_AddModule");
+        mod_new_fn mnew = imp_add
+            ? NULL : (mod_new_fn)_resolve_raw("PyModule_New");
+        mod_dict_fn mdict = (mod_dict_fn)_resolve_raw("PyModule_GetDict");
+        cfn_new_fn cfn_new = (cfn_new_fn)_resolve_raw("PyCFunction_NewEx");
+
+        /* Prefer PyImport_AddModule: it registers in sys.modules
+         * and returns a module that supports attribute setting.
+         * On PyPy 2.7 cpyext, PyModule_New creates a module that
+         * cannot have attributes set via SetAttrString. */
+        PyObject *module = imp_add ? imp_add(name) : (mnew ? mnew(name) : NULL);
+        if (module && mdict && cfn_new) {
+            PyObject *dict = mdict(module);
+            if (dict) {
+                while (methods && methods->ml_name) {
+                    PyObject *fn = cfn_new(methods, NULL, NULL);
+                    if (fn) {
+                        typedef int (*dset_fn)(PyObject*, const char*, PyObject*);
+                        dset_fn dset = (dset_fn)_resolve_raw("PyDict_SetItemString");
+                        if (dset) dset(dict, methods->ml_name, fn);
+                        Py_DECREF(fn);
+                    }
+                    methods++;
+                }
+                return module;
+            }
+        }
+    }
+
     fprintf(stderr, "c2py_runtime: could not find module init function\n");
     return NULL;
 }
