@@ -621,6 +621,7 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.is_pypy) {
         C2PY.pyobject_size = 24;
         C2PY.ob_refcnt_offset = 0;
+        C2PY.ob_type_offset = 16;  /* ob_pypy_link at 8 pushes ob_type to 16 */
     }
 
     /* --- Reject unsupported Python versions --- */
@@ -701,19 +702,21 @@ static void _c2py_runtime_init_once(void)
          *   ob_ref_local:12 ob_ref_shared:16 ob_type:24 */
         C2PY.pyobject_size = 32;
         C2PY.ob_refcnt_offset = 16;  /* ob_ref_shared */
+        C2PY.ob_type_offset = 24;
     } else {
         /* Standard GIL-enabled PyObject layout (16 bytes LP64):
          *   ob_refcnt:0 ob_type:8 */
         C2PY.pyobject_size = 16;
         C2PY.ob_refcnt_offset = 0;   /* ob_refcnt */
+        C2PY.ob_type_offset = 8;
     }
     C2PY.pyobject_size_ft = 32;
 
     /* Sanity-check detected layout consistency */
     assert(C2PY.pyobject_size > 0);
     assert(C2PY.ob_refcnt_offset >= 0);
-
-    assert(C2PY.ob_refcnt_offset + (Py_ssize_t)sizeof(Py_ssize_t) <= C2PY.pyobject_size);
+    assert(C2PY.ob_type_offset >= 0);
+    assert(C2PY.ob_type_offset + (Py_ssize_t)sizeof(void*) <= C2PY.pyobject_size);
 
     /* pymoduledef_max_size: pad generously for both layouts */
     {
@@ -784,6 +787,7 @@ static void _c2py_runtime_init_once(void)
                 C2PY.is_free_threaded = 1;
                 C2PY.pyobject_size = 32;
                 C2PY.ob_refcnt_offset = 16;
+                C2PY.ob_type_offset = 24;
             }
             /* DecRef: use direct dlsym (C2PY.DecRef not resolved yet) */
             {

@@ -276,6 +276,7 @@ typedef struct {
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
     ptrdiff_t ob_refcnt_offset;    /* offset of ob_refcnt (or ob_ref_shared on FT) in PyObject */
+    ptrdiff_t ob_type_offset;      /* offset of ob_type field in PyObject */
 
     /* Buffer protocol */
     int (*GetBuffer)(PyObject*, Py_buffer*, int);
@@ -745,11 +746,14 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     char type_char;
 
     /* Free-threaded Python and PyPy: type-object layout differs from
-     * standard GIL CPython.  Skip the fast path and fall through. */
+     * standard GIL CPython.  Skip the fast path and fall through to
+     * buffer protocol.  PyPy struct-cast needs further work:
+     * ob_type_offset is correct but the data_off probe reads
+     * dimensions/strides at offsets that differ on PyPy cpyext. */
     if (C2PY.is_free_threaded || C2PY.is_pypy)
         return -1;
 
-    tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
+    tp = *(void**)((char*)obj + C2PY.ob_type_offset);
 
     if (L->ndarray_type && tp == L->ndarray_type) {
         goto fill;
