@@ -13,12 +13,14 @@ by the caller, and the wrapper never copies or allocates. This eliminates entire
 categories of bugs -- leaks, use-after-free, ownership confusion -- while keeping
 the C code trivially simple.
 
-The project defines a strict subset language: Python on one side (buffer protocol,
-int, float), C99 on the other (flat pointers, scalar returns). The interface is
-described declaratively in YAML. The code generator transpiles this into a CPython
-C extension that dispatches to the right C function based on buffer properties:
-element type, dimensionality, and layout. The wrapper itself is zero-copy and
-allocation-free.
+The project defines a strict subset language: Python on one side (memory
+blocks with metadata -- acquired via NumPy struct-cast, DLPack, or the
+PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
+The interface is described declaratively in YAML. The code generator
+transpiles this into a CPython C extension that acquires pointers to the
+underlying memory, then dispatches to the right C function based on buffer
+properties: element type, dimensionality, and layout. The wrapper itself is
+zero-copy and allocation-free.
 
 The long-term goal is a substrate for:
 - SIMD dispatch within C functions, potentially at the wrapper level
@@ -50,8 +52,9 @@ This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
             "py_sig": "name(arg: type, ...) -> return_type",
             "doc": "Custom docstring",                 # optional
             "params": {"param_name": "description"},   # optional
-            "gil_release": True,                       # optional
-            "checks": ["expression"],                  # optional
+    "gil_release": True,                       # optional
+    "acquire": ["ndarray", "buffer"],          # optional: backend order
+    "checks": ["expression"],                  # optional
             "c_overloads": [
                 {
                     "sig": "void foo(int n, double *out)",
@@ -168,6 +171,9 @@ functions:                            # required: list of wrapped functions
     params:                           # optional: per-parameter descriptions
       param_name: "Description text"  #   keys must match py_sig parameter names
     gil_release: true                 # optional: release the GIL during C calls
+    acquire: [ndarray, buffer]       # optional: acquisition backend order
+                                     #   values: ndarray, buffer, dlpack
+                                     #   default: [ndarray, buffer]
     expand:                           # optional: template expansion
       VAR1: [val_a, val_b, ...]       #   variable name -> list of values
       VAR2: [val_a, val_b, ...]       #   all lists must have same length
@@ -266,9 +272,10 @@ types, never `buffer`. All optional parameters must appear after all required
 parameters.
 
 Parameters:
-- `buffer` -- any Python object supporting the buffer protocol. Passed as a pointer
-  to the C function. Const pointers are read-only; non-const pointers are read-write
-  and the caller must provide a writable buffer.
+- `buffer` -- any Python object that can provide a pointer to memory plus metadata
+  (shape, strides, dtype). Acquired via one of three backends, tried in the order
+  specified by the `acquire:` key (default: ndarray struct-cast, then PEP 3118
+  buffer protocol). Const pointers are read-only; non-const pointers are read-write.
 - `int` -- Python int, converted to C `int`
 - `float` -- Python float, converted to C `double`
 
@@ -900,6 +907,33 @@ dispatchmod.fill(arr2, 3.14)
 # arr2 == [3.14, 3.14, 3.14]   -- dispatched to fill_f64
 ```
 
+## Acquisition Backends
+
+For each `buffer` parameter, c2py23 tries acquisition backends in the order
+specified by the `acquire:` key:
+
+| Backend | C constant | Method | Overhead (vnorm tiny) |
+|---------|-----------|--------|----------------------|
+| `ndarray` | `C2PY_PIN_NDARRAY` | NumPy struct-cast (zero API calls) | **~75ns** |
+| `buffer` | `C2PY_PIN_PEP3118` | PEP 3118 `PyObject_GetBuffer` | ~162ns |
+| `dlpack` | `C2PY_PIN_DLPACK` | `__dlpack__()` capsule extraction | ~381ns |
+
+Default order is `[ndarray, buffer]` -- the ndarray struct-cast is tried first
+and succeeds for `numpy.ndarray` objects (detected via type-pointer comparison,
+no import of numpy). For non-numpy types (array.array, memoryview, ndarray
+subclasses, masked arrays), the ndarray check fails in ~1ns and falls through
+to the buffer protocol.
+
+Use `acquire: [buffer]` to disable the ndarray fast-path (e.g., if wrapping a
+non-numpy buffer library). Use `acquire: [ndarray, dlpack, buffer]` for
+maximum portability across numpy, DLPack exporters, and buffer-protocol objects.
+
+The DLPack backend is slower for CPU arrays (~381ns) because `__dlpack__()`
+is a Python method dispatch. Its value is for GPU device pointers (CuPy,
+PyTorch) where the buffer protocol cannot return a GPU address, and for
+non-CPython runtimes (PyPy, GraalPy) where the buffer protocol emulation
+is slow.
+
 ## Generated Wrapper Structure
 
 For each function in the `.c2py` file, the generator produces two C functions:
@@ -919,20 +953,16 @@ Takes `Py_buffer*` for each buffer param and C scalar values. Structure:
 
 ### `_wrapper` Function
 
-Takes `PyObject *self, PyObject *args` (METH_VARARGS, two parameters). The
-function pointer is cast to ``PyCFunction``, which expects exactly two
-parameters. Keyword arguments are not supported -- all parameters are
-positional-only, including those with default values. On Python 3.12+ a
-parallel ``_fastcall`` wrapper exists in a separate method table selected
-at init time. Structure:
+Takes `PyObject *self, PyObject *args` (METH_VARARGS). Structure:
 
 ```
 1. PyArg_ParseTuple -- extract Python objects and scalar values
-2. c2py_acquire_buffer -- for each buffer param, get Py_buffer struct
-   (uses PEP 3118 on Python 3.x, falls back to old API on 2.7)
+2. c2py_pin -- for each buffer param, acquire pointer+metadata via
+   the configured backend order (ndarray struct-cast, buffer protocol,
+   or DLPack). The info is stored in a unified c2py_ptr_info struct.
 3. Restrict checks -- verify no writable buffer aliases any other buffer
-4. Call _impl function
-5. Cleanup -- release all acquired buffers
+4. Call _impl function (receives c2py_ptr_info* pointers)
+5. Cleanup -- c2py_unpin_buffer for each acquired buffer
 6. Return result
 ```
 

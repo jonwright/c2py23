@@ -80,9 +80,8 @@ def _check_one_wrapper(lines, start_lineno):
 
     if end_lineno is None or first_brace is None:
         return None
-
     buf_names = []
-    acq_names = set()
+    pin_names = []
     pending_acquires = []
     acquired = []
     released = []
@@ -100,27 +99,27 @@ def _check_one_wrapper(lines, start_lineno):
         if stripped.startswith("#"):
             continue
 
-        m = re.match(r"\s*Py_buffer\s+(buf_\w+);", line)
+        m = re.match(r"\s*c2py_ptr_info\s+(info_\w+);", line)
         if m:
             buf_names.append(m.group(1))
             continue
 
-        m = re.match(r"\s*int\s+(acq_\w+)\s*=\s*0;", line)
+        m = re.match(r"\s*c2py_buf_pin\s+(pin_\w+)\s*=", line)
         if m:
-            acq_names.add(m.group(1))
+            pin_names.append(m.group(1))
             continue
 
         if stripped == "cleanup:":
             in_cleanup = True
             continue
 
-        # Also detect cleanup by the release pattern when label is absent
-        if not in_cleanup and re.match(r"\s*if\s*\(\s*(acq_\w+)\s*\)\s*c2py_release_buffer\(&(buf_\w+)\);", line):
+        # Also detect cleanup by the unpin pattern when label is absent
+        if not in_cleanup and re.match(r"\s*c2py_unpin_buffer\(&(pin_\w+)\);", line):
             in_cleanup = True
 
-        m = re.match(r".*if\s*\(\s*c2py_acquire_buffer\(([^,]+),\s*&(buf_\w+),", line)
+        m = re.match(r".*if\s*\(\s*c2py_pin\(([^,]+),\s*&(pin_\w+),\s*&(info_\w+),", line)
         if m:
-            buf_name = m.group(2)
+            buf_name = m.group(3)
             acquire_count += 1
             pending_acquires.append(buf_name)
 
@@ -143,24 +142,8 @@ def _check_one_wrapper(lines, start_lineno):
                         "Line %d: subsequent buffer acquire must goto cleanup "
                         "on failure, got: %s" % (lineno + 1, next_line)
                     )
-            continue
-
-        m = re.match(r"\s*(acq_\w+)\s*=\s*1;", line)
-        if m:
-            flag_name = m.group(1)
-            exp_buf = re.sub(r"^acq_", "buf_", flag_name)
-            if exp_buf not in buf_names:
-                raise ValueError(
-                    "Line %d: acq flag '%s' has no matching buf variable " "'%s'" % (lineno + 1, flag_name, exp_buf)
-                )
-            if flag_name not in acq_names:
-                raise ValueError("Line %d: acq flag '%s' was not declared" % (lineno + 1, flag_name))
-            if not pending_acquires or pending_acquires[0] != exp_buf:
-                raise ValueError(
-                    "Line %d: acq flag '%s' set but no pending acquire " "for '%s'" % (lineno + 1, flag_name, exp_buf)
-                )
             pending_acquires.pop(0)
-            acquired.append(exp_buf)
+            acquired.append(buf_name)
             continue
 
         if pending_acquires and (
@@ -174,22 +157,24 @@ def _check_one_wrapper(lines, start_lineno):
 
         if in_cleanup:
             m = re.match(
-                r"\s*if\s*\(\s*(acq_\w+)\s*\)\s*c2py_release_buffer\(&(buf_\w+)\);",
+                r"\s*c2py_unpin_buffer\(&(pin_\w+)\);",
                 line,
             )
             if m:
-                released.append(m.group(2))
+                pin_name = m.group(1)
+                # Derive info_ name from pin_ name
+                exp_info = pin_name.replace("pin_", "info_", 1)
+                released.append(exp_info)
                 continue
 
         if "PyEval_SaveThread" in stripped:
             gil_save_count += 1
         if "PyEval_RestoreThread" in stripped:
             gil_restore_count += 1
-
     if pending_acquires:
         raise ValueError(
             "Function starting at line %d: buffer(s) '%s' acquired but "
-            "never flagged with acq_X = 1" % (start_lineno + 1, ", ".join(pending_acquires))
+            "never pinned (c2py_pin_buffer)" % (start_lineno + 1, ", ".join(pending_acquires))
         )
 
     for buf in acquired:

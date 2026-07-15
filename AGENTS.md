@@ -139,6 +139,20 @@ Populate ABI matrix:
 python3 tests/populate_abi_matrix.py
 ```
 
+Check NumPy ndarray ABI (required for ndarray fast-path):
+```bash
+gcc tests/check_numpy_abi.c $(python3-config --includes) \
+    -I$(python3 -c 'import numpy; print(numpy.get_include())') \
+    $(python3-config --ldflags --embed) -o /tmp/check_numpy_abi
+/tmp/check_numpy_abi
+```
+
+Check DLPack ABI:
+```bash
+gcc -std=c99 -Wall tests/check_dlpack_abi.c -o /tmp/check_dlpack_abi
+/tmp/check_dlpack_abi
+```
+
 Regenerate the committed example wrapper (pre-commit hook runs automatically):
 ```bash
 python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \

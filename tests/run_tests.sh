@@ -137,6 +137,12 @@ echo ""
 echo "Running leak stress test..."
 $RUN_PY test_leaks.py
 
+# Build benchmark modules and run ndarray/DLPack backend tests
+echo ""
+echo "Running ndarray backend tests..."
+(cd "$PROJECT_DIR/benchmarks" && make all 2>&1 | tail -1) || echo "(benchmark build skipped)"
+PYTHONPATH="$PROJECT_DIR/benchmarks/build" $RUN_PY test_ndarray_backends.py
+
 # Run lifecycle tests (re-import, concurrent import, subinterpreters)
 echo ""
 echo "Running lifecycle tests..."

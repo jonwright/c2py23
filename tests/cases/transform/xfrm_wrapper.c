@@ -145,44 +145,46 @@ _c2py_perf_set_enabled(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+static const uint8_t _acqord_transform[] = { C2PY_PIN_NDARRAY, C2PY_PIN_PEP3118 };
+
 /* -------------------------------------------- */
 /* Wrapper for: transform */
 /* -------------------------------------------- */
 
 static PyObject*
-_transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
+_transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
 {
-    int _c2py_slow_axis_buf_points = -1;
-    int _c2py_fast_axis_buf_points = -1;
-    (void)_c2py_slow_axis_buf_points;
-    (void)_c2py_fast_axis_buf_points;
+    int _c2py_slow_axis_info_points = -1;
+    int _c2py_fast_axis_info_points = -1;
+    (void)_c2py_slow_axis_info_points;
+    (void)_c2py_fast_axis_info_points;
     /* contiguity check: points */
     do {
         int _ok = 1;
-        if (buf_points->strides == NULL && buf_points->ndim <= 1) {
-            _c2py_slow_axis_buf_points = 0;
-            _c2py_fast_axis_buf_points = (int)(buf_points->ndim - 1);
+        if (info_points->strides == NULL && info_points->ndim <= 1) {
+            _c2py_slow_axis_info_points = 0;
+            _c2py_fast_axis_info_points = (int)(info_points->ndim - 1);
             break;
         }
-        if (buf_points->ndim >= 1) {
-            Py_ssize_t _expected = buf_points->itemsize;
+        if (info_points->ndim >= 1) {
+            Py_ssize_t _expected = info_points->itemsize;
             int _d;
             /* check F-contiguous (column-major): first dim varies fastest */
-            for (_d = 0; _d < buf_points->ndim; _d++) {
-                if (buf_points->strides[_d] < 0) { _ok = 0; break; }
-                if (buf_points->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= buf_points->shape[_d];
+            for (_d = 0; _d < info_points->ndim; _d++) {
+                if (info_points->strides[_d] < 0) { _ok = 0; break; }
+                if (info_points->strides[_d] != _expected) { _ok = 0; break; }
+                _expected *= info_points->shape[_d];
             }
-            if (_ok) { _c2py_slow_axis_buf_points = (int)(buf_points->ndim - 1); _c2py_fast_axis_buf_points = 0; break; }
+            if (_ok) { _c2py_slow_axis_info_points = (int)(info_points->ndim - 1); _c2py_fast_axis_info_points = 0; break; }
             /* check C-contiguous (row-major): last dim varies fastest */
             _ok = 1;
-            _expected = buf_points->itemsize;
-            for (_d = buf_points->ndim - 1; _d >= 0; _d--) {
-                if (buf_points->strides[_d] < 0) { _ok = 0; break; }
-                if (buf_points->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= buf_points->shape[_d];
+            _expected = info_points->itemsize;
+            for (_d = info_points->ndim - 1; _d >= 0; _d--) {
+                if (info_points->strides[_d] < 0) { _ok = 0; break; }
+                if (info_points->strides[_d] != _expected) { _ok = 0; break; }
+                _expected *= info_points->shape[_d];
             }
-            if (_ok) { _c2py_slow_axis_buf_points = 0; _c2py_fast_axis_buf_points = (int)(buf_points->ndim - 1); }
+            if (_ok) { _c2py_slow_axis_info_points = 0; _c2py_fast_axis_info_points = (int)(info_points->ndim - 1); }
         }
         if (!_ok) {
             PyErr_SetString(PyExc_ValueError,
@@ -191,37 +193,37 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
         }
     } while(0);
 
-    int _c2py_slow_axis_buf_out = -1;
-    int _c2py_fast_axis_buf_out = -1;
-    (void)_c2py_slow_axis_buf_out;
-    (void)_c2py_fast_axis_buf_out;
+    int _c2py_slow_axis_info_out = -1;
+    int _c2py_fast_axis_info_out = -1;
+    (void)_c2py_slow_axis_info_out;
+    (void)_c2py_fast_axis_info_out;
     /* contiguity check: out */
     do {
         int _ok = 1;
-        if (buf_out->strides == NULL && buf_out->ndim <= 1) {
-            _c2py_slow_axis_buf_out = 0;
-            _c2py_fast_axis_buf_out = (int)(buf_out->ndim - 1);
+        if (info_out->strides == NULL && info_out->ndim <= 1) {
+            _c2py_slow_axis_info_out = 0;
+            _c2py_fast_axis_info_out = (int)(info_out->ndim - 1);
             break;
         }
-        if (buf_out->ndim >= 1) {
-            Py_ssize_t _expected = buf_out->itemsize;
+        if (info_out->ndim >= 1) {
+            Py_ssize_t _expected = info_out->itemsize;
             int _d;
             /* check F-contiguous (column-major): first dim varies fastest */
-            for (_d = 0; _d < buf_out->ndim; _d++) {
-                if (buf_out->strides[_d] < 0) { _ok = 0; break; }
-                if (buf_out->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= buf_out->shape[_d];
+            for (_d = 0; _d < info_out->ndim; _d++) {
+                if (info_out->strides[_d] < 0) { _ok = 0; break; }
+                if (info_out->strides[_d] != _expected) { _ok = 0; break; }
+                _expected *= info_out->shape[_d];
             }
-            if (_ok) { _c2py_slow_axis_buf_out = (int)(buf_out->ndim - 1); _c2py_fast_axis_buf_out = 0; break; }
+            if (_ok) { _c2py_slow_axis_info_out = (int)(info_out->ndim - 1); _c2py_fast_axis_info_out = 0; break; }
             /* check C-contiguous (row-major): last dim varies fastest */
             _ok = 1;
-            _expected = buf_out->itemsize;
-            for (_d = buf_out->ndim - 1; _d >= 0; _d--) {
-                if (buf_out->strides[_d] < 0) { _ok = 0; break; }
-                if (buf_out->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= buf_out->shape[_d];
+            _expected = info_out->itemsize;
+            for (_d = info_out->ndim - 1; _d >= 0; _d--) {
+                if (info_out->strides[_d] < 0) { _ok = 0; break; }
+                if (info_out->strides[_d] != _expected) { _ok = 0; break; }
+                _expected *= info_out->shape[_d];
             }
-            if (_ok) { _c2py_slow_axis_buf_out = 0; _c2py_fast_axis_buf_out = (int)(buf_out->ndim - 1); }
+            if (_ok) { _c2py_slow_axis_info_out = 0; _c2py_fast_axis_info_out = (int)(info_out->ndim - 1); }
         }
         if (!_ok) {
             PyErr_SetString(PyExc_ValueError,
@@ -234,57 +236,57 @@ _transform_impl(Py_buffer *buf_points, Py_buffer *buf_out)
     uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;
 
     /* check: points.format == 'd' */
-    if (!((!buf_points->format || buf_points->format[strlen(buf_points->format) - 1] == 'd'))) {
+    if (!((!info_points->format || info_points->format[strlen(info_points->format) - 1] == 'd'))) {
         char _c2py_err[256];
-        const char *_fmt = buf_points->format ? buf_points->format : "";
+        const char *_fmt = info_points->format ? info_points->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
         snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.format == 'd' (got format='%c')", _got);
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: out.format == 'd' */
-    if (!((!buf_out->format || buf_out->format[strlen(buf_out->format) - 1] == 'd'))) {
+    if (!((!info_out->format || info_out->format[strlen(info_out->format) - 1] == 'd'))) {
         char _c2py_err[256];
-        const char *_fmt = buf_out->format ? buf_out->format : "";
+        const char *_fmt = info_out->format ? info_out->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
         snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.format == 'd' (got format='%c')", _got);
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: out.n == points.n */
-    if (!((((buf_out->len == 0) ? 0 : (buf_out->len / buf_out->itemsize))) == (((buf_points->len == 0) ? 0 : (buf_points->len / buf_points->itemsize))))) {
+    if (!((((info_out->len == 0) ? 0 : (info_out->len / info_out->itemsize))) == (((info_points->len == 0) ? 0 : (info_points->len / info_points->itemsize))))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.n == points.n (got %ld vs %ld)", (long)(((buf_out->len == 0) ? 0 : (buf_out->len / buf_out->itemsize))), (long)(((buf_points->len == 0) ? 0 : (buf_points->len / buf_points->itemsize))));
+        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.n == points.n (got %ld vs %ld)", (long)(((info_out->len == 0) ? 0 : (info_out->len / info_out->itemsize))), (long)(((info_points->len == 0) ? 0 : (info_points->len / info_points->itemsize))));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: points.ndim == 2 */
-    if (!((buf_points->ndim) == (2))) {
+    if (!((info_points->ndim) == (2))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.ndim == 2 (got %ld vs %ld)", (long)(buf_points->ndim), (long)(2));
+        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.ndim == 2 (got %ld vs %ld)", (long)(info_points->ndim), (long)(2));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: points.slow_axis == 0 */
-    if (!((_c2py_slow_axis_buf_points) == (0))) {
+    if (!((_c2py_slow_axis_info_points) == (0))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.slow_axis == 0 (got %ld). Buffer must be C-contiguous (use slow_axis=0 or [][] notation).", (long)(_c2py_slow_axis_buf_points));
+        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.slow_axis == 0 (got %ld). Buffer must be C-contiguous (use slow_axis=0 or [][] notation).", (long)(_c2py_slow_axis_info_points));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
-    if ((buf_points->shape[1]) == (3)) {
+    if ((info_points->shape[1]) == (3)) {
         /* transform_aos(double *points, intptr_t n, double *out) */
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
-        transform_aos((double *)buf_points->buf, (intptr_t)(buf_points->shape[0]), (double *)buf_out->buf);
+        transform_aos((double *)info_points->ptr, (intptr_t)(info_points->shape[0]), (double *)info_out->ptr);
         if (_c2py_do_time) {
             _c2py_ct1 = c2py_ticks();
             c2py_perf_record_call(&_perf_transform__transform_aos, _c2py_ct0, _c2py_ct1);
         }
         Py_RETURN_NONE;
-    } else if ((buf_points->shape[0]) == (3)) {
+    } else if ((info_points->shape[0]) == (3)) {
         /* transform_soa(double *points, intptr_t n, double *out) */
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
-        transform_soa((double *)buf_points->buf, (intptr_t)(buf_points->shape[1]), (double *)buf_out->buf);
+        transform_soa((double *)info_points->ptr, (intptr_t)(info_points->shape[1]), (double *)info_out->ptr);
         if (_c2py_do_time) {
             _c2py_ct1 = c2py_ticks();
             c2py_perf_record_call(&_perf_transform__transform_soa, _c2py_ct0, _c2py_ct1);
@@ -310,10 +312,10 @@ _transform_wrapper(PyObject *self, PyObject *args)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    Py_buffer buf_points;
-    int acq_points = 0;
-    Py_buffer buf_out;
-    int acq_out = 0;
+    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_ptr_info info_points;
+    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
     uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;
@@ -322,36 +324,32 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OO", &py_points, &py_out))
         return NULL;
 
-    memset(&buf_points, 0, C2PY.pybuffer_size);
-    memset(&buf_out, 0, C2PY.pybuffer_size);
 
-    if (c2py_acquire_buffer(py_points, &buf_points, C2PY_BUF_WRITE) == -1)
+    if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
-    acq_points = 1;
 
-    if (c2py_acquire_buffer(py_out, &buf_out, C2PY_BUF_WRITE) == -1)
+    if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
-    acq_out = 1;
 
     /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
 
     if (_c2py_do_time) _c2py_t1 = c2py_ticks();
-    ret = _transform_impl(&buf_points, &buf_out);
+    ret = _transform_impl(&info_points, &info_out);
     if (_c2py_do_time) _c2py_t2 = c2py_ticks();
 
 cleanup:
-    if (acq_out) c2py_release_buffer(&buf_out);
-    if (acq_points) c2py_release_buffer(&buf_points);
+    c2py_unpin_buffer(&pin_out);
+    c2py_unpin_buffer(&pin_points);
 
     if (_c2py_do_time) {
         c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());
@@ -364,10 +362,10 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    Py_buffer buf_points;
-    int acq_points = 0;
-    Py_buffer buf_out;
-    int acq_out = 0;
+    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_ptr_info info_points;
+    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
     uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;
@@ -382,36 +380,32 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     py_points = args[0];
     py_out = args[1];
 
-    memset(&buf_points, 0, C2PY.pybuffer_size);
-    memset(&buf_out, 0, C2PY.pybuffer_size);
 
-    if (c2py_acquire_buffer(py_points, &buf_points, C2PY_BUF_WRITE) == -1)
+    if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
-    acq_points = 1;
 
-    if (c2py_acquire_buffer(py_out, &buf_out, C2PY_BUF_WRITE) == -1)
+    if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
-    acq_out = 1;
 
     /* restrict check: out vs points */
-    if ((char*)buf_out.buf >= (char*)buf_points.buf && 
-        (char*)buf_out.buf < (char*)buf_points.buf + buf_points.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)buf_points.buf >= (char*)buf_out.buf && 
-        (char*)buf_points.buf < (char*)buf_out.buf + buf_out.len) {
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
 
     if (_c2py_do_time) _c2py_t1 = c2py_ticks();
-    ret = _transform_impl(&buf_points, &buf_out);
+    ret = _transform_impl(&info_points, &info_out);
     if (_c2py_do_time) _c2py_t2 = c2py_ticks();
 
 cleanup:
-    if (acq_out) c2py_release_buffer(&buf_out);
-    if (acq_points) c2py_release_buffer(&buf_points);
+    c2py_unpin_buffer(&pin_out);
+    c2py_unpin_buffer(&pin_points);
 
     if (_c2py_do_time) {
         c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());

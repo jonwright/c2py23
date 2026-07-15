@@ -21,6 +21,7 @@ def verify_vnorm(vec, mods):
 class TestVnormTiny:
     def test_all(self):
         import gold_vnorm, gold_numpy_vnorm, c2py_vnorm, c2py_vnorm_bare
+        import c2py_vnorm_ndarray, c2py_vnorm_buffer, c2py_vnorm_dlpack
 
         gc.disable()
         print()
@@ -73,6 +74,17 @@ class TestVnormTiny:
         ns = run("c2py23 checks only", c2py_vnorm.vnorm)
         add("c2py23 checks only", "getbuffer", "yes", "  off", ns)
 
+        # Per-backend acquisition
+        ns = run("  ndarray", c2py_vnorm_ndarray.vnorm)
+        add("  ndarray", "ndarray ", "yes", "  off", ns)
+        ns = run("  buffer", c2py_vnorm_buffer.vnorm)
+        add("  buffer", "buffer  ", "yes", "  off", ns)
+        try:
+            ns = run("  dlpack", c2py_vnorm_dlpack.vnorm)
+            add("  dlpack", "dlpack  ", "yes", "  off", ns)
+        except Exception:
+            add("  dlpack", "dlpack  ", "yes", "  off", 0)
+
         c2py_vnorm._c2py_set_tick_source("clock")
         c2py23.perf.set_enabled(c2py_vnorm.vnorm, 1)
         c2py23.perf.reset_perf(c2py_vnorm.vnorm)
@@ -98,6 +110,7 @@ class TestVnormTiny:
 class TestVnormLarge:
     def test_all(self):
         import gold_vnorm, gold_numpy_vnorm, c2py_vnorm, c2py_vnorm_bare
+        import c2py_vnorm_ndarray, c2py_vnorm_buffer, c2py_vnorm_dlpack
 
         gc.disable()
         total_mb = LARGE_VNORM_N * 4 * 8 / 1e6  # N*3*8 + N*8
@@ -153,6 +166,17 @@ class TestVnormLarge:
         c2py23.perf.reset_perf(c2py_vnorm.vnorm)
         ms, tp = run("c2py23 checks only", c2py_vnorm.vnorm)
         add("c2py23 checks only", "getbuffer", "yes", "  off", ms, tp)
+
+        # Per-backend acquisition
+        ms, tp = run("  ndarray", c2py_vnorm_ndarray.vnorm)
+        add("  ndarray", "ndarray ", "yes", "  off", ms, tp)
+        ms, tp = run("  buffer", c2py_vnorm_buffer.vnorm)
+        add("  buffer", "buffer  ", "yes", "  off", ms, tp)
+        try:
+            ms, tp = run("  dlpack", c2py_vnorm_dlpack.vnorm)
+            add("  dlpack", "dlpack  ", "yes", "  off", ms, tp)
+        except Exception:
+            add("  dlpack", "dlpack  ", "yes", "  off", 0, 0)
 
         c2py_vnorm._c2py_set_tick_source("clock")
         c2py23.perf.set_enabled(c2py_vnorm.vnorm, 1)
