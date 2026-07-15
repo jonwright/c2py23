@@ -538,8 +538,9 @@ typedef struct {
 
 typedef struct {
     Py_buffer buf;          /* opaque Py_buffer, valid when kind == PEP3118 */
-    char _buf_pad[1024];    /* extra space: PyPy's Py_buffer is ~660 bytes,
-                               but we compiled with CPython's sizeof(~80) */
+    char _buf_pad[1200];    /* extra space: PyPy's Py_buffer is up to 1112 bytes
+                               (PyBUF_MAX_NDIM=64 with inline arrays), but we
+                               compiled with CPython's sizeof(~80) */
     int kind;               /* C2PY_PIN_* tag */
     void *ctx;              /* back-end context (DLManagedTensor* for DLPack) */
     char format_buf[8];     /* stack-local format string storage (non-PEP3118) */

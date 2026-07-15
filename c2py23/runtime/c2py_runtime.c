@@ -163,8 +163,6 @@ static void *_resolve_raw(const char *name)
 static PyObject*
 _init_module_2_7(const char *name, PyMethodDef *methods)
 {
-    void *dl = C2PY.dl_handle;
-
     /* Try Py_InitModule4 first (Python 2.7 preferred) */
     typedef PyObject* (*init4_fn)(const char*, PyMethodDef*, const char*,
                                    PyObject*, int);
@@ -176,7 +174,7 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 
     /* Fallback: Py_InitModule3 */
     typedef PyObject* (*init3_fn)(const char*, PyMethodDef*, const char*);
-    init3_fn fn3 = (init3_fn)C2PY_RESOLVE(dl, "Py_InitModule3");
+    init3_fn fn3 = (init3_fn)_resolve_raw("Py_InitModule3");
     if (fn3 != NULL) {
         return fn3(name, methods, NULL);
     }
