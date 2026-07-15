@@ -275,9 +275,8 @@ typedef struct {
     void (*Err_Clear)(void);
     int buffer_api_is_pep3118;  /* 0 = old API only, 1 = PEP 3118 available */
 
-    /* Argument parsing */
+    /* Argument parsing (positional-only, no keyword support) */
     int (*ParseTuple)(PyObject*, const char*, ...);
-    int (*ParseTupleAndKeywords)(PyObject*, PyObject*, const char*, char**, ...);
 
     /* Value construction */
     PyObject* (*Long_FromLong)(long);
@@ -289,9 +288,8 @@ typedef struct {
     PyObject* (*Tuple_New)(Py_ssize_t);
     int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
 
-    /* String construction */
-    PyObject* (*Unicode_FromString)(const char*);   /* Python 3.x str */
-    PyObject* (*String_FromString)(const char*);    /* Python 2.7 str */
+    /* String construction (ASCII bytes only, no unicode/encodings) */
+    PyObject* (*Bytes_FromStringAndSize)(const char*, Py_ssize_t);
 
     /* Scalar conversion from objects */
     long (*Long_AsLong)(PyObject*);
@@ -356,13 +354,9 @@ extern c2py_api_t C2PY;
  * MSVC 2022+ (conformant preprocessor) behaves like GCC and also needs ##. */
 #ifdef _MSC_VER
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
-#define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #else
 #define PyArg_ParseTuple(a, f, ...)    C2PY.ParseTuple((PyObject*)(a), (f), ##__VA_ARGS__)
-#define PyArg_ParseTupleAndKeywords(a, k, f, kw, ...) \
-    C2PY.ParseTupleAndKeywords((PyObject*)(a), (PyObject*)(k), (f), (char**)(kw), ##__VA_ARGS__)
 #define PyErr_Format(e, f, ...)        C2PY.Err_Format((PyObject*)(e), (f), ##__VA_ARGS__)
 #endif
 
@@ -370,6 +364,7 @@ extern c2py_api_t C2PY;
 #define PyLong_FromLongLong(v)         C2PY.Long_FromLongLong(v)
 #define PyLong_FromUnsignedLongLong(v) C2PY.Long_FromUnsignedLongLong(v)
 #define PyFloat_FromDouble(v)          C2PY.Float_FromDouble(v)
+#define PyBytes_FromStringAndSize(s, n) C2PY.Bytes_FromStringAndSize((s), (n))
 #define PyLong_AsLong(o)               C2PY.Long_AsLong((PyObject*)(o))
 #define PyLong_AsLongLong(o)           C2PY.Long_AsLongLong((PyObject*)(o))
 #define PyFloat_AsDouble(o)            C2PY.Float_AsDouble((PyObject*)(o))

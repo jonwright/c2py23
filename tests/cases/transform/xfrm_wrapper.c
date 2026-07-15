@@ -95,13 +95,12 @@ _c2py_perf_read(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-/* Return (variant, group_idx, variant_name) metadata tuple. */
+/* Return (variant, group_idx, variant_name=None) metadata tuple. */
 static PyObject*
 _c2py_perf_meta(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
     c2py_perf_t *p;
     PyObject *tuple;
-    const char *vn;
     (void)self;
     if (!PyArg_ParseTuple(args, "K", &ptr_val))
         return NULL;
@@ -116,13 +115,11 @@ _c2py_perf_meta(PyObject *self, PyObject *args) {
         PyTuple_SetItem(tuple, 0, PyLong_FromLong((long)_v));
         PyTuple_SetItem(tuple, 1, PyLong_FromLong((long)_gi));
     }
-    vn = p->variant_name;
-    if (!vn) vn = "";
-    if (C2PY.version_major >= 3) {
-        PyTuple_SetItem(tuple, 2, C2PY.Unicode_FromString(vn));
-    } else {
-        PyTuple_SetItem(tuple, 2, C2PY.String_FromString(vn));
-    }
+    /* variant_name is diagnostic-only; return None to avoid
+     * Python string/unicode API.  Callers can use _variants_<name>()
+     * to map variant indices to names (returned as bytes). */
+    Py_INCREF(C2PY.none_obj);
+    PyTuple_SetItem(tuple, 2, C2PY.none_obj);
     return tuple;
 }
 

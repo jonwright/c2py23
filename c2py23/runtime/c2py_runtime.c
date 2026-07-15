@@ -711,9 +711,8 @@ static void _c2py_runtime_init_once(void)
     /* --- Fastcall support (METH_FASTCALL stable ABI since 3.12) --- */
     C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
 
-    /* --- Argument parsing (required) --- */
+    /* --- Argument parsing (positional-only, required) --- */
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
-    RESOLVE(C2PY.ParseTupleAndKeywords, "PyArg_ParseTupleAndKeywords");
     if (C2PY.ParseTuple == NULL) return;
 
     /* --- Error detection for fastcall scalar conversion --- */
@@ -764,9 +763,8 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
     if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL) return;
 
-    /* --- String construction (optional, needed for _variants_*) --- */
-    RESOLVE(C2PY.Unicode_FromString, "PyUnicode_FromString");
-    RESOLVE(C2PY.String_FromString, "PyString_FromString");
+    /* --- ASCII bytes construction (for variant names, diagnostics) --- */
+    RESOLVE(C2PY.Bytes_FromStringAndSize, "PyBytes_FromStringAndSize");
 
     /* --- Scalar conversion --- */
     RESOLVE_REQ(C2PY.Long_AsLong, "PyLong_AsLong");

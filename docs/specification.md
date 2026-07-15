@@ -14,13 +14,21 @@ categories of bugs -- leaks, use-after-free, ownership confusion -- while keepin
 the C code trivially simple.
 
 The project defines a strict subset language: Python on one side (memory
-blocks with metadata -- acquired via NumPy struct-cast, DLPack, or the
+blocks with metadata — acquired via NumPy struct-cast, DLPack, or the
 PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
 The interface is described declaratively in YAML. The code generator
 transpiles this into a CPython C extension that acquires pointers to the
 underlying memory, then dispatches to the right C function based on buffer
 properties: element type, dimensionality, and layout. The wrapper itself is
 zero-copy and allocation-free.
+
+c2py23 targets the narrow intersection of C99, Python 2.7, and Python 3.x
+that avoids the Unicode/bytes schism entirely: parameters are parsed as
+flat pointers (buffers) or numbers (int, float). Error messages and
+attribute names are C string literals. Variant names use ASCII bytes.
+There are no keyword arguments, no Python strings, no Unicode objects,
+and no string encodings anywhere in the wrapper ABI or the generated C code.
+This design eliminates an entire category of Python 2/3 portability bugs.
 
 The long-term goal is a substrate for:
 - SIMD dispatch within C functions, potentially at the wrapper level
