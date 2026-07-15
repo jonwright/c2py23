@@ -18,6 +18,18 @@
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+/* Symbol resolution helper — dlsym on Unix, GetProcAddress on Windows */
+#ifdef _WIN32
+#define C2PY_RESOLVE(handle, name) GetProcAddress((HMODULE)(handle), (name))
+#else
+#define C2PY_RESOLVE(handle, name) dlsym((handle), (name))
+#endif
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -321,6 +333,7 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
     PyObject* (*GetAttrString)(PyObject*, const char*);
+    PyObject* (*Module_GetDict)(PyObject*);    /* for perf attr registration */
 
     /* General call support (optional, used by DLPack) */
     PyObject* (*CallObject)(PyObject*, PyObject*);
@@ -379,6 +392,23 @@ extern c2py_api_t C2PY;
 #define Py_DECREF(o)                   C2PY.DecRef((PyObject*)(o))
 #define PyObject_SetAttrString(o, n, v) C2PY.SetAttrString((PyObject*)(o), (n), (PyObject*)(v))
 #define PyObject_GetAttrString(o, n)   C2PY.GetAttrString((PyObject*)(o), (n))
+#define PyModule_GetDict(m)            C2PY.Module_GetDict((PyObject*)(m))
+
+/* Set a module attribute.  PyObject_SetAttrString silently fails
+ * on PyPy 2.7 cpyext modules; on version_major < 3 (Python 2.7),
+ * fall back to PyDict_SetItemString via the module's __dict__. */
+#define c2py_set_module_attr(m, name, val) do { \
+    PyObject *_d = C2PY.Module_GetDict((PyObject*)(m)); \
+    if (_d) { \
+        typedef int (*_ds_fn)(PyObject*, const char*, PyObject*); \
+        void *_p = C2PY_RESOLVE(C2PY.dl_handle, "PyPyDict_SetItemString"); \
+        if (!_p) _p = C2PY_RESOLVE(C2PY.dl_handle, "PyDict_SetItemString"); \
+        _ds_fn _ds = (_ds_fn)(uintptr_t)_p; \
+        if (_ds) _ds(_d, (name), (PyObject*)(val)); \
+    } else { \
+        C2PY.SetAttrString((PyObject*)(m), (name), (PyObject*)(val)); \
+    } \
+} while(0)
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))

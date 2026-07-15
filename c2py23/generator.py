@@ -1663,36 +1663,36 @@ def _emit_constants(b, mod):
         return
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
-            b.emit('        PyObject_SetAttrString(module, "{}",'.format(_escape_c_str(cname)))
+            b.emit('        c2py_set_module_attr(module, "{}",'.format(_escape_c_str(cname)))
             b.emit("            PyLong_FromLong({}));".format(cvalue))
     if mod.timing:
-        b.emit('        PyObject_SetAttrString(module, "_c2py_cycle_counter_frequency",')
+        b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
         b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")
         for func in mod.functions:
-            b.emit('        PyObject_SetAttrString(module, "_c2py_perf_ptr_{0}",'.format(func.name))
+            b.emit('        c2py_set_module_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
             b.emit("            PyLong_FromVoidPtr(&_perf_{0}));".format(func.name))
             for ol in func.overloads:
                 if ol.variants:
-                    b.emit('        PyObject_SetAttrString(module, "_c2py_active_ptr_{0}",'.format(func.name))
+                    b.emit('        c2py_set_module_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
                     b.emit("            PyLong_FromVoidPtr((void*)&_active_perf_{0}));".format(func.name))
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split("(")[0].strip().split()[-1]
                         perf_name = "_perf_{0}__{1}".format(func.name, c_name)
                         b.emit(
-                            '        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
+                            '        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
                         )
                         b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split("(")[0].strip().split()[-1]
                     perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                    b.emit('        PyObject_SetAttrString(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                    b.emit('        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
                     b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
     if has_gil:
-        b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_enabled",')
+        b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_enabled",')
         b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));")
         for func in mod.functions:
             if func.gil_release:
-                b.emit('        PyObject_SetAttrString(module, "_c2py_gil_release_{0}",'.format(func.name))
+                b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
                 b.emit("            PyLong_FromVoidPtr(&_gil_release_{0}));".format(func.name))
 
 

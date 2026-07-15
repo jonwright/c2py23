@@ -878,6 +878,7 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.SetAttrString == NULL) return;
     RESOLVE_REQ(C2PY.GetAttrString, "PyObject_GetAttrString");
     if (C2PY.GetAttrString == NULL) return;
+    RESOLVE(C2PY.Module_GetDict, "PyModule_GetDict");
 
     /* --- DLPack capsule API (optional) --- */
     C2PY.CallObject = (PyObject*(*)(PyObject*, PyObject*))
