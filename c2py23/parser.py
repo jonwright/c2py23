@@ -1649,6 +1649,24 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
                 return "strcmp({}, {}) != 0".format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for strings".format(op))
+        # Both sides are format attributes: compare the last character
+        # of each format string (handles endian prefixes like "<d", "=d").
+        # Pointer comparison is wrong -- PyPy cpyext may allocate distinct
+        # format strings with identical content.
+        elif (
+            isinstance(expr.left, Attr)
+            and expr.left.attr == "format"
+            and isinstance(expr.right, Attr)
+            and expr.right.attr == "format"
+        ):
+            if op == "==":
+                return "((!{0} && !{1}) || ({0} && {1} && " "{0}[strlen({0}) - 1] == {1}[strlen({1}) - 1]))".format(
+                    left, right
+                )
+            elif op == "!=":
+                return "({0} && {1} && " "{0}[strlen({0}) - 1] != {1}[strlen({1}) - 1])".format(left, right)
+            else:
+                raise ValueError("Unsupported comparison op '{}' for format attributes".format(op))
         else:
             return "({}) {} ({})".format(left, op, right)
 
