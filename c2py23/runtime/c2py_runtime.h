@@ -1022,8 +1022,10 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     for (i = 0; i < n_src; i++) {
         switch (src_order[i]) {
         case C2PY_PIN_NDARRAY:
-            if (c2py_pin_ndarray(obj, pin, info, want_writable) == 0)
-                return 0;
+            if (!C2PY.is_pypy) {
+                if (c2py_pin_ndarray(obj, pin, info, want_writable) == 0)
+                    return 0;
+            }
             break;
         case C2PY_PIN_DLPACK:
             if (c2py_pin_dlpack(obj, pin, info, want_writable) == 0)
@@ -1037,6 +1039,8 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             break;
         }
     }
+    PyErr_SetString(PyExc_TypeError,
+                    "buffer acquisition failed (all backends exhausted)");
     return -1;
 }
 
