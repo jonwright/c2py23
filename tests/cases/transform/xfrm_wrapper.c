@@ -312,9 +312,9 @@ _transform_wrapper(PyObject *self, PyObject *args)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_buf_pin pin_points;
     c2py_ptr_info info_points;
-    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_buf_pin pin_out;
     c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
@@ -324,6 +324,8 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "OO", &py_points, &py_out))
         return NULL;
 
+    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
+    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
 
     if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
@@ -331,14 +333,14 @@ _transform_wrapper(PyObject *self, PyObject *args)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: out vs points */
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
@@ -362,9 +364,9 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     PyObject *py_points = NULL;
     PyObject *py_out = NULL;
-    c2py_buf_pin pin_points = {{0}, 0};
+    c2py_buf_pin pin_points;
     c2py_ptr_info info_points;
-    c2py_buf_pin pin_out = {{0}, 0};
+    c2py_buf_pin pin_out;
     c2py_ptr_info info_out;
     PyObject *ret = NULL;
     int _c2py_do_time = _c2py_timing_enabled;
@@ -380,6 +382,8 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     py_points = args[0];
     py_out = args[1];
 
+    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
+    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
 
     if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
@@ -387,14 +391,14 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         goto cleanup;
 
-    /* restrict check: out vs points */
-    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
-        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
+    /* restrict check: points vs out */
+    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
+        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }
-    if ((char*)info_points.ptr >= (char*)info_out.ptr && 
-        (char*)info_points.ptr < (char*)info_out.ptr + info_out.len) {
+    if ((char*)info_out.ptr >= (char*)info_points.ptr && 
+        (char*)info_out.ptr < (char*)info_points.ptr + info_points.len) {
         PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
         goto cleanup;
     }

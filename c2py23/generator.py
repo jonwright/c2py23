@@ -74,11 +74,12 @@ class CBuilder:
     def declare_buffer(self, name):
         self._buf_names.append(name)
         base = name.replace("info_", "", 1)
-        self.emit("    c2py_buf_pin pin_{0} = {{{{0}}, 0}};".format(base))
+        self.emit("    c2py_buf_pin pin_{0};".format(base))
         self.emit("    c2py_ptr_info info_{0};".format(base))
 
     def emit_buf_memset(self, buf_var):
-        pass  # pin struct is zero-initialized at declaration
+        base = buf_var.replace("info_", "", 1)
+        self.emit("    memset(&pin_{0}.buf, 0, C2PY.pybuffer_size);".format(base))
 
     def acquire_buffer(self, buf_var, py_var, flags, func_name):
         """Emits c2py_pin with correct failure path.
@@ -1374,7 +1375,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
 
-    # Buffers are zero-initialized at declaration (c2py_buf_pin = {{0}})
+    # Zero-initialize buffer pins (size varies by runtime: CPython 80/96, PyPy ~660)
+    for p in buf_params:
+        b.emit_buf_memset("info_" + p.name)
     b.emit("")
 
     # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)

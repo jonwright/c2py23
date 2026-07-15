@@ -251,6 +251,7 @@ typedef struct {
 
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
+    int is_pypy;                    /* 1 = running on PyPy (cpyext, PyPy_* symbols) */
     Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
     Py_ssize_t pyobject_size;      /* actual sizeof(PyObject) for this Python version */
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject) for free-threaded builds (32 LP64) */
@@ -534,10 +535,12 @@ typedef struct {
 #define C2PY_PIN_DLPACK   3   /* DLPack; pin->ctx is the DLManagedTensor* */
 
 typedef struct {
-    Py_buffer buf;         /* opaque Py_buffer, valid when kind == PEP3118 */
-    int kind;              /* C2PY_PIN_* tag */
-    void *ctx;             /* back-end context (DLManagedTensor* for DLPack) */
-    char format_buf[8];    /* stack-local format string storage (non-PEP3118) */
+    Py_buffer buf;          /* opaque Py_buffer, valid when kind == PEP3118 */
+    char _buf_pad[1024];    /* extra space: PyPy's Py_buffer is ~660 bytes,
+                               but we compiled with CPython's sizeof(~80) */
+    int kind;               /* C2PY_PIN_* tag */
+    void *ctx;              /* back-end context (DLManagedTensor* for DLPack) */
+    char format_buf[8];     /* stack-local format string storage (non-PEP3118) */
     Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
 
@@ -703,9 +706,9 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem, i;
     char type_char;
 
-    /* Free-threaded Python: type-object layout differs; skip the
-     * fast path and fall through to buffer protocol. */
-    if (C2PY.is_free_threaded)
+    /* Free-threaded Python and PyPy: type-object layout differs from
+     * standard GIL CPython.  Skip the fast path and fall through. */
+    if (C2PY.is_free_threaded || C2PY.is_pypy)
         return -1;
 
     tp = *(void**)((char*)obj + C2PY.ob_refcnt_offset + sizeof(Py_ssize_t));
