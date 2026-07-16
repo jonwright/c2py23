@@ -101,8 +101,18 @@ c2py23 build --target pypy path/to/module.c2py
 
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
-EMSCRIPTEN_PYTHON_INCLUDE=/path/to/pyodide/cpython/installs/python-X.Y.Z/include \
 c2py23 build --target wasm path/to/module.c2py
+```
+
+Run the full WASM test suite (80 tests):
+```bash
+# One-time setup:
+sudo apt install nodejs npm emscripten
+cd brainstorm/tests && npm install
+pip install -e .
+
+# Build + test:
+bash tests/test_all_wasm.sh
 ```
 
 Install c2py23 in development mode:

@@ -586,17 +586,13 @@ async function main() {
         'invariant_checker.py', 'c2py_loader.py'];
     py.FS.mkdirTree('/lib/python3.14/site-packages/c2py23');
     for (const f of libFiles) {
-        try {
-            py.FS.writeFile('/lib/python3.14/site-packages/c2py23/' + f,
-                fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'c2py23', f), 'utf8'));
-        } catch(e) {}
+        py.FS.writeFile('/lib/python3.14/site-packages/c2py23/' + f,
+            fs.readFileSync(require('path').resolve(__dirname, '..', 'c2py23', f), 'utf8'));
     }
     py.FS.mkdirTree('/lib/python3.14/site-packages/c2py23/runtime');
     for (const f of ['c2py_runtime.h', 'c2py_runtime.c']) {
-        try {
-            py.FS.writeFile('/lib/python3.14/site-packages/c2py23/runtime/' + f,
-                fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'c2py23', 'runtime', f), 'utf8'));
-        } catch(e) {}
+        py.FS.writeFile('/lib/python3.14/site-packages/c2py23/runtime/' + f,
+            fs.readFileSync(require('path').resolve(__dirname, '..', 'c2py23', 'runtime', f), 'utf8'));
     }
 
     console.log('Loading extra test modules...');
@@ -656,7 +652,7 @@ wasm_extra_tests.run()
     // ---- Regression tests from test_regression_fixes.py ----
     console.log('Running regression tests...');
     // Copy .c2py test files to Pyodide FS
-    const casesDir = require('path').resolve(__dirname, '..', '..', 'tests', 'cases');
+    const casesDir = require('path').resolve(__dirname, 'cases');
     const caseFiles = require('fs').readdirSync(casesDir, {recursive: true}).filter(f => f.endsWith('.c2py') || f.endsWith('.c2py.py'));
     for (const rel of caseFiles) {
         const content = require('fs').readFileSync(require('path').join(casesDir, rel), 'utf8');
@@ -667,34 +663,34 @@ wasm_extra_tests.run()
     }
     
     let regPyContent;
-    try {
-        regPyContent = fs.readFileSync(
-            require('path').resolve(__dirname, '..', '..', 'tests', 'test_regression_fixes.py'), 'utf8');
-    } catch(e) {
-        regPyContent = fs.readFileSync(
-            require('path').resolve(__dirname, '..', '..', '..', 'tests', 'test_regression_fixes.py'), 'utf8');
-    }
-    // Remove the if __name__ runner and add our own
+    regPyContent = fs.readFileSync(
+        require('path').resolve(__dirname, 'test_regression_fixes.py'), 'utf8');
+    // Remove the if __name__ runner and add our own that stores counts in globals()
     regPyContent = regPyContent.replace(/if __name__ == "__main__":[\s\S]*$/, '');
-    regPyContent += '\n_reg_results = []\nfor _n in sorted(globals()):\n    if _n.startswith("test_"):\n        try:\n            globals()[_n]()\n            _reg_results.append(("PASS", _n))\n        except Exception as _e:\n            _reg_results.append(("FAIL", _n + ": " + str(_e)))\n_reg_pass = sum(1 for r,_ in _reg_results if r=="PASS")\n_reg_total = len(_reg_results)\nprint("Regression: %d/%d passed" % (_reg_pass, _reg_total))\n';
+    regPyContent += '\n_reg_results = []\nfor _n in sorted(globals()):\n    if _n.startswith("test_"):\n        try:\n            globals()[_n]()\n            _reg_results.append(("PASS", _n))\n        except Exception as _e:\n            _reg_results.append(("FAIL", _n + ": " + str(_e)))\nglobals()["_reg_pass"] = sum(1 for r,_ in _reg_results if r=="PASS")\nglobals()["_reg_total"] = len(_reg_results)\n';
     py.FS.writeFile('/tmp/test_regression_fixes.py', regPyContent);
     try {
+        // Use exec with __file__ set, store results in the main globals
         await py.runPythonAsync(`
 import sys, os
 os.chdir('/tmp')
 sys.path.insert(0, '/lib/python3.14/site-packages')
 sys.path.insert(0, '/tmp')
-__file__ = '/tmp/test_regression_fixes.py'
-exec(open('/tmp/test_regression_fixes.py').read())
+_g = globals()
+_g["__file__"] = "/tmp/test_regression_fixes.py"
+exec(compile(open("/tmp/test_regression_fixes.py").read(), "/tmp/test_regression_fixes.py", "exec"), _g)
 `);
-        const passCount = Number(py.runPython('_reg_pass'));
-        const totalCount = Number(py.runPython('_reg_total'));
+        const passCount = Number(py.runPython('globals().get("_reg_pass", 0)'));
+        const totalCount = Number(py.runPython('globals().get("_reg_total", 0)'));
         results.passed += passCount;
         results.failed += totalCount - passCount;
         results.tests['regression_tests'] = 'PASS: ' + passCount + '/' + totalCount;
     } catch (e) {
-        console.log('  regression FAIL: ' + (e.message || '').split('\\n')[0]);
-        results.tests['regression_tests'] = 'FAIL';
+        const errLines = (e.message || String(e)).split('\n');
+        const shortErr = errLines.filter(l => l.includes('Error:') || l.includes('File')).join('; ').substring(0, 200);
+        console.log('  regression FAIL: ' + (shortErr || errLines[0] || 'unknown error'));
+        results.failed += 1;
+        results.tests['regression_tests'] = 'FAIL: ' + shortErr;
     }
 
     console.log('\n=== Results ===');
