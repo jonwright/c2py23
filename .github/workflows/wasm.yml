@@ -1,0 +1,32 @@
+name: WASM CI (Pyodide)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test-wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends emscripten
+
+      - name: Install c2py23
+        run: pip install -e . --quiet
+
+      - name: Install Pyodide npm package
+        working-directory: brainstorm/tests
+        run: npm install --no-audit --no-fund
+
+      - name: Build and test WASM
+        run: bash tests/test_all_wasm.sh
