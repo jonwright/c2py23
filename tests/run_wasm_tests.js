@@ -532,9 +532,10 @@ assert abs(r2 - 32.0) < 0.001, str(r2)
 async function main() {
     console.log('Loading Pyodide...');
     py = await loadPyodide();
-    console.log('Loading numpy...');
+    console.log('Loading numpy + pyyaml...');
     await py.loadPackage('numpy');
-    await py.runPythonAsync('import numpy; print("numpy", numpy.__version__)');
+    await py.loadPackage('pyyaml');
+    await py.runPythonAsync('import numpy, yaml; print("numpy", numpy.__version__, "pyyaml OK")');
     console.log('');
 
     const tests = [
@@ -581,10 +582,10 @@ async function main() {
     // ---- Extra Python-based tests (error paths, lifecycle, ndarray backends, regression) ----
     console.log('\nInstalling c2py23 in Pyodide...');
     // Copy c2py23 source into Pyodide's Python path
-    const c2pyFiles = ['__init__.py', 'parser.py', 'generator.py', 'cli.py', 'perf.py',
+    const libFiles = ['__init__.py', 'parser.py', 'generator.py', 'cli.py', 'perf.py',
         'invariant_checker.py', 'c2py_loader.py'];
     py.FS.mkdirTree('/lib/python3.14/site-packages/c2py23');
-    for (const f of c2pyFiles) {
+    for (const f of libFiles) {
         try {
             py.FS.writeFile('/lib/python3.14/site-packages/c2py23/' + f,
                 fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'c2py23', f), 'utf8'));
@@ -639,27 +640,32 @@ async function main() {
 import sys
 sys.path.insert(0, '/tmp')
 import wasm_extra_tests
-ok = wasm_extra_tests.run()
-_extra_ok = ok
+wasm_extra_tests.run()
 `);
-        const ok = py.runPython('_extra_ok');
-        if (ok) {
-            results.passed += 22;
-            results.tests['extra_python_tests'] = 'PASS: 22/22';
-        } else {
-            const failedCount = py.runPython('wasm_extra_tests._results["failed"]');
-            results.passed += 22 - Number(failedCount);
-            results.failed += Number(failedCount);
-            results.tests['extra_python_tests'] = 'PASS: ' + (22 - Number(failedCount)) + '/22';
-        }
+        const extraPassed = Number(py.runPython('wasm_extra_tests._results["passed"]'));
+        const extraFailed = Number(py.runPython('wasm_extra_tests._results["failed"]'));
+        const extraTotal = extraPassed + extraFailed;
+        results.passed += extraPassed;
+        results.failed += extraFailed;
+        results.tests['extra_python_tests'] = 'PASS: ' + extraPassed + '/' + extraTotal;
     } catch (e) {
         console.log('  extra tests FAIL: ' + (e.message || '').split('\\n')[0]);
-        results.failed += 22;
         results.tests['extra_python_tests'] = 'FAIL';
     }
 
     // ---- Regression tests from test_regression_fixes.py ----
     console.log('Running regression tests...');
+    // Copy .c2py test files to Pyodide FS
+    const casesDir = require('path').resolve(__dirname, '..', '..', 'tests', 'cases');
+    const caseFiles = require('fs').readdirSync(casesDir, {recursive: true}).filter(f => f.endsWith('.c2py') || f.endsWith('.c2py.py'));
+    for (const rel of caseFiles) {
+        const content = require('fs').readFileSync(require('path').join(casesDir, rel), 'utf8');
+        const dest = '/tmp/cases/' + rel;
+        const destDir = require('path').dirname(dest);
+        try { py.FS.mkdirTree(destDir); } catch(e) {}
+        py.FS.writeFile(dest, content);
+    }
+    
     let regPyContent;
     try {
         regPyContent = fs.readFileSync(
@@ -668,17 +674,9 @@ _extra_ok = ok
         regPyContent = fs.readFileSync(
             require('path').resolve(__dirname, '..', '..', '..', 'tests', 'test_regression_fixes.py'), 'utf8');
     }
-    // Remove tests that need filesystem/YAML (not available in Pyodide)
-    regPyContent = regPyContent
-        .replace(/def test_docstring_verification[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
-        .replace(/def test_yaml_dict_equivalence[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
-        .replace(/def test_H_template_expand_non_string[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
-        .replace(/def test_array_dims_dedup_with_user_checks[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
-        .replace(/def test_array_dims_variant_sigs[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
-        .replace(/def test_float_default_args[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '');
     // Remove the if __name__ runner and add our own
     regPyContent = regPyContent.replace(/if __name__ == "__main__":[\s\S]*$/, '');
-    regPyContent += '\n_results_reg = []\nfor _n in sorted(globals()):\n    if _n.startswith("test_"):\n        try:\n            globals()[_n]()\n            _results_reg.append(("PASS", _n))\n        except Exception as _e:\n            _results_reg.append(("FAIL", _n + ": " + str(_e)))\n_pass = sum(1 for r,_ in _results_reg if r=="PASS")\n_total = len(_results_reg)\nprint("Regression: %d/%d passed" % (_pass, _total))\n';
+    regPyContent += '\n_reg_results = []\nfor _n in sorted(globals()):\n    if _n.startswith("test_"):\n        try:\n            globals()[_n]()\n            _reg_results.append(("PASS", _n))\n        except Exception as _e:\n            _reg_results.append(("FAIL", _n + ": " + str(_e)))\n_reg_pass = sum(1 for r,_ in _reg_results if r=="PASS")\n_reg_total = len(_reg_results)\nprint("Regression: %d/%d passed" % (_reg_pass, _reg_total))\n';
     py.FS.writeFile('/tmp/test_regression_fixes.py', regPyContent);
     try {
         await py.runPythonAsync(`
@@ -689,11 +687,13 @@ sys.path.insert(0, '/tmp')
 __file__ = '/tmp/test_regression_fixes.py'
 exec(open('/tmp/test_regression_fixes.py').read())
 `);
-        results.passed += 25;
-        results.tests['regression_tests'] = 'PASS: 25/25';
+        const passCount = Number(py.runPython('_reg_pass'));
+        const totalCount = Number(py.runPython('_reg_total'));
+        results.passed += passCount;
+        results.failed += totalCount - passCount;
+        results.tests['regression_tests'] = 'PASS: ' + passCount + '/' + totalCount;
     } catch (e) {
         console.log('  regression FAIL: ' + (e.message || '').split('\\n')[0]);
-        results.failed += 25;
         results.tests['regression_tests'] = 'FAIL';
     }
 

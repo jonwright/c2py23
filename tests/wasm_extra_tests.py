@@ -55,8 +55,6 @@ def _run_test(name, fn):
         fn()
     except Exception:
         _fail(name, traceback.format_exc().splitlines()[-1])
-    else:
-        _pass(name)
 
 
 # ============================================================
