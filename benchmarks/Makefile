@@ -175,4 +175,48 @@ results:
 .PHONY: all clean bench bench-noargs bench-vnorm results \
         gold_noargs gold_vnorm gold_numpy_vnorm \
         c2py_noargs c2py_vnorm c2py_vnorm_bare \
-        c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack
+        c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack \
+        c2py_noargs_ph c2py_vnorm_ph c2py_vnorm_bare_ph \
+        c2py_getitem_ph c2py_vnorm_ndarray_ph c2py_vnorm_buffer_ph c2py_vnorm_dlpack_ph
+
+# ---- Pythonh cross-platform benchmarks (PyPy, GraalPy) ----
+# Build pythonh noargs for PyPy and GraalPy, then time noargs().
+# Uses the same benchmark code as CPython but runs under the
+# target interpreter.
+
+PYPY ?= pypy3.9
+GRAALPY ?= ../docs/graalpy-install/bin/graalpy || $(shell which graalpy)
+
+bench-ph-pypy: c2py_noargs_ph
+	$(PYPY) -m c2py23.cli build --pythonh $(SRCDIR)/c2py_noargs.c2py
+	mv $(SRCDIR)/c2py_noargs.*.so $(BUILDDIR_PH)/noargs_pypy_ph.so
+	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
+	$(PYPY) -c '\
+import sys,time; sys.path.insert(0,"$(BUILDDIR_PH)");\
+import importlib.machinery as m,importlib.util as u;\
+l=m.ExtensionFileLoader("c2py_noargs","$(BUILDDIR_PH)/noargs_pypy_ph.so");\
+s=u.spec_from_file_location("c2py_noargs","$(BUILDDIR_PH)/noargs_pypy_ph.so",loader=l);\
+mod=u.module_from_spec(s); l.exec_module(mod);\
+for _ in range(1000): mod.noargs();\
+N=2000000; t0=time.perf_counter_ns();\
+for _ in range(N): mod.noargs();\
+ns=(time.perf_counter_ns()-t0)/N;\
+print("pythonh noargs: %6.1f ns/call" % ns)'
+
+bench-ph-graalpy: c2py_noargs_ph
+	$(GRAALPY) -m c2py23.cli build --pythonh $(SRCDIR)/c2py_noargs.c2py
+	mv $(SRCDIR)/c2py_noargs.*.so $(BUILDDIR_PH)/noargs_graalpy_ph.so
+	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
+	$(GRAALPY) -c '\
+import sys,time; sys.path.insert(0,"$(BUILDDIR_PH)");\
+import importlib.machinery as m,importlib.util as u;\
+l=m.ExtensionFileLoader("c2py_noargs","$(BUILDDIR_PH)/noargs_graalpy_ph.so");\
+s=u.spec_from_file_location("c2py_noargs","$(BUILDDIR_PH)/noargs_graalpy_ph.so",loader=l);\
+mod=u.module_from_spec(s); l.exec_module(mod);\
+for _ in range(1000): mod.noargs();\
+N=100000; t0=time.perf_counter_ns();\
+for _ in range(N): mod.noargs();\
+ns=(time.perf_counter_ns()-t0)/N;\
+print("pythonh noargs: %6.1f ns/call" % ns)'
+
+bench-ph-cross: bench-ph-pypy bench-ph-graalpy

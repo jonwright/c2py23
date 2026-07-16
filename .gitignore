@@ -51,3 +51,4 @@ examples/threading_bench/*.so
 _test_*
 site/
 benchmarks/src/*_wrapper.c
+brainstorm/

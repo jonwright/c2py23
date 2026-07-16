@@ -37,6 +37,32 @@ on wasm32).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
 
 Next: build+test fill or uniform modules inside Pyodide in node.js.
 
+### `--pythonh` mode (direct `#include <Python.h>`, no dlsym)
+
+**Status: implemented, benchmarked, not yet documented.**
+
+`c2py23 build --pythonh file.c2py` produces a standard CPython extension
+that includes `<Python.h>` directly.  No dlsym trick, no cross-version
+portability.  The .so is tied to one Python version.
+
+Works on all three runtimes:
+  CPython 3.12: OK (fastcall)
+  PyPy 3.9:     OK (no fastcall on cpyext)
+  GraalPy 3.12: OK (no fastcall; pythonh is the only viable mode
+                since nimpy segfaults on GraalPy cpyext)
+
+Performance delta (pythonh vs nimpy on noargs, timing off):
+  CPython: ~1 ns faster
+  PyPy:    ~6 ns faster
+  GraalPy: nimpy does not work; pythonh is ~1000 ns (timing on)
+
+**TODO**: major docs refactoring to explain this mode (decision tree,
+tradeoffs, runtime support matrix).  Add a `docs/pythonh.md`.
+
+**Note**: Removed `brainstorm/` from git tracking.  Useful cross-platform
+benchmark scripts moved to `tests/cross_platform/`.  Pyodide npm package
+moved to `tests/wasm/pyodide_pkg/`.
+
 ## Deferred
 
 ### ppc64le CI (was P3)

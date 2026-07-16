@@ -108,7 +108,7 @@ Run the full WASM test suite (80 tests):
 ```bash
 # One-time setup:
 sudo apt install nodejs npm emscripten
-cd brainstorm/tests && npm install
+cd tests/wasm/pyodide_pkg && npm install
 pip install -e .
 
 # Build + test:

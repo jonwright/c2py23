@@ -1,10 +1,10 @@
 #!/bin/bash
-# brainstorm/tests/setup_pyodide.sh -- setup Pyodide for cross-platform benchmarks
+# docs/setup_pyodide.sh -- setup Pyodide for cross-platform benchmarks
 set -e
 echo "=== Setting up Pyodide for benchmark reproduction ==="
 echo ""
 echo "1. System deps: sudo apt install -y emscripten npm"
-echo "2. Node.js deps: npm install pyodide  (done from brainstorm/tests/)"
+echo "2. Node.js deps: npm install pyodide  (done from tests/wasm/pyodide_pkg/)"
 echo "3. Pyodide build: pyodide xbuildenv install 0.27.2"
 echo "4. Emscripten:    pyodide xbuildenv install-emscripten --version 3.1.58"
 echo ""

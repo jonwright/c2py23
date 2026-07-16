@@ -25,7 +25,7 @@ jobs:
         run: pip install -e ".[yaml]" --quiet
 
       - name: Install Pyodide npm package
-        working-directory: brainstorm/tests
+        working-directory: tests/wasm/pyodide_pkg
         run: npm install --no-audit --no-fund
 
       - name: Build and test WASM
