@@ -44,6 +44,7 @@
 c2py_api_t C2PY = {0};
 #endif
 
+#ifndef C2PY_USE_PYTHON_H
 /* Runtime-discovered numpy ndarray layout (zero = not yet probed) */
 c2py_ndarray_layout_t C2PY_NDARRAY = {0};
 static volatile int _c2py_runtime_initialized = 0;
@@ -55,6 +56,7 @@ static pthread_once_t _c2py_init_once = PTHREAD_ONCE_INIT;
 static CRITICAL_SECTION _c2py_init_cs;
 static BOOL _c2py_init_cs_ready = FALSE;
 #endif
+#endif /* !C2PY_USE_PYTHON_H */
 
 /* ---- CPU feature flags (populated by _c2py_probe_cpu_features) ----
  * Always defined (unconditionally) so that a .c2py file can include
@@ -106,6 +108,7 @@ uint64_t c2py_cycle_counter_frequency_hz = 0;
 /* Active tick source frequency in Hz, declared extern in c2py_runtime.h. */
 uint64_t c2py_tick_frequency_hz = 0;
 
+#ifndef C2PY_USE_PYTHON_H
 /* On Windows GetProcAddress returns a function-pointer type;
  * casting it to void* and back is inherent to the nimpy trick. */
 #ifdef _MSC_VER
@@ -477,6 +480,7 @@ static void _c2py_probe_cpu_features(void)
 #endif
     /* If detection failed, c2py_cycle_counter_frequency_hz remains 0. */
 }
+#endif /* !C2PY_USE_PYTHON_H */
 
 
 #ifdef _MSC_VER

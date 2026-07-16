@@ -23,6 +23,19 @@
 #include <Python.h>
 #include <stddef.h>
 
+/* Buffer flags — pythonh aliases for CPython constants */
+#define C2PY_BUF_READ   PyBUF_READ
+#define C2PY_BUF_WRITE  PyBUF_WRITE
+
+/* These inline helpers are defined in the common section below,
+ * but in pythonh mode we provide thin wrappers that call
+ * the real CPython API rather than going through C2PY. */
+#define c2py_acquire_buffer(o,b,w) \
+    PyObject_GetBuffer((PyObject*)(o),(b), \
+        ((w) ? (PyBUF_FORMAT|PyBUF_C_CONTIGUOUS|PyBUF_STRIDES|PyBUF_ND|PyBUF_WRITABLE) \
+              : (PyBUF_FORMAT|PyBUF_C_CONTIGUOUS|PyBUF_STRIDES|PyBUF_ND)))
+#define c2py_release_buffer(b)  PyBuffer_Release(b)
+
 #ifdef _WIN32
 #define C2PY_EXPORT __declspec(dllexport)
 #else

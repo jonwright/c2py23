@@ -173,9 +173,6 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 
     if pythonh:
         cflags.insert(0, "-DC2PY_USE_PYTHON_H")
-        # Nimpy-only code in runtime.c is compiled but not used in pythonh mode.
-        # Suppress unused warnings — the pythonh path uses Python.h directly.
-        cflags.extend(["-Wno-unused-function", "-Wno-unused-variable"])
 
     if asan:
         if is_msvc:
