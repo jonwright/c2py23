@@ -388,6 +388,13 @@ The human uses a classic `repo`-scoped token for admin tasks.
     change.  Full-file rewrites destroy history, introduce drift, and
     make diffs unreviewable.  This applies especially to PLAN.md and
     AGENTS.md.
+14. **Never embed timing/benchmark results in source code.** Timing numbers
+    are measurements, not code.  They come from running benchmarks at a
+    specific time on specific hardware.  Putting them in Python comments,
+    docstrings, or generated C output is lying — the number will be stale
+    the next time the benchmark runs.  Print timings to stdout during the
+    measurement, report them in the commit message or issue comment, but
+    never bake them into the source tree.
 
 ## Writing Safe .c2py Definitions
 

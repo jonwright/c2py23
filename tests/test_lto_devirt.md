@@ -30,17 +30,38 @@ bash tests/test_lto_devirt.sh
 - The assertion that LTO devirtualizes is a compiler quality
   property, not a c2py23 correctness property.
 
-### Benchmark: exact cost of portability
+### Benchmark: measuring the cost of portability
 
-The dlsym-based nimpy approach adds a small overhead per C2PY
-function pointer call.  Measured with `c2py_noargs.noargs()` (Python
-call with no arguments, returns None) at 2M iterations with `-flto`:
+The dlsym-based nimpy approach adds overhead per C2PY function
+pointer call.  To measure it, build with and without `--pythonh`
+using `-flto -O2`, then compare:
 
-| Variant | ns/call | Notes |
-|---------|---------|-------|
-| Nimpy (dlsym) | 212.3 | One `.so` for Python 2.7–3.15 |
-| Pythonh (LTO) | 207.9 | Tied to one Python version |
-| **Cost of portability** | **4.4 ns (2.1%)** | One extra load through C2PY table |
+```bash
+# Build both variants
+CFLAGS="-flto -O2" LDFLAGS="-flto" \
+  c2py23 build benchmarks/src/c2py_noargs.c2py -o /tmp/nimpy.so
+CFLAGS="-flto -O2" LDFLAGS="-flto" \
+  c2py23 build --pythonh benchmarks/src/c2py_noargs.c2py -o /tmp/py.so
 
-For a typical buffer computation (vnorm, ~1200 ns/call on Pyodide),
-the 4.4 ns is <0.4% of total runtime.
+# Run benchmark (timing numbers go to stdout, not into source)
+python3 -c "
+import sys, time; sys.path.insert(0,'/tmp')
+import importlib.machinery, importlib.util
+for n,p in [('nimpy','/tmp/nimpy.so'),('pythonh','/tmp/py.so')]:
+    sys.modules.pop('c2py_noargs',None)
+    l=importlib.machinery.ExtensionFileLoader('c2py_noargs',p)
+    s=importlib.util.spec_from_file_location('c2py_noargs',p,loader=l)
+    m=importlib.util.module_from_spec(s)
+    sys.modules['c2py_noargs']=m; l.exec_module(m)
+    for _ in range(1000): m.noargs()
+    N=5000000; t0=time.perf_counter_ns()
+    for _ in range(N): m.noargs()
+    ns=(time.perf_counter_ns()-t0)/N
+    print('%s: %.1f ns/call'%(n,ns))
+"
+```
+
+The delta is the cost of portability — one load through the C2PY
+function pointer table per CPython API call.  On a typical buffer
+computation (vnorm, 3-element vectors) this is a fraction of a
+percent of total runtime.

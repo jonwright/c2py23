@@ -46,9 +46,10 @@
 c2py_api_t C2PY = {0};
 #endif
 
-#ifndef C2PY_USE_PYTHON_H
 /* Runtime-discovered numpy ndarray layout (zero = not yet probed) */
 c2py_ndarray_layout_t C2PY_NDARRAY = {0};
+
+#ifndef C2PY_USE_PYTHON_H
 static volatile int _c2py_runtime_initialized = 0;
 static int _c2py_init_result = 0;
 
