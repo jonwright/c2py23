@@ -84,8 +84,10 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
 
 def _pythonh_libs(libs):
     """When --pythonh is set, drop -ldl (not needed) and add -lpythonX.Y if on CPython.
-    PyPy and GraalPy provide cpyext symbols at load time, no -lpython needed."""
+    PyPy and GraalPy provide cpyext symbols at load time, no -lpython needed.
+    Returns (libs, extra_linker_flags)."""
     libs = [l for l in libs if l != "-ldl"]
+    extra_ldflags = []
     if hasattr(sys, "implementation") and sys.implementation.name == "cpython":
         try:
             import sysconfig as _sc
@@ -93,9 +95,14 @@ def _pythonh_libs(libs):
             ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
             if ld_ver:
                 libs.append("-lpython" + ld_ver)
+                # For non-standard libpython locations (uv, static builds),
+                # add -L to the library directory
+                libdir = _sc.get_config_var("LIBDIR")
+                if libdir:
+                    extra_ldflags.append("-L" + libdir)
         except Exception:
             pass
-    return libs
+    return libs, extra_ldflags
 
 
 def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False, target="cpython", pythonh=False):
@@ -192,7 +199,8 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         libs = os.environ.get("LIBS", "-ldl -lm").split()
 
     if pythonh:
-        libs = _pythonh_libs(libs)
+        libs, extra_ld = _pythonh_libs(libs)
+        ldflags.extend(extra_ld)
 
     if is_msvc:
         include_flags = []

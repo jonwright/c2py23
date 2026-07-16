@@ -1126,10 +1126,15 @@ int c2py_runtime_init(void)
     C2PY.pyobject_size_ft   = sizeof(PyObject);
 #if PY_MAJOR_VERSION >= 3
     C2PY.pymoduledef_max_size = sizeof(PyModuleDef);
+#endif
+#if defined(Py_GIL_DISABLED) && Py_GIL_DISABLED
+    /* Free-threaded: PyObject has ob_ref_shared not ob_refcnt */
+    C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_ref_shared);
+    C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
+#elif PY_MAJOR_VERSION >= 3
     C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_refcnt);
     C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
 #else
-    C2PY.pymoduledef_max_size = 0; /* 2.7: not used */
     C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_refcnt);
     C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
 #endif
