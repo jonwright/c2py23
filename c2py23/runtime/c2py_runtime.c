@@ -9,7 +9,9 @@
  * Link:    gcc -shared ... c2py_runtime.o -ldl -o module.so
  */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <assert.h>
 #include <stdio.h>
 
@@ -1021,14 +1023,14 @@ int c2py_runtime_init(void)
     C2PY.buffer_api_is_pep3118 = 1;
     C2PY.ParseTuple    = (int (*)(PyObject*, const char*, ...))PyArg_ParseTuple;
     C2PY.Long_FromLong      = PyLong_FromLong;
-    C2PY.Long_FromLongLong  = PyLong_FromLongLong;
-    C2PY.Long_FromUnsignedLongLong = PyLong_FromUnsignedLongLong;
+    C2PY.Long_FromLongLong  = (PyObject*(*)(long long))PyLong_FromLongLong;
+    C2PY.Long_FromUnsignedLongLong = (PyObject*(*)(unsigned long long))PyLong_FromUnsignedLongLong;
     C2PY.Float_FromDouble   = PyFloat_FromDouble;
     C2PY.Tuple_New          = PyTuple_New;
     C2PY.Tuple_SetItem      = PyTuple_SetItem;
     C2PY.Bytes_FromStringAndSize = PyBytes_FromStringAndSize;
     C2PY.Long_AsLong        = PyLong_AsLong;
-    C2PY.Long_AsLongLong    = PyLong_AsLongLong;
+    C2PY.Long_AsLongLong    = (long long(*)(PyObject*))PyLong_AsLongLong;
     C2PY.Float_AsDouble     = PyFloat_AsDouble;
     C2PY.exc_TypeError      = (void *)PyExc_TypeError;
     C2PY.exc_ValueError     = (void *)PyExc_ValueError;
@@ -1066,6 +1068,8 @@ int c2py_runtime_init(void)
     C2PY.pymoduledef_max_size = sizeof(PyModuleDef);
     C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_refcnt);
     C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
+    c2py_tick_frequency_hz          = 1000000000ULL;
+    c2py_cycle_counter_frequency_hz = 0;
     return 0;
 }
 #else

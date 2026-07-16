@@ -20,6 +20,7 @@
  *  module load.  Generated wrappers are unchanged.
  */
 
+#undef _GNU_SOURCE   /* runtime.c defines it; PyPy/GraalPy Python.h may redefine */
 #include <Python.h>
 #include <stddef.h>
 
@@ -496,7 +497,6 @@ extern c2py_api_t C2PY;
 #define PyErr_SetString(e, m)          C2PY.Err_SetString((PyObject*)(e), (m))
 #define PyErr_Clear()                  C2PY.Err_Clear()
 #define PyErr_Occurred()               C2PY.Err_Occurred()
-#ifndef C2PY_USE_PYTHON_H
 #define Py_RETURN_NONE                 do { \
     if (C2PY.none_immortal) { return C2PY.none_obj; } \
     C2PY.IncRef(C2PY.none_obj); return C2PY.none_obj; \
@@ -535,7 +535,6 @@ extern c2py_api_t C2PY;
 #define PyObject_CallObject(c, a)      C2PY.CallObject((PyObject*)(c), (PyObject*)(a))
 #define PyCapsule_GetPointer(c, n)     C2PY.Capsule_GetPointer((PyObject*)(c), (n))
 #define Py_XDECREF(o)                  do { if (o) C2PY.DecRef((PyObject*)(o)); } while(0)
-#endif /* !C2PY_USE_PYTHON_H */
 
 /* ------------------------------------------------------------------ */
 /* Reference counting fallbacks (for CPython < 3.12 where Py_IncRef   */

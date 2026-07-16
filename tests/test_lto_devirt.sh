@@ -1,15 +1,7 @@
 #!/bin/bash
 # tests/test_lto_devirt.sh -- Prove LTO devirtualizes C2PY function pointers
-#
-# Builds fill.c2py in three configurations and inspects the
-# generated assembly at the C2PY.GetBuffer call site inside c2py_pin().
-#
-# Expected results:
-#   nimpy   -O2        : indirect call (call *%rax) through C2PY function pointer
-#   pythonh -O2        : indirect call (no LTO = no cross-TU proof of immutability)
-#   pythonh -O2 -flto  : direct call (call <PyObject_GetBuffer>) — LTO proves C2PY never mutates
-#
-# Requires: gcc, objdump, Python 3, c2py23 installed
+# See tests/test_lto_devirt.md for documentation and benchmark results.
+# Local-only — not in CI (depends on GCC -flto semantics + objdump).
 set -e
 
 cd "$(dirname "$0")/.."
