@@ -59,10 +59,16 @@ gcc -shared -flto -O2 \
     -lm $(python3-config --ldflags --embed 2>/dev/null || python3-config --ldflags) \
     -o "$WASM_DIR/fill_ph_lto.so" 2>/dev/null
 objdump -d "$WASM_DIR/fill_ph_lto.so" > "$WASM_DIR/fill_ph_lto.s" 2>/dev/null
+# Count indirect calls but exclude glibc stubs (__gmon_start__, PLT)
 PH_LTO_INDIRECT=$(grep -c "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" || true)
+PH_LTO_INDIRECT_REAL=$(grep -c "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" || true)
+# Exclude glibc _init stub — it calls __gmon_start__@Base via *%rax
+GLIBC_STUB=$(grep -B3 "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" | grep -c "__gmon_start__" || true)
+PH_LTO_INDIRECT_REAL=$((PH_LTO_INDIRECT - GLIBC_STUB))
 PH_LTO_DIRECT=$(grep -c "call.*<Py[A-Z]" "$WASM_DIR/fill_ph_lto.s" || true)
-echo "  Indirect calls (call *%r..): $PH_LTO_INDIRECT"
-echo "  Direct CPython calls:       $PH_LTO_DIRECT"
+echo "  Indirect calls (call *%r..):       $PH_LTO_INDIRECT"
+echo "  Indirect calls (excl. glibc):      $PH_LTO_INDIRECT_REAL"
+echo "  Direct CPython calls:              $PH_LTO_DIRECT"
 
 # ---- Verify ----
 echo ""
@@ -88,12 +94,12 @@ else
     PASS=$((PASS + 1))
 fi
 
-# Pythonh+LTO must have zero (or very few) indirect calls
-if [ "$PH_LTO_INDIRECT" -le 3 ]; then
-    echo "PASS: Pythonh+LTO has $PH_LTO_INDIRECT indirect calls (LTO devirtualized)"
+# Pythonh+LTO must have zero (or near-zero) C2PY indirect calls
+if [ "$PH_LTO_INDIRECT_REAL" -eq 0 ]; then
+    echo "PASS: Pythonh+LTO has 0 C2PY indirect calls (all devirtualized)"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: Pythonh+LTO has $PH_LTO_INDIRECT indirect calls — expected <=3"
+    echo "FAIL: Pythonh+LTO has $PH_LTO_INDIRECT_REAL C2PY indirect calls — expected 0"
     FAIL=$((FAIL + 1))
 fi
 

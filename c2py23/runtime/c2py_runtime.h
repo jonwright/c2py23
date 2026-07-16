@@ -998,13 +998,13 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
         return -1;
 
-    dl_method = C2PY.GetAttrString(obj, "__dlpack__");
+    dl_method = PyObject_GetAttrString(obj, "__dlpack__");
     if (!dl_method) { PyErr_Clear(); return -1; }
 
     dl_args = PyTuple_New(0);
     if (!dl_args) goto fail;
 
-    capsule = C2PY.CallObject(dl_method, dl_args);
+    capsule = PyObject_CallObject(dl_method, dl_args);
     if (!capsule) { PyErr_Clear(); goto fail; }
 
     managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor");
