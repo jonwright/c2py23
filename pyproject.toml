@@ -37,6 +37,10 @@ c2py23 = "c2py23.cli:main"
 [project.urls]
 Homepage = "https://github.com/jonwright/c2py23"
 
+[tool.setuptools.dynamic]
+version = {attr = "c2py23.__version__"}
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
 [tool.setuptools.packages.find]
 include = ["c2py23*"]
 
