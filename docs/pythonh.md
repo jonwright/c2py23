@@ -80,7 +80,7 @@ provides its own `<Python.h>` via cpyext.
 | PyPy 2.7 | Untested | Partial | No fastcall either way |
 | GraalPy 3.12 | **Yes (required)** | No (segfault) | `dlopen(NULL)` exports zero symbols |
 | WASM/Pyodide | No | Yes (`--target wasm`) | Side modules resolve symbols dynamically |
-| Free-threaded CPython | No | Partial | pythonh `is_free_threaded` hardcoded to 0 |
+| Free-threaded CPython (3.14t, 3.15t) | Yes | Yes | GIL re-enabled on load (module not declared FT-safe) |
 
 ## Performance
 
