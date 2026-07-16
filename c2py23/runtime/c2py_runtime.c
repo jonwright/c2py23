@@ -489,6 +489,7 @@ static void _c2py_runtime_init_once(void)
     _c2py_probe_cpu_features();
 
     /* --- Reject 32-bit builds --- */
+#ifndef __EMSCRIPTEN__
     if (sizeof(void*) != 8) {
         fprintf(stderr, "c2py_runtime: 32-bit platforms are not supported. "
                 "Detected %d-bit pointer width. "
@@ -497,6 +498,7 @@ static void _c2py_runtime_init_once(void)
                 (int)(sizeof(void*) * 8));
         return;
     }
+#endif
 
 #ifdef _WIN32
     {
@@ -697,18 +699,18 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.is_pypy) {
         /* PyPy cpyext layout already set above (pyobject_size=24) */
     } else if (C2PY.is_free_threaded) {
-        /* Free-threaded PyObject layout (32 bytes LP64):
+        /* Free-threaded PyObject layout (LP64 only; FT does not exist on ILP32).
          *   ob_tid:0 ob_flags:8 ob_mutex:10 ob_gc_bits:11
          *   ob_ref_local:12 ob_ref_shared:16 ob_type:24 */
         C2PY.pyobject_size = 32;
         C2PY.ob_refcnt_offset = 16;  /* ob_ref_shared */
         C2PY.ob_type_offset = 24;
     } else {
-        /* Standard GIL-enabled PyObject layout (16 bytes LP64):
-         *   ob_refcnt:0 ob_type:8 */
-        C2PY.pyobject_size = 16;
+        /* Standard GIL-enabled PyObject layout:
+         *   ob_refcnt:0  ob_type:sizeof(Py_ssize_t) */
+        C2PY.pyobject_size = sizeof(PyObject);
         C2PY.ob_refcnt_offset = 0;   /* ob_refcnt */
-        C2PY.ob_type_offset = 8;
+        C2PY.ob_type_offset = sizeof(Py_ssize_t);
     }
     C2PY.pyobject_size_ft = 32;
 
@@ -768,22 +770,23 @@ static void _c2py_runtime_init_once(void)
 
     /* --- Runtime PyObject layout probe ---
      * Create a temporary PyLong and check where ob_type lives.
-     * GIL layout (16 bytes): ob_refcnt:0  ob_type:8
-     * FT  layout (32 bytes): ob_tid:0 ... ob_type:24
-     * On GIL, offset 8 is a heap type pointer (high address).
-     * On FT,  offset 8 is ob_flags/mutex/gc_bits (small values).
+     * GIL layout: ob_refcnt at offset 0, ob_type at offset sizeof(Py_ssize_t).
+     * FT  layout: ob_tid at offset 0, ... ob_type at offset sizeof(Py_ssize_t) * 3
+     *   (24 bytes LP64, 12 bytes ILP32 -- but FT does not exist on ILP32).
+     * On GIL, offset sizeof(Py_ssize_t) is a heap type pointer (high address).
+     * On FT,  offset sizeof(Py_ssize_t) is ob_flags/mutex/gc_bits (small values).
      * This verifies/overrides the version-based FT detection above.
      */
     {
         PyObject *tmp = C2PY.Long_FromLong(1);
         if (tmp) {
-            void *p8 = *(void**)((char*)tmp + 8);
+            void *p_type = *(void**)((char*)tmp + sizeof(Py_ssize_t));
             /* A valid CPython type pointer is always a heap/data address
              * well above 0x100000. ob_flags/mutex/gc_bits are small ints. */
-            if (p8 != NULL && (uintptr_t)p8 >= 0x100000) {
-                /* offset 8 is a pointer -> GIL layout confirmed */
+            if (p_type != NULL && (uintptr_t)p_type >= 0x100000) {
+                /* offset sizeof(Py_ssize_t) is a pointer -> GIL layout confirmed */
             } else {
-                /* offset 8 is not a pointer -> FT layout */
+                /* offset sizeof(Py_ssize_t) is not a pointer -> FT layout */
                 C2PY.is_free_threaded = 1;
                 C2PY.pyobject_size = 32;
                 C2PY.ob_refcnt_offset = 16;
