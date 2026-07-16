@@ -26,14 +26,36 @@ function skip(name, msg) {
     console.log('  SKIP: ' + msg);
 }
 
-async function load_module(name) {
-    const wasmPath = WASM_DIR + '/' + name + '.wasm';
-    const pyPath = '/tmp/' + name + PYODIDE_SUFFIX;
+// Map test key -> Python module name (from .c2py module: field)
+const MOD_NAMES = {
+    fill:           'fillmod',
+    arraysum:       'arraysum',
+    dot:            'dotmod',
+    types:          'typesmod',
+    optional:       'optmod',
+    scalar_output:  'statmod',
+    template:       'summod',
+    constants:      'constmod',
+    docstring:      'docmod',
+    timing:         'timedmod',
+    typedispatch:   'dispatchmod',
+    address:        'addressmod',
+    array_sig:      'arraymod',
+    simd_dispatch:  'simd_fillmod',
+    freethreading:  'freethreadmod',
+    transform:      'xfrm',
+    gil_release:    'gilmod',
+};
+
+async function load_module(key) {
+    const modname = MOD_NAMES[key] || key;
+    const wasmPath = WASM_DIR + '/' + key + '.wasm';
+    const pyPath = '/tmp/' + key + PYODIDE_SUFFIX;
     const wasm = fs.readFileSync(wasmPath);
     py.FS.writeFile(pyPath, wasm);
     await py.runPythonAsync('import importlib.machinery as _m; import importlib.util as _u; ' +
-        '_l=_m.ExtensionFileLoader("' + name + '","' + pyPath + '");' +
-        '_s=_u.spec_from_file_location("' + name + '","' + pyPath + '",loader=_l);' +
+        '_l=_m.ExtensionFileLoader("' + modname + '","' + pyPath + '");' +
+        '_s=_u.spec_from_file_location("' + modname + '","' + pyPath + '",loader=_l);' +
         '_mod=_u.module_from_spec(_s); _s.loader.exec_module(_mod)');
 }
 
@@ -119,13 +141,13 @@ async function test_optional() {
     await load_module('optional');
     await py_exec(`
 import optmod, ctypes
-data = (ctypes.c_double * 5)(1,2,3,4,5)
+data = (ctypes.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
+r = optmod.process(data, 1, 1)
+assert r == 1015, str(r)
+r = optmod.process(data, 2)
+assert r == 9, str(r)
 r = optmod.process(data)
-assert r == 1, str(r)
-r2 = optmod.process(data, 2)
-assert r2 == 2, str(r2)
-r3 = optmod.process(data, 3, 1)
-assert r3 == 3, str(r3)
+assert r == 15, str(r)
 `);
     ok('optional', 'default parameters');
 }
@@ -195,13 +217,14 @@ async function test_timing() {
     await load_module('timing');
     await py_exec(`
 import timedmod, ctypes
-data = (ctypes.c_double * 3)(1,2,3)
+data = (ctypes.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
 r = timedmod.wsum(data, 2.0)
-assert abs(r - 12) < 0.001, str(r)
-# timing attributes exist
-assert hasattr(timedmod, '_c2py_perf_data')
+assert abs(r - 30.0) < 0.001, str(r)
+# perf accessor methods exist (no c2py23.perf package in Pyodide)
+assert hasattr(timedmod, '_c2py_perf_read')
+assert hasattr(timedmod, '_c2py_perf_meta')
 `);
-    ok('timing', 'weighted sum + perf attr');
+    ok('timing', 'weighted sum + perf methods');
 }
 
 async function test_typedispatch() {
@@ -240,10 +263,13 @@ async function test_address() {
     await load_module('address');
     await py_exec(`
 import addressmod, ctypes
-buf = (ctypes.c_uint32 * 1)(123)
+buf = (ctypes.c_int * 10)()
 ptr = ctypes.addressof(buf)
-r = addressmod.address_store(ptr, 99, 0)
-assert r == 99, str(r)
+ret = addressmod.address_store(ptr, 42, 3)
+assert ret == 0, str(ret)
+assert buf[3] == 42, str(buf[3])
+ret = addressmod.address_store(0, 99, 0)
+assert ret == -1, str(ret)
 `);
     ok('address', 'raw pointer pass-through');
 }
@@ -252,27 +278,29 @@ async function test_array_sig() {
     await load_module('array_sig');
     await py_exec(`
 import arraymod, ctypes
-import sys
 
-# sum_rows: (N,3) double
-data = (ctypes.c_double * 6)(1,2,3,4,5,6)
-if hasattr(ctypes, 'memoryview'):
-    mv = memoryview(data).cast('d', (2, 3))
-    r = arraymod.sum_rows(mv)
-    assert abs(r - 21) < 0.001, 'sum_rows: ' + str(r)
-else:
-    r = arraymod.sum_rows(data)
-    assert abs(r - 21) < 0.001, 'sum_rows: ' + str(r)
+# sum_rows: gv[][3] -> Nx3
+arr = (ctypes.c_double * 6)(1,2,3,4,5,6)
+mv = memoryview(arr).cast('B').cast('d', [2,3])
+r = arraymod.sum_rows(mv)
+assert abs(r - 21) < 0.001, 'sum_rows: ' + str(r)
 
-# sum_33: 3x3 double
-data33 = (ctypes.c_double * 9)(1,1,1, 2,2,2, 3,3,3)
-r2 = arraymod.sum_33(data33)
-assert abs(r2 - 18) < 0.001, 'sum_33: ' + str(r2)
+# sum_33: ubi[3][3] -> fixed 3x3
+arr2 = (ctypes.c_double * 9)(1,2,3,4,5,6,7,8,9)
+mv2 = memoryview(arr2).cast('B').cast('d', [3,3])
+r2 = arraymod.sum_33(mv2)
+assert abs(r2 - 45) < 0.001, 'sum_33: ' + str(r2)
 
-# sum_1d_fixed: 5 doubles
-data5 = (ctypes.c_double * 5)(1,2,3,4,5)
-r3 = arraymod.sum_1d_fixed(data5)
+# sum_1d_fixed: arr[5] -> exactly 5
+arr3 = (ctypes.c_double * 5)(1,2,3,4,5)
+r3 = arraymod.sum_1d_fixed(arr3)
 assert abs(r3 - 15) < 0.001, 'sum_1d_fixed: ' + str(r3)
+
+# sum_3d: blk[][5][5]
+arr4 = (ctypes.c_double * 50)(*range(1,51))
+mv3 = memoryview(arr4).cast('B').cast('d', [2,5,5])
+r4 = arraymod.sum_3d(mv3)
+assert abs(r4 - 1275) < 0.001, 'sum_3d: ' + str(r4)
 `);
     ok('array_sig', 'shape notation dispatch');
 }
@@ -355,12 +383,168 @@ assert list(arr2) == [7,7,7,7], 'sleep_fill_no_gil: ' + str(list(arr2))
     ok('gil_release', 'sleep_fill basic (no threading test)');
 }
 
+// ---- Numpy-based tests (peer review) ----
+
+async function test_alias_output_equals_input() {
+    await load_module('arraysum');
+    await py_exec(`
+import arraysum, numpy as np
+a = np.arange(100, dtype=np.float64)
+b = np.arange(100, dtype=np.float64)
+try:
+    arraysum.array_sum(a, b, a)
+    raise AssertionError('should reject output==input alias')
+except ValueError as e:
+    assert 'alias' in str(e), str(e)
+`);
+    ok('alias_output==input', 'reject output==input');
+}
+
+async function test_alias_slice() {
+    await py_exec(`
+import arraysum, numpy as np
+a = np.arange(100, dtype=np.float64)
+b = a[1:]
+try:
+    arraysum.array_sum(a, b, a)
+    raise AssertionError('should reject slice alias')
+except ValueError as e:
+    assert 'alias' in str(e), str(e)
+`);
+    ok('alias_slice', 'reject slice overlap');
+}
+
+async function test_alias_reversed() {
+    await py_exec(`
+import arraysum, numpy as np
+a = np.arange(100, dtype=np.float64)
+b = a[::-1]
+try:
+    arraysum.array_sum(a, b, a)
+    raise AssertionError('should reject reversed alias')
+except ValueError as e:
+    assert 'alias' in str(e), str(e)
+`);
+    ok('alias_reversed', 'reject reversed view');
+}
+
+async function test_alias_view() {
+    await py_exec(`
+import arraysum, numpy as np
+a = np.arange(100, dtype=np.float64)
+b = a.view()
+try:
+    arraysum.array_sum(a, b, a)
+    raise AssertionError('should reject view alias')
+except ValueError as e:
+    assert 'alias' in str(e), str(e)
+`);
+    ok('alias_view', 'reject view alias');
+}
+
+async function test_no_false_positive() {
+    await py_exec(`
+import arraysum, numpy as np
+a = np.arange(100, dtype=np.float64)
+b = np.arange(100, dtype=np.float64)
+result = np.zeros(100, dtype=np.float64)
+n = arraysum.array_sum(a, b, result)
+assert n == 100, str(n)
+assert np.allclose(result, a + b)
+`);
+    ok('no_false_positive', 'non-aliased sum works');
+}
+
+async function test_contiguity_strided() {
+    await load_module('fill');
+    await py_exec(`
+import fillmod, numpy as np
+a = np.arange(20, dtype=np.float64)
+b = a[::2]
+try:
+    fillmod.fill(b, 1.0)
+    raise AssertionError('should reject strided array')
+except ValueError as e:
+    assert 'contiguous' in str(e).lower(), str(e)
+`);
+    ok('contiguity_strided', 'reject strided');
+}
+
+async function test_contiguity_reversed() {
+    await py_exec(`
+import fillmod, numpy as np
+a = np.arange(20, dtype=np.float64)
+b = a[::-1]
+try:
+    fillmod.fill(b, 1.0)
+    raise AssertionError('should reject negative stride')
+except ValueError as e:
+    assert 'contiguous' in str(e).lower(), str(e)
+`);
+    ok('contiguity_reversed', 'reject reversed');
+}
+
+async function test_contiguity_fortran_2d() {
+    await py_exec(`
+import fillmod, numpy as np
+a = np.array([[1,2,3],[4,5,6],[7,8,9],[10,11,12]], dtype=np.float64)
+af = np.asfortranarray(a)
+assert af.flags['F_CONTIGUOUS']
+assert not af.flags['C_CONTIGUOUS']
+fillmod.fill(af, 99.0)
+assert np.all(af == 99.0)
+`);
+    ok('contiguity_fortran_2d', 'accept F-contiguous 2D');
+}
+
+async function test_numpy_buffer_protocol() {
+    await load_module('arraysum');
+    await py_exec(`
+import arraysum, numpy as np
+a = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
+b = np.array([5.0, 6.0, 7.0, 8.0], dtype=np.float64)
+r = np.zeros(4, dtype=np.float64)
+n = arraysum.array_sum(a, b, r)
+assert n == 4, str(n)
+assert np.allclose(r, [6,8,10,12])
+`);
+    ok('numpy_buffer_protocol', 'numpy arrays through buffer protocol');
+}
+
+async function test_numpy_2d_dot() {
+    await load_module('dot');
+    await py_exec(`
+import dotmod, numpy as np
+a = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+b = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+r = dotmod.dot(a, b)
+assert abs(r - 32.0) < 0.001, str(r)
+a2 = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+b2 = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+r2 = dotmod.dot(a2, b2)
+assert abs(r2 - 32.0) < 0.001, str(r2)
+`);
+    ok('numpy_2d_dot', 'numpy float32/64 dot product');
+}
+
 // ---- Main runner ----
 
 async function main() {
     console.log('Loading Pyodide...');
     py = await loadPyodide();
-    console.log('Pyodide loaded.\n');
+    console.log('Loading numpy...');
+    await py.loadPackage('numpy');
+    await py.runPythonAsync(`
+import sys, numpy
+print("numpy", numpy.__version__)
+# Capture stderr for error diagnostics
+_wasm_stderr = []
+class _ErrCap:
+    def write(self, s): _wasm_stderr.append(s)
+    def flush(self): pass
+sys.stderr = _ErrCap()
+`);
+    console.log('');
 
     const tests = [
         ['fill',            test_fill],
@@ -380,6 +564,17 @@ async function main() {
         ['freethreading',   test_freethreading],
         ['transform',       test_transform],
         ['gil_release',     test_gil_release],
+        // ---- numpy-based tests (peer review) ----
+        ['alias_output==input', test_alias_output_equals_input],
+        ['alias_slice',         test_alias_slice],
+        ['alias_reversed',      test_alias_reversed],
+        ['alias_view',          test_alias_view],
+        ['no_false_positive',   test_no_false_positive],
+        ['contiguity_strided',  test_contiguity_strided],
+        ['contiguity_reversed', test_contiguity_reversed],
+        ['contiguity_fortran_2d', test_contiguity_fortran_2d],
+        ['numpy_buffer_protocol', test_numpy_buffer_protocol],
+        ['numpy_2d_dot',        test_numpy_2d_dot],
     ];
 
     for (const [name, fn] of tests) {
@@ -387,8 +582,15 @@ async function main() {
         try {
             await fn();
         } catch (e) {
-            const msg = e.message ? e.message.split('\n')[0] : String(e);
-            fail(name, msg);
+            const lines = (e.message || String(e)).split('\n');
+            const msg = lines.slice(0, 4).filter(l => l.trim()).join(' | ');
+            try {
+                const stderr = py.runPython('"".join(_wasm_stderr)');
+                py.runPython('_wasm_stderr.clear()');
+                fail(name, msg + '\n' + stderr.substring(0, 500));
+            } catch(e2) {
+                fail(name, msg || String(e).substring(0, 200));
+            }
         }
     }
 
