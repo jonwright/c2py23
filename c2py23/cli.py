@@ -96,9 +96,23 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 
     all_includes = [runtime_dir] + list(include_dirs)
 
+    if target == "wasm":
+        py_include = os.environ.get("EMSCRIPTEN_PYTHON_INCLUDE")
+        if py_include:
+            all_includes.insert(0, py_include)
+        else:
+            print(
+                "WARNING: EMSCRIPTEN_PYTHON_INCLUDE not set -- Python headers not found. "
+                "Use -I or set EMSCRIPTEN_PYTHON_INCLUDE.",
+                file=sys.stderr,
+            )
+
     is_win = sys.platform == "win32"
 
-    if is_win:
+    if target == "wasm":
+        cc = os.environ.get("CC", "emcc")
+        is_msvc = False
+    elif is_win:
         cc = os.environ.get("CC", "")
         if not cc:
             cc = _find_msvc() or "gcc"
@@ -151,6 +165,15 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
             include_flags.extend(["/I", d])
         cmd = [cc, "/nologo", "/LD"] + cflags + include_flags + all_sources
         cmd += libs + ["/Fe" + output_so]
+    elif target == "wasm":
+        include_flags = []
+        for d in all_includes:
+            include_flags.extend(["-I", d])
+        # Emscripten side module: no -shared/-fPIC, no -ldl
+        wasm_libs = [l for l in libs if l != "-ldl"]
+        cmd = (
+            [cc, "-s", "SIDE_MODULE=1"] + include_flags + cflags + all_sources + ldflags + wasm_libs + ["-o", output_so]
+        )
     elif is_win:
         include_flags = []
         for d in all_includes:
@@ -184,11 +207,16 @@ def _find_msvc():
     return None
 
 
-def _determine_so_path(output_arg, default_name, base_dir):
-    """Determine the .so/.pyd output path."""
+def _determine_so_path(output_arg, default_name, base_dir, target="cpython"):
+    """Determine the .so/.pyd/.wasm output path."""
     if output_arg:
         return output_arg
-    ext = ".pyd" if sys.platform == "win32" else ".so"
+    if target == "wasm":
+        ext = ".wasm"
+    elif sys.platform == "win32":
+        ext = ".pyd"
+    else:
+        ext = ".so"
     return os.path.join(base_dir, default_name + ext)
 
 
@@ -220,7 +248,9 @@ def cmd_build(args):
 
         base = os.path.splitext(os.path.basename(wrapper_path))[0]
         so_base = base.replace("_wrapper", "")
-        output_so = _determine_so_path(args.output, so_base, os.path.dirname(wrapper_path) or ".")
+        output_so = _determine_so_path(
+            args.output, so_base, os.path.dirname(wrapper_path) or ".", target=getattr(args, "target", "cpython")
+        )
         _compile_wrapper(
             wrapper_path,
             source_files,
@@ -239,7 +269,7 @@ def cmd_build(args):
     source_files = _collect_user_sources(base_dir, module_def)
     include_dirs = _collect_include_dirs(base_dir, module_def)
 
-    output_so = _determine_so_path(args.output, module_def.name, base_dir)
+    output_so = _determine_so_path(args.output, module_def.name, base_dir, target=getattr(args, "target", "cpython"))
 
     _compile_wrapper(
         wrapper_path,
@@ -283,9 +313,9 @@ def _add_build_parser(sub):
     )
     build_p.add_argument(
         "--target",
-        choices=["cpython", "pypy"],
+        choices=["cpython", "pypy", "wasm"],
         default="cpython",
-        help="Target Python runtime (default: cpython, for PyPy: pypy)",
+        help="Target Python runtime (default: cpython, for PyPy: pypy, for Pyodide/WASM: wasm)",
     )
     build_p.add_argument(
         "-s",

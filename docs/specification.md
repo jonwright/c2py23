@@ -1312,7 +1312,8 @@ Makefile and Python test harness).
   See `PLAN.md` for current test matrix.
 - **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
   `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
-  Needs `--target emscripten` CLI flag (emcc, CPU feature guards).
+  `--target wasm` CLI flag available (emcc, `-s SIDE_MODULE=1`, skips -ldl/-shared/-fPIC,
+  32-bit rejection guarded with `#ifndef __EMSCRIPTEN__`).
   DLPack works on Pyodide (numpy exports `__dlpack__`).
 - **aarch64 CI** -- native ARM64 GitHub runner (ubuntu-24.04-arm) added;
   CPU feature flags, SIMD dispatch, and cycle counter timer tested on

@@ -38,18 +38,22 @@ import platform as _platform
 
 
 def _platform_key(target="cpython"):
-    """Return 'linux_x86_64', 'win_amd64', 'pypy-linux_x86_64', etc."""
+    """Return 'linux_x86_64', 'win_amd64', 'wasm_wasm32', etc."""
     _os = sys.platform
     if _os == "linux2":
         _os = "linux"
     elif _os == "win32":
         _os = "win"
+    elif _os == "emscripten":
+        _os = "wasm"
     _arch = _platform.machine()
     if _arch == "AMD64":
         if _os == "win":
             _arch = "amd64"
         else:
             _arch = "x86_64"
+    elif _arch in ("wasm32", "wasm"):
+        _arch = "wasm32"
     if target == "pypy":
         return "pypy-%s_%s" % (_os, _arch)
     return "%s_%s" % (_os, _arch)

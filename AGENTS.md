@@ -99,6 +99,22 @@ Build for PyPy (experimental, no CI):
 c2py23 build --target pypy path/to/module.c2py
 ```
 
+Build for Pyodide/WASM (experimental, no CI):
+```bash
+c2py23 build --target wasm path/to/module.c2py
+```
+
+Run the full WASM test suite (80 tests):
+```bash
+# One-time setup:
+sudo apt install nodejs npm emscripten
+cd brainstorm/tests && npm install
+pip install -e .
+
+# Build + test:
+bash tests/test_all_wasm.sh
+```
+
 Install c2py23 in development mode:
 ```bash
 pip install -e .
@@ -184,8 +200,13 @@ c2py23 installed -- see the README for the gcc command.
 
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
 - Build with `c2py23 build --target pypy file.c2py`
-- Experimental, use at your own risk. No CI — likely to regress if not maintained.
-  Pyodide is the next non-CPython target (WASM, shares CPython ABI).
+- Experimental, use at your own risk. No CI -- likely to regress if not maintained.
+
+### Experimental: Pyodide/WASM (no CI, not tested regularly)
+
+- Build with `c2py23 build --target wasm file.c2py`
+- Uses `emcc -s SIDE_MODULE=1` for Pyodide 3.12+
+- Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 

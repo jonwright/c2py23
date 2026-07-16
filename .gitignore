@@ -50,3 +50,4 @@ examples/threading_bench/*.so
 /tools/audit/wrappers/
 _test_*
 site/
+benchmarks/src/*_wrapper.c

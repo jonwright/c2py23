@@ -25,13 +25,17 @@ No CI — will regress without maintenance.  Pyodide is the next priority.
 
 ### Pyodide/WASM support
 
-**Status: gold benchmarks working, no c2py23 build target yet.**
+**Status: `--target wasm` CLI flag implemented.  Tested building a fill.wasm module.**
 
 Pyodide is CPython compiled to WASM via Emscripten.  `dlopen(NULL)` +
 `dlsym()` both work.  Gold `vnorm` and `noargs` benchmarks run at
-177ns and 1204ns respectively.  Needs `--target emscripten` in CLI
-(emcc instead of gcc, `#ifndef __EMSCRIPTEN__` guards for CPU feature
-probes).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
+177ns and 1204ns respectively.  `c2py23 build --target wasm` uses
+emcc instead of gcc with `-s SIDE_MODULE=1`, skips 32-bit pointer
+rejection (`#ifndef __EMSCRIPTEN__`), and drops `-ldl`/`-shared`/`-fPIC`.
+CPU feature probes are naturally skipped (no x86/aarch64/ppc64 defines
+on wasm32).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
+
+Next: build+test fill or uniform modules inside Pyodide in node.js.
 
 ## Deferred
 
