@@ -339,6 +339,7 @@ def test_ndarray_buffer_only():
 # Runner
 # ============================================================
 
+
 ALL_TESTS = [
     ("error_format_mismatch", test_format_mismatch),
     ("error_size_mismatch", test_size_mismatch),

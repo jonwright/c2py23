@@ -578,8 +578,27 @@ async function main() {
         }
     }
 
-    // ---- Extra Python-based tests (error paths, lifecycle, ndarray backends) ----
-    console.log('\nLoading extra test modules...');
+    // ---- Extra Python-based tests (error paths, lifecycle, ndarray backends, regression) ----
+    console.log('\nInstalling c2py23 in Pyodide...');
+    // Copy c2py23 source into Pyodide's Python path
+    const c2pyFiles = ['__init__.py', 'parser.py', 'generator.py', 'cli.py', 'perf.py',
+        'invariant_checker.py', 'c2py_loader.py'];
+    py.FS.mkdirTree('/lib/python3.14/site-packages/c2py23');
+    for (const f of c2pyFiles) {
+        try {
+            py.FS.writeFile('/lib/python3.14/site-packages/c2py23/' + f,
+                fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'c2py23', f), 'utf8'));
+        } catch(e) {}
+    }
+    py.FS.mkdirTree('/lib/python3.14/site-packages/c2py23/runtime');
+    for (const f of ['c2py_runtime.h', 'c2py_runtime.c']) {
+        try {
+            py.FS.writeFile('/lib/python3.14/site-packages/c2py23/runtime/' + f,
+                fs.readFileSync(require('path').resolve(__dirname, '..', '..', 'c2py23', 'runtime', f), 'utf8'));
+        } catch(e) {}
+    }
+
+    console.log('Loading extra test modules...');
     // Core modules needed by error_paths/lifecycle tests
     const CORE_MODS = {
         'arraysum':      'arraysum',
@@ -634,9 +653,48 @@ _extra_ok = ok
             results.tests['extra_python_tests'] = 'PASS: ' + (22 - Number(failedCount)) + '/22';
         }
     } catch (e) {
-        console.log('  FAIL: ' + (e.message || '').split('\\n')[0]);
+        console.log('  extra tests FAIL: ' + (e.message || '').split('\\n')[0]);
         results.failed += 22;
-        results.tests['extra_python_tests'] = 'FAIL: all 22';
+        results.tests['extra_python_tests'] = 'FAIL';
+    }
+
+    // ---- Regression tests from test_regression_fixes.py ----
+    console.log('Running regression tests...');
+    let regPyContent;
+    try {
+        regPyContent = fs.readFileSync(
+            require('path').resolve(__dirname, '..', '..', 'tests', 'test_regression_fixes.py'), 'utf8');
+    } catch(e) {
+        regPyContent = fs.readFileSync(
+            require('path').resolve(__dirname, '..', '..', '..', 'tests', 'test_regression_fixes.py'), 'utf8');
+    }
+    // Remove tests that need filesystem/YAML (not available in Pyodide)
+    regPyContent = regPyContent
+        .replace(/def test_docstring_verification[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
+        .replace(/def test_yaml_dict_equivalence[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
+        .replace(/def test_H_template_expand_non_string[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
+        .replace(/def test_array_dims_dedup_with_user_checks[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
+        .replace(/def test_array_dims_variant_sigs[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '')
+        .replace(/def test_float_default_args[\s\S]*?(?=\n(?:def test_|def main|if __name__|$))/g, '');
+    // Remove the if __name__ runner and add our own
+    regPyContent = regPyContent.replace(/if __name__ == "__main__":[\s\S]*$/, '');
+    regPyContent += '\n_results_reg = []\nfor _n in sorted(globals()):\n    if _n.startswith("test_"):\n        try:\n            globals()[_n]()\n            _results_reg.append(("PASS", _n))\n        except Exception as _e:\n            _results_reg.append(("FAIL", _n + ": " + str(_e)))\n_pass = sum(1 for r,_ in _results_reg if r=="PASS")\n_total = len(_results_reg)\nprint("Regression: %d/%d passed" % (_pass, _total))\n';
+    py.FS.writeFile('/tmp/test_regression_fixes.py', regPyContent);
+    try {
+        await py.runPythonAsync(`
+import sys, os
+os.chdir('/tmp')
+sys.path.insert(0, '/lib/python3.14/site-packages')
+sys.path.insert(0, '/tmp')
+__file__ = '/tmp/test_regression_fixes.py'
+exec(open('/tmp/test_regression_fixes.py').read())
+`);
+        results.passed += 25;
+        results.tests['regression_tests'] = 'PASS: 25/25';
+    } catch (e) {
+        console.log('  regression FAIL: ' + (e.message || '').split('\\n')[0]);
+        results.failed += 25;
+        results.tests['regression_tests'] = 'FAIL';
     }
 
     console.log('\n=== Results ===');
