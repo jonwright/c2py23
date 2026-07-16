@@ -99,6 +99,11 @@ Build for PyPy (experimental, no CI):
 c2py23 build --target pypy path/to/module.c2py
 ```
 
+Build with `#include <Python.h>` directly (GraalPy, debugging, max perf):
+```bash
+c2py23 build --pythonh path/to/module.c2py
+```
+
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
 c2py23 build --target wasm path/to/module.c2py
@@ -201,6 +206,14 @@ c2py23 installed -- see the README for the gcc command.
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
 - Build with `c2py23 build --target pypy file.c2py`
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
+
+### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
+
+- Build with `c2py23 build --pythonh file.c2py`
+- Produces a standard CPython extension with `#include <Python.h>` — no dlsym trick
+- Required for GraalPy (Native Image exports zero CPython symbols)
+- Useful for debugging dlsym issues, static builds, and LTO devirtualization
+- See `docs/pythonh.md` for full documentation
 
 ### Experimental: Pyodide/WASM (no CI, not tested regularly)
 
