@@ -534,16 +534,7 @@ async function main() {
     py = await loadPyodide();
     console.log('Loading numpy...');
     await py.loadPackage('numpy');
-    await py.runPythonAsync(`
-import sys, numpy
-print("numpy", numpy.__version__)
-# Capture stderr for error diagnostics
-_wasm_stderr = []
-class _ErrCap:
-    def write(self, s): _wasm_stderr.append(s)
-    def flush(self): pass
-sys.stderr = _ErrCap()
-`);
+    await py.runPythonAsync('import numpy; print("numpy", numpy.__version__)');
     console.log('');
 
     const tests = [
@@ -582,16 +573,70 @@ sys.stderr = _ErrCap()
         try {
             await fn();
         } catch (e) {
-            const lines = (e.message || String(e)).split('\n');
-            const msg = lines.slice(0, 4).filter(l => l.trim()).join(' | ');
-            try {
-                const stderr = py.runPython('"".join(_wasm_stderr)');
-                py.runPython('_wasm_stderr.clear()');
-                fail(name, msg + '\n' + stderr.substring(0, 500));
-            } catch(e2) {
-                fail(name, msg || String(e).substring(0, 200));
-            }
+            const msg = (e.message || String(e)).split('\n')[0];
+            fail(name, msg);
         }
+    }
+
+    // ---- Extra Python-based tests (error paths, lifecycle, ndarray backends) ----
+    console.log('\nLoading extra test modules...');
+    // Core modules needed by error_paths/lifecycle tests
+    const CORE_MODS = {
+        'arraysum':      'arraysum',
+        'fill':          'fillmod',
+        'scalar_output': 'statmod',
+        'transform':     'xfrm',
+    };
+    // Benchmark modules for ndarray backend tests
+    const BENCH_MODS = {
+        'c2py_vnorm':         'c2py_vnorm',
+        'c2py_vnorm_bare':    'c2py_vnorm_bare',
+        'c2py_vnorm_ndarray': 'c2py_vnorm_ndarray',
+        'c2py_vnorm_buffer':  'c2py_vnorm_buffer',
+        'c2py_vnorm_dlpack':  'c2py_vnorm_dlpack',
+        'c2py_getitem':       'c2py_getitem',
+    };
+    const allExtra = Object.assign({}, CORE_MODS, BENCH_MODS);
+    for (const [key, modname] of Object.entries(allExtra)) {
+        try {
+            const pyPath = '/tmp/' + key + '.cpython-314-wasm32-emscripten.so';
+            const w = fs.readFileSync('/tmp/c2py_wasm_test/' + key + '.wasm');
+            py.FS.writeFile(pyPath, w);
+            await py.runPythonAsync('import importlib.machinery as _m; import importlib.util as _u; ' +
+                '_l=_m.ExtensionFileLoader("' + modname + '","' + pyPath + '");' +
+                '_s=_u.spec_from_file_location("' + modname + '","' + pyPath + '",loader=_l);' +
+                '_mod=_u.module_from_spec(_s); _s.loader.exec_module(_mod)');
+        } catch (e) {
+            console.log('  ' + key + ': LOAD FAIL - ' + (e.message || '').split('\\n')[0]);
+        }
+    }
+
+    console.log('Running wasm_extra_tests.py...');
+    // Write the Python test module to Pyodide FS
+    const extraPy = fs.readFileSync(__dirname + '/wasm_extra_tests.py', 'utf8');
+    py.FS.writeFile('/tmp/wasm_extra_tests.py', extraPy);
+    try {
+        await py.runPythonAsync(`
+import sys
+sys.path.insert(0, '/tmp')
+import wasm_extra_tests
+ok = wasm_extra_tests.run()
+_extra_ok = ok
+`);
+        const ok = py.runPython('_extra_ok');
+        if (ok) {
+            results.passed += 22;
+            results.tests['extra_python_tests'] = 'PASS: 22/22';
+        } else {
+            const failedCount = py.runPython('wasm_extra_tests._results["failed"]');
+            results.passed += 22 - Number(failedCount);
+            results.failed += Number(failedCount);
+            results.tests['extra_python_tests'] = 'PASS: ' + (22 - Number(failedCount)) + '/22';
+        }
+    } catch (e) {
+        console.log('  FAIL: ' + (e.message || '').split('\\n')[0]);
+        results.failed += 22;
+        results.tests['extra_python_tests'] = 'FAIL: all 22';
     }
 
     console.log('\n=== Results ===');
