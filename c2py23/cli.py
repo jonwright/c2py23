@@ -82,7 +82,23 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
     return include_dirs
 
 
-def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False, target="cpython"):
+def _pythonh_libs(libs):
+    """When --pythonh is set, drop -ldl (not needed) and add -lpythonX.Y if on CPython.
+    PyPy and GraalPy provide cpyext symbols at load time, no -lpython needed."""
+    libs = [l for l in libs if l != "-ldl"]
+    if hasattr(sys, "implementation") and sys.implementation.name == "cpython":
+        try:
+            import sysconfig as _sc
+
+            ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
+            if ld_ver:
+                libs.append("-lpython" + ld_ver)
+        except Exception:
+            pass
+    return libs
+
+
+def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=False, target="cpython", pythonh=False):
     """Compile a wrapper .c file (plus runtime and user sources) to a .so/.pyd."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     runtime_dir = os.path.join(script_dir, "runtime")
@@ -95,6 +111,19 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
             sys.exit(1)
 
     all_includes = [runtime_dir] + list(include_dirs)
+
+    if pythonh:
+        if target != "cpython":
+            print("ERROR: --pythonh is incompatible with --target {}".format(target), file=sys.stderr)
+            sys.exit(1)
+        try:
+            import sysconfig as _sc
+
+            py_inc = _sc.get_config_var("INCLUDEPY")
+            if py_inc:
+                all_includes.insert(0, py_inc)
+        except Exception:
+            pass
 
     if target == "wasm":
         py_include = os.environ.get("EMSCRIPTEN_PYTHON_INCLUDE")
@@ -142,6 +171,12 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
                     cflags[j] = "-O1"
                     break
 
+    if pythonh:
+        cflags.insert(0, "-DC2PY_USE_PYTHON_H")
+        # Nimpy-only code in runtime.c is compiled but not used in pythonh mode.
+        # Suppress unused warnings — the pythonh path uses Python.h directly.
+        cflags.extend(["-Wno-unused-function", "-Wno-unused-variable"])
+
     if asan:
         if is_msvc:
             cflags.append("/fsanitize=address")
@@ -158,6 +193,9 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         libs = [l for l in libs if l]
     else:
         libs = os.environ.get("LIBS", "-ldl -lm").split()
+
+    if pythonh:
+        libs = _pythonh_libs(libs)
 
     if is_msvc:
         include_flags = []
@@ -207,7 +245,7 @@ def _find_msvc():
     return None
 
 
-def _determine_so_path(output_arg, default_name, base_dir, target="cpython"):
+def _determine_so_path(output_arg, default_name, base_dir, target="cpython", pythonh=False):
     """Determine the .so/.pyd/.wasm output path."""
     if output_arg:
         return output_arg
@@ -215,6 +253,16 @@ def _determine_so_path(output_arg, default_name, base_dir, target="cpython"):
         ext = ".wasm"
     elif sys.platform == "win32":
         ext = ".pyd"
+    elif pythonh:
+        try:
+            import sysconfig as _sc
+
+            ext_suffix = _sc.get_config_var("EXT_SUFFIX")
+            if ext_suffix:
+                return os.path.join(base_dir, default_name + ext_suffix)
+        except Exception:
+            pass
+        ext = ".so"
     else:
         ext = ".so"
     return os.path.join(base_dir, default_name + ext)
@@ -249,7 +297,11 @@ def cmd_build(args):
         base = os.path.splitext(os.path.basename(wrapper_path))[0]
         so_base = base.replace("_wrapper", "")
         output_so = _determine_so_path(
-            args.output, so_base, os.path.dirname(wrapper_path) or ".", target=getattr(args, "target", "cpython")
+            args.output,
+            so_base,
+            os.path.dirname(wrapper_path) or ".",
+            target=getattr(args, "target", "cpython"),
+            pythonh=getattr(args, "pythonh", False),
         )
         _compile_wrapper(
             wrapper_path,
@@ -258,6 +310,7 @@ def cmd_build(args):
             output_so,
             asan=getattr(args, "asan", False),
             target=getattr(args, "target", "cpython"),
+            pythonh=getattr(args, "pythonh", False),
         )
         return
 
@@ -269,7 +322,13 @@ def cmd_build(args):
     source_files = _collect_user_sources(base_dir, module_def)
     include_dirs = _collect_include_dirs(base_dir, module_def)
 
-    output_so = _determine_so_path(args.output, module_def.name, base_dir, target=getattr(args, "target", "cpython"))
+    output_so = _determine_so_path(
+        args.output,
+        module_def.name,
+        base_dir,
+        target=getattr(args, "target", "cpython"),
+        pythonh=getattr(args, "pythonh", False),
+    )
 
     _compile_wrapper(
         wrapper_path,
@@ -278,6 +337,7 @@ def cmd_build(args):
         output_so,
         asan=getattr(args, "asan", False),
         target=getattr(args, "target", "cpython"),
+        pythonh=getattr(args, "pythonh", False),
     )
 
 
@@ -316,6 +376,13 @@ def _add_build_parser(sub):
         choices=["cpython", "pypy", "wasm"],
         default="cpython",
         help="Target Python runtime (default: cpython, for PyPy: pypy, for Pyodide/WASM: wasm)",
+    )
+    build_p.add_argument(
+        "--pythonh",
+        action="store_true",
+        default=False,
+        help="Compile with #include <Python.h> instead of dlsym "
+        "(portable cross-version .so, for GraalPy, debugging, static builds)",
     )
     build_p.add_argument(
         "-s",
