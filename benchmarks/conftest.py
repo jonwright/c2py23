@@ -12,6 +12,7 @@ import pytest
 
 BENCH_DIR = os.path.dirname(os.path.abspath(__file__))
 BUILD_DIR = os.path.join(BENCH_DIR, "build")
+BUILD_DIR_PH = os.path.join(BENCH_DIR, "build_ph")
 RESULTS_FILE = os.path.join(BENCH_DIR, ".bench_results.json")
 sys.path.insert(0, BUILD_DIR)
 
@@ -127,3 +128,29 @@ def read_builtin_perf(func):
         result["c_mean_ns"] = 0.0
         result["wrap_mean_ns"] = 0.0
     return result
+
+
+# ---------------------------------------------------------------------------
+# Pythonh module loader
+# ---------------------------------------------------------------------------
+
+
+def load_pythonh_module(mod_name):
+    """Load a c2py23 pythonh module by path from build_ph/.
+    Returns the loaded module without colliding with the nimpy
+    version already in sys.modules under the same name."""
+    so_path = os.path.join(BUILD_DIR_PH, mod_name + ".so")
+    if not os.path.isfile(so_path):
+        raise ImportError("pythonh module not built: {}".format(so_path))
+    mod_key = mod_name + "_ph"
+    if mod_key in sys.modules:
+        return sys.modules[mod_key]
+    import importlib.machinery as _m
+    import importlib.util as _u
+
+    loader = _m.ExtensionFileLoader(mod_key, so_path)
+    spec = _u.spec_from_file_location(mod_name, so_path, loader=loader)
+    mod = _u.module_from_spec(spec)
+    sys.modules[mod_key] = mod
+    loader.exec_module(mod)
+    return mod

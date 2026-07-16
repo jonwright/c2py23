@@ -5,7 +5,7 @@ import gc
 import sys
 import time
 
-from conftest import measure, NOARGS_ITERS, read_builtin_perf, _results
+from conftest import measure, NOARGS_ITERS, read_builtin_perf, _results, load_pythonh_module
 import c2py23.perf
 
 
@@ -55,4 +55,15 @@ def test_noargs_overhead():
         add("c2py23", " cycle", c_m, w_m, ns)
     except Exception:
         add("c2py23", " cycle", "  n/a", "  n/a", 0)
+
+    # ---- Pythonh variant ----
+    try:
+        ph = load_pythonh_module("c2py_noargs")
+        c2py23.perf.set_enabled(ph.noargs, 0)
+        c2py23.perf.reset_perf(ph.noargs)
+        _, ns = measure(ph.noargs, NOARGS_ITERS)
+        add("c2py23 --pythonh", "  off", "    -", "    --", ns)
+    except Exception as e:
+        print("    (pythonh not built: {})".format(e))
+
     print()

@@ -30,38 +30,20 @@ bash tests/test_lto_devirt.sh
 - The assertion that LTO devirtualizes is a compiler quality
   property, not a c2py23 correctness property.
 
-### Benchmark: measuring the cost of portability
+### Measuring portability overhead
 
-The dlsym-based nimpy approach adds overhead per C2PY function
-pointer call.  To measure it, build with and without `--pythonh`
-using `-flto -O2`, then compare:
+The benchmark suite at `benchmarks/` has a `pythonh` target.  Build and run:
 
 ```bash
-# Build both variants
-CFLAGS="-flto -O2" LDFLAGS="-flto" \
-  c2py23 build benchmarks/src/c2py_noargs.c2py -o /tmp/nimpy.so
-CFLAGS="-flto -O2" LDFLAGS="-flto" \
-  c2py23 build --pythonh benchmarks/src/c2py_noargs.c2py -o /tmp/py.so
-
-# Run benchmark (timing numbers go to stdout, not into source)
-python3 -c "
-import sys, time; sys.path.insert(0,'/tmp')
-import importlib.machinery, importlib.util
-for n,p in [('nimpy','/tmp/nimpy.so'),('pythonh','/tmp/py.so')]:
-    sys.modules.pop('c2py_noargs',None)
-    l=importlib.machinery.ExtensionFileLoader('c2py_noargs',p)
-    s=importlib.util.spec_from_file_location('c2py_noargs',p,loader=l)
-    m=importlib.util.module_from_spec(s)
-    sys.modules['c2py_noargs']=m; l.exec_module(m)
-    for _ in range(1000): m.noargs()
-    N=5000000; t0=time.perf_counter_ns()
-    for _ in range(N): m.noargs()
-    ns=(time.perf_counter_ns()-t0)/N
-    print('%s: %.1f ns/call'%(n,ns))
-"
+cd benchmarks && make bench
 ```
 
-The delta is the cost of portability — one load through the C2PY
-function pointer table per CPython API call.  On a typical buffer
-computation (vnorm, 3-element vectors) this is a fraction of a
-percent of total runtime.
+This builds all modules for both nimpy (dlsym) and pythonh (direct),
+runs the same benchmark code against both, prints results to stdout,
+and writes `docs/benchmarks.md`.  The delta between nimpy and pythonh
+columns is the cost of cross-version portability.  All numbers are
+printed at runtime — none are embedded in source.
+
+```bash
+cd benchmarks && python3 generate_docs.py
+```

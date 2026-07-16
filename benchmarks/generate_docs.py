@@ -58,6 +58,9 @@ def render():
         )
     )
     L("All C code compiled with `-O2`.  Generated {}.".format(date))
+    L("`--pythonh` is the `#include <Python.h>` path (no dlsym).  The delta")
+    L("between `c2py23` and `c2py23 --pythonh` is the cost of cross-version")
+    L("portability from the nimpy-style dlsym trick.")
     L()
 
     # -- No-arg section --

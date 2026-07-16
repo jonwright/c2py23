@@ -1,10 +1,58 @@
 [
  {
+  "label": "gold METH_FASTCALL",
+  "timing": "  --",
+  "c_mean": "    --",
+  "wrap": "    --",
+  "ns_per_call": 23.6580798,
+  "section": "noargs"
+ },
+ {
+  "label": "gold METH_NOARGS",
+  "timing": "  --",
+  "c_mean": "    --",
+  "wrap": "    --",
+  "ns_per_call": 23.9851776,
+  "section": "noargs"
+ },
+ {
+  "label": "c2py23",
+  "timing": "  off",
+  "c_mean": "    -",
+  "wrap": "    --",
+  "ns_per_call": 22.1032258,
+  "section": "noargs"
+ },
+ {
+  "label": "c2py23",
+  "timing": " clock",
+  "c_mean": " 85.0",
+  "wrap": " 54.7",
+  "ns_per_call": 182.76215,
+  "section": "noargs"
+ },
+ {
+  "label": "c2py23",
+  "timing": " cycle",
+  "c_mean": " 69.4",
+  "wrap": " 46.0",
+  "ns_per_call": 69.1391036,
+  "section": "noargs"
+ },
+ {
+  "label": "c2py23 --pythonh",
+  "timing": "  off",
+  "c_mean": "    -",
+  "wrap": "    --",
+  "ns_per_call": 21.0543083,
+  "section": "noargs"
+ },
+ {
   "label": "gold vnorm fastcall",
   "acquire": "getbuffer",
   "checks": " --",
   "timing": "  --",
-  "ns_per_call": 115.672895,
+  "ns_per_call": 117.097075,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -14,7 +62,7 @@
   "acquire": "PyArray  ",
   "checks": " --",
   "timing": "  --",
-  "ns_per_call": 103.705015,
+  "ns_per_call": 105.013235,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -24,7 +72,7 @@
   "acquire": "  --",
   "checks": " no",
   "timing": "  off",
-  "ns_per_call": 69.700605,
+  "ns_per_call": 51.90367,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -34,7 +82,7 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 73.458505,
+  "ns_per_call": 57.93971,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -44,7 +92,7 @@
   "acquire": "ndarray ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 73.000655,
+  "ns_per_call": 56.787115,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -54,7 +102,7 @@
   "acquire": "buffer  ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 155.813595,
+  "ns_per_call": 132.084715,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -64,7 +112,7 @@
   "acquire": "dlpack  ",
   "checks": "yes",
   "timing": "  off",
-  "ns_per_call": 0,
+  "ns_per_call": 364.48267,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_tiny"
@@ -74,9 +122,9 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " clock",
-  "ns_per_call": 220.54971,
-  "c_mean": "91",
-  "wrap": "64",
+  "ns_per_call": 203.20017,
+  "c_mean": "90",
+  "wrap": "66",
   "section": "vnorm_tiny"
  },
  {
@@ -84,9 +132,19 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": " cycle",
-  "ns_per_call": 103.90796,
+  "ns_per_call": 84.476145,
   "c_mean": "73",
-  "wrap": "59",
+  "wrap": "69",
+  "section": "vnorm_tiny"
+ },
+ {
+  "label": "c2py23 --pythonh",
+  "acquire": "getbuffer",
+  "checks": "yes",
+  "timing": "  off",
+  "ns_per_call": 54.636315,
+  "c_mean": "",
+  "wrap": "",
   "section": "vnorm_tiny"
  },
  {
@@ -94,8 +152,8 @@
   "acquire": "getbuffer",
   "checks": " --",
   "timing": "  --",
-  "ms": 10.477026,
-  "mb_s": 12810.670508978406,
+  "ms": 10.458023,
+  "mb_s": 12833.948443219142,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -105,8 +163,8 @@
   "acquire": "PyArray  ",
   "checks": " --",
   "timing": "  --",
-  "ms": 10.547226,
-  "mb_s": 12725.405523689356,
+  "ms": 10.467973,
+  "mb_s": 12821.749540240502,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -116,8 +174,8 @@
   "acquire": "  --",
   "checks": " no",
   "timing": "  off",
-  "ms": 10.578486,
-  "mb_s": 12687.801260029082,
+  "ms": 10.499583,
+  "mb_s": 12783.148435514058,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -127,8 +185,8 @@
   "acquire": "getbuffer",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.579606,
-  "mb_s": 12686.45807792842,
+  "ms": 10.533273,
+  "mb_s": 12742.26235283183,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -138,8 +196,8 @@
   "acquire": "ndarray ",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.607216,
-  "mb_s": 12653.435925128706,
+  "ms": 10.487684,
+  "mb_s": 12797.651798051886,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -149,8 +207,8 @@
   "acquire": "buffer  ",
   "checks": "yes",
   "timing": "  off",
-  "ms": 10.585186,
-  "mb_s": 12679.770388541117,
+  "ms": 10.469423,
+  "mb_s": 12819.97374640417,
   "c_mean": "",
   "wrap": "",
   "section": "vnorm_large"
@@ -160,6 +218,28 @@
   "acquire": "dlpack  ",
   "checks": "yes",
   "timing": "  off",
+  "ms": 10.494474,
+  "mb_s": 12789.371625485945,
+  "c_mean": "",
+  "wrap": "",
+  "section": "vnorm_large"
+ },
+ {
+  "label": "c2py23 checks + clock",
+  "acquire": "getbuffer",
+  "checks": "yes",
+  "timing": " clock",
+  "ms": 10.583504,
+  "mb_s": 12681.785540970175,
+  "c_mean": "10570843",
+  "wrap": "1863",
+  "section": "vnorm_large"
+ },
+ {
+  "label": "c2py23 checks + cycle",
+  "acquire": "getbuffer",
+  "checks": "yes",
+  "timing": " cycle",
   "ms": 0,
   "mb_s": 0,
   "c_mean": "",
@@ -167,25 +247,14 @@
   "section": "vnorm_large"
  },
  {
-  "label": "c2py23 checks + clock",
+  "label": "c2py23 --pythonh",
   "acquire": "getbuffer",
   "checks": "yes",
-  "timing": " clock",
-  "ms": 10.544866,
-  "mb_s": 12728.253540632948,
-  "c_mean": "10533610",
-  "wrap": "1753",
-  "section": "vnorm_large"
- },
- {
-  "label": "c2py23 checks + cycle",
-  "acquire": "getbuffer",
-  "checks": "yes",
-  "timing": " cycle",
-  "ms": 10.547856,
-  "mb_s": 12724.64546349514,
-  "c_mean": "25301320",
-  "wrap": "4432",
+  "timing": "  off",
+  "ms": 10.565433,
+  "mb_s": 12703.476326999564,
+  "c_mean": "",
+  "wrap": "",
   "section": "vnorm_large"
  }
 ]
