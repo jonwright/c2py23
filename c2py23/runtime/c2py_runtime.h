@@ -21,8 +21,34 @@
  */
 
 #undef _GNU_SOURCE   /* runtime.c defines it; PyPy/GraalPy Python.h may redefine */
+#undef _POSIX_C_SOURCE  /* Python 2.7 pyconfig.h may redefine */
+#undef _XOPEN_SOURCE
 #include <Python.h>
 #include <stddef.h>
+
+/* Python 2.7: provide forward declarations for 3.x-only types
+ * referenced by the C2PY struct and generated wrapper code. */
+#if PY_MAJOR_VERSION == 2
+typedef struct {
+    PyObject_HEAD
+    void *m_init;
+    Py_ssize_t m_index;
+    void *m_copy;
+    const char *m_name;
+    const char *m_doc;
+    Py_ssize_t m_size;
+    PyMethodDef *m_methods;
+    void *m_slots;
+    void *m_traverse;
+    void *m_clear;
+    void *m_free;
+} PyModuleDef;
+#define PyModuleDef_HEAD_INIT 1, NULL, NULL, 0, NULL
+#endif
+
+#ifndef METH_FASTCALL
+#define METH_FASTCALL 0x0080
+#endif
 
 /* Buffer flags — pythonh aliases for CPython constants */
 #define C2PY_BUF_READ   PyBUF_READ

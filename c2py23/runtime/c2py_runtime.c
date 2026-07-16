@@ -1016,6 +1016,19 @@ static void _c2py_runtime_init_once(void)
 /* ---- pythonh mode: C2PY initialised from Python.h symbols ---- */
 c2py_api_t C2PY = {0};
 
+#if PY_MAJOR_VERSION == 2
+static PyObject*
+_c2py_pythonh_init_module(const char *name, PyMethodDef *methods)
+{
+    PyObject *m = Py_InitModule3(name, methods, "");
+    if (m != NULL) {
+        C2PY._ds_set_item_string = (void *)PyDict_SetItemString;
+        C2PY._ds_pypy_workaround = 1;
+    }
+    return m;
+}
+#endif
+
 int c2py_runtime_init(void)
 {
     C2PY.GetBuffer     = PyObject_GetBuffer;
@@ -1024,51 +1037,102 @@ int c2py_runtime_init(void)
     C2PY.buffer_api_is_pep3118 = 1;
     C2PY.ParseTuple    = (int (*)(PyObject*, const char*, ...))PyArg_ParseTuple;
     C2PY.Long_FromLong      = PyLong_FromLong;
+#if PY_MAJOR_VERSION >= 3 || defined(PyLong_FromLongLong)
     C2PY.Long_FromLongLong  = (PyObject*(*)(long long))PyLong_FromLongLong;
+#endif
+#if PY_MAJOR_VERSION >= 3 || defined(PyLong_FromUnsignedLongLong)
     C2PY.Long_FromUnsignedLongLong = (PyObject*(*)(unsigned long long))PyLong_FromUnsignedLongLong;
+#endif
     C2PY.Float_FromDouble   = PyFloat_FromDouble;
     C2PY.Tuple_New          = PyTuple_New;
     C2PY.Tuple_SetItem      = PyTuple_SetItem;
     C2PY.Bytes_FromStringAndSize = PyBytes_FromStringAndSize;
     C2PY.Long_AsLong        = PyLong_AsLong;
+#if PY_MAJOR_VERSION >= 3 || defined(PyLong_AsLongLong)
     C2PY.Long_AsLongLong    = (long long(*)(PyObject*))PyLong_AsLongLong;
+#endif
     C2PY.Float_AsDouble     = PyFloat_AsDouble;
+#if PY_MAJOR_VERSION >= 3
+    /* PyExc_* are PyObject* globals on Python 3.  On 2.7 they are
+     * similarly accessible though the exact casting may differ. */
     C2PY.exc_TypeError      = (void *)PyExc_TypeError;
     C2PY.exc_ValueError     = (void *)PyExc_ValueError;
     C2PY.exc_RuntimeError   = (void *)PyExc_RuntimeError;
     C2PY.exc_MemoryError    = (void *)PyExc_MemoryError;
+#else
+    C2PY.exc_TypeError      = (void *)PyExc_TypeError;
+    C2PY.exc_ValueError     = (void *)PyExc_ValueError;
+    C2PY.exc_RuntimeError   = (void *)PyExc_RuntimeError;
+    C2PY.exc_MemoryError    = (void *)PyExc_MemoryError;
+#endif
+    C2PY.exc_BufferError    = NULL;
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 3
+    /* PyExc_BufferError added in Python 3.3 */
     C2PY.exc_BufferError    = (void *)PyExc_BufferError;
+#endif
     C2PY.Err_SetString      = PyErr_SetString;
     C2PY.Err_Occurred       = PyErr_Occurred;
     C2PY.Err_Format         = (PyObject*(*)(PyObject*,const char*,...))PyErr_Format;
     C2PY.none_obj           = Py_None;
     C2PY.none_immortal      = ((PY_MAJOR_VERSION >= 3) && (PY_MINOR_VERSION >= 12)) ? 1 : 0;
+#if PY_MAJOR_VERSION >= 3
     C2PY.Module_Create2     = (PyObject*(*)(PyModuleDef*,int))PyModule_Create2;
+#else
+    C2PY.Module_Create2     = NULL;
+#endif
+#if PY_MAJOR_VERSION == 2
+    C2PY.InitModule_2_7     = _c2py_pythonh_init_module;
+#else
     C2PY.InitModule_2_7     = NULL;
+#endif
+#if defined(Py_IncRef) && PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 12
     C2PY.IncRef             = Py_IncRef;
     C2PY.DecRef             = Py_DecRef;
+#else
+    /* Pre-3.12: manual refcounting via ob_refcnt field */
+    C2PY.IncRef             = NULL;
+    C2PY.DecRef             = NULL;
+#endif
     C2PY.SetAttrString      = PyObject_SetAttrString;
     C2PY.GetAttrString      = PyObject_GetAttrString;
     C2PY.Module_GetDict     = PyModule_GetDict;
     C2PY._ds_set_item_string = (void *)PyDict_SetItemString;
     C2PY._ds_pypy_workaround = 0;
     C2PY.CallObject         = PyObject_CallObject;
+#if PY_MAJOR_VERSION >= 3
     C2PY.Capsule_GetPointer = PyCapsule_GetPointer;
+#else
+    C2PY.Capsule_GetPointer = NULL;
+#endif
     C2PY.Long_FromVoidPtr   = PyLong_FromVoidPtr;
     C2PY.SaveThread         = (void*(*)(void))PyEval_SaveThread;
     C2PY.RestoreThread      = (void(*)(void*))PyEval_RestoreThread;
     C2PY.Unstable_Module_SetGIL = NULL;
     C2PY.version_major      = PY_MAJOR_VERSION;
     C2PY.version_minor      = PY_MINOR_VERSION;
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 7
     C2PY.use_fastcall       = 1;
+#else
+    C2PY.use_fastcall       = 0;
+#endif
+#if defined(Py_GIL_DISABLED)
+    C2PY.is_free_threaded   = Py_GIL_DISABLED;
+#else
     C2PY.is_free_threaded   = 0;
+#endif
     C2PY.is_pypy            = 0;
     C2PY.pybuffer_size      = sizeof(Py_buffer);
     C2PY.pyobject_size      = sizeof(PyObject);
     C2PY.pyobject_size_ft   = sizeof(PyObject);
+#if PY_MAJOR_VERSION >= 3
     C2PY.pymoduledef_max_size = sizeof(PyModuleDef);
     C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_refcnt);
     C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
+#else
+    C2PY.pymoduledef_max_size = 0; /* 2.7: not used */
+    C2PY.ob_refcnt_offset   = offsetof(PyObject, ob_refcnt);
+    C2PY.ob_type_offset     = offsetof(PyObject, ob_type);
+#endif
     c2py_tick_frequency_hz          = 1000000000ULL;
     c2py_cycle_counter_frequency_hz = 0;
     return 0;
