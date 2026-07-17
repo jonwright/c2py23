@@ -95,22 +95,33 @@ def _pythonh_libs(libs):
         # Python 2.7: sys.implementation does not exist.
         # Distinguish CPython 2.7 from PyPy 2.7.
         is_cpython = not hasattr(sys, "pypy_version_info")
+    print("[pythonh] is_cpython=%s" % is_cpython, file=sys.stderr)
     if is_cpython:
         try:
             import sysconfig as _sc
 
             if sys.platform == "win32":
-                libdir = _sc.get_config_var("LIBDIR")
+                libdir = _sc.get_config_var("LIBDIR") or ""
+                print("[pythonh] win32, LIBDIR=%r" % libdir, file=sys.stderr)
+                if not libdir:
+                    prefix = _sc.get_config_var("prefix") or ""
+                    if prefix:
+                        libdir = os.path.join(prefix, "libs")
+                        print("[pythonh] fallback via prefix: %r" % libdir, file=sys.stderr)
                 if libdir:
                     ver = sys.version_info
                     # python312.lib, python27.lib, etc.
-                    libname = "python%d%d.lib" % (ver.major, ver.minor)
-                    libfile = os.path.join(libdir, libname)
-                    if not os.path.exists(libfile):
-                        # fallback: stable ABI name (python3.lib)
-                        libfile = os.path.join(libdir, "python%d.lib" % ver.major)
-                    if os.path.exists(libfile):
-                        libs.append(libfile)
+                    candidates = [
+                        "python%d%d.lib" % (ver.major, ver.minor),
+                        "python%d.lib" % ver.major,
+                    ]
+                    for libname in candidates:
+                        libfile = os.path.join(libdir, libname)
+                        print("[pythonh] trying %r -> exists=%s" % (libfile, os.path.exists(libfile)), file=sys.stderr)
+                        if os.path.exists(libfile):
+                            libs.append(libfile)
+                            print("[pythonh] appended %r" % libfile, file=sys.stderr)
+                            break
             else:
                 ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
                 if ld_ver:
@@ -120,7 +131,8 @@ def _pythonh_libs(libs):
                     libdir = _sc.get_config_var("LIBDIR")
                     if libdir:
                         extra_ldflags.append("-L" + libdir)
-        except Exception:
+        except Exception as e:
+            print("[pythonh] exception: %s" % e, file=sys.stderr)
             pass
     return libs, extra_ldflags
 
@@ -218,6 +230,7 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
 
     if pythonh:
         libs, extra_ld = _pythonh_libs(libs)
+        print("[pythonh] libs after = %r" % libs, file=sys.stderr)
         ldflags.extend(extra_ld)
 
     if is_msvc:
