@@ -20,6 +20,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Check 7-bit ASCII compliance
+        run: git ls-files | python tools/check_ascii.py
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -84,7 +87,7 @@ jobs:
           allow-prereleases: true
 
       - name: Install c2py23
-        run: pip install -e . --quiet
+        run: pip install -e ".[yaml]" --quiet
 
       - name: Build and test pythonh
         env:

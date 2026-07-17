@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# tests/test_ph_all.py — test dlsym + pythonh builds for fill.c2py
+# tests/test_ph_all.py  --  test dlsym + pythonh builds for fill.c2py
 """Build and load fill.c2py in both dlsym and pythonh modes.
 
 Verifies that each mode loads from the correct .so file.

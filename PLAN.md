@@ -103,11 +103,11 @@ targets are tested.
 
 Windows 64-bit uses LLP64 (`sizeof(long)=4`) which we handle correctly
 (format-dispatch, length type).  Windows 32-bit i386 would be the same
-LLP64 + 4-byte pointers — but 32-bit Py_buffer layout differs
+LLP64 + 4-byte pointers  --  but 32-bit Py_buffer layout differs
 (`sizeof(Py_buffer)` is 48 on ILP32 vs 68/80/96 on LP64), and FT does
 not exist on ILP32.
 
-Gohlke's numpy binaries cover Windows 32-bit (i386) — but for c2py23,
+Gohlke's numpy binaries cover Windows 32-bit (i386)  --  but for c2py23,
 32-bit support would require:
 1. ILP32 Py_buffer layout verification (2.7, 3.x)
 2. `_c2py_py_buffer_layout` enum entries for 48-byte layout
@@ -126,33 +126,33 @@ VS 2017+) to locate all installed VS toolchains, then select the
 newest/MSVC version.
 
 Workaround: user runs c2py23 from a Developer Command Prompt, or sets
-`CC=cl` explicitly.  Low priority — MinGW/gcc works on Windows without
+`CC=cl` explicitly.  Low priority  --  MinGW/gcc works on Windows without
 this issue.
 
 ---
 
 ## Completed
 
-- **`--pythonh` mode (2026-07)** — direct `#include <Python.h>` build, no dlsym
+- **`--pythonh` mode (2026-07)**  --  direct `#include <Python.h>` build, no dlsym
   trick.  Works on all runtimes (CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12).
   CI covers end members (2.7 + 3.14t) in `linux_pythonh.yml`.  13/13 snakepit
   containers pass both dlsym and pythonh builds.  Full docs in `docs/pythonh.md`.
   LTO devirtualization proof in `tests/test_lto_devirt.sh`.
 
-- **Pyodide/WASM support (2026-07)** — `--target wasm` CLI flag.  23 WASM modules,
+- **Pyodide/WASM support (2026-07)**  --  `--target wasm` CLI flag.  23 WASM modules,
   80/80 tests pass inside Pyodide via Node.js.  CI in `wasm.yml`.
 
-- **Buffers on disk: brainstorm/ removed (2026-07)** — useful cross-platform
+- **Buffers on disk: brainstorm/ removed (2026-07)**  --  useful cross-platform
   scripts moved to `tests/cross_platform/`, Pyodide npm package to
   `tests/wasm/pyodide_pkg/`, setup scripts to `docs/`.
 
-- **Multi-backend buffer acquisition (2026-07)** — NumPy struct-cast, PEP 3118
+- **Multi-backend buffer acquisition (2026-07)**  --  NumPy struct-cast, PEP 3118
   buffer protocol, and DLPack capsule extraction, selectable via `acquire:` YAML key.
   Default is `[ndarray, buffer]`; ndarray struct-cast is 2-3x faster than gold
   baselines for small arrays (~70ns vs 120ns).  `c2py_ptr_info` abstracts the
   buffer metadata into a unified struct shared by all backends.
 
-- **ABI cleanup (2026-07)** — `ob_type_offset` resolved at runtime instead of
+- **ABI cleanup (2026-07)**  --  `ob_type_offset` resolved at runtime instead of
   assuming `ob_refcnt + 8`.  Python string/unicode API removed from wrapper ABI
   (no `Unicode_FromString`, `String_FromString`, or `ParseTupleAndKeywords`).
   Variant names use ASCII bytes via `PyBytes_FromStringAndSize`.  `c2py_pin`

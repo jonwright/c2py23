@@ -1,4 +1,4 @@
-"""c2py23.build — setuptools helpers for building dlsym and pythonh modules.
+"""c2py23.build -- setuptools helpers for building dlsym and pythonh modules.
 
 A DlsymExt module produces a plain .so with no libpython link,
 suitable for Python 2.7 through 3.15 with zero recompilation.
@@ -87,7 +87,7 @@ class DlsymBuildExt(_BenchmarkRouting, _BaseBuildExt):
 class PythonhBuildExt(_BenchmarkRouting, _BaseBuildExt):
     """Build extensions in pythonh mode: #include <Python.h>, link libpython.
 
-    Standard setuptools behaviour — ABI-tagged filename, libpython linked.
+    Standard setuptools behaviour -- ABI-tagged filename, libpython linked.
     Adds -DC2PY_USE_PYTHON_H to every extension.
 
     Benchmarks go to build_ph/ (matching dlsym's build/ convention).
@@ -151,7 +151,7 @@ def discover_modules(scan_dir, runtime_dir):
 
             wrapper_c = os.path.join(os.path.dirname(c2py_path), module + "_wrapper.c")
             if not os.path.exists(wrapper_c):
-                # Wrapper not generated yet — skip (own build system like cmake/meson)
+                # Wrapper not generated yet -- skip (own build system like cmake/meson)
                 continue
 
             # Skip modules with non-C source files (e.g., .o objects from separate build)

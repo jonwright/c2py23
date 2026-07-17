@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""c2py23 test runner — generate, build, test.
+"""c2py23 test runner -- generate, build, test.
 
 Usage:
     python tests/runner.py              # Run all tests
@@ -29,7 +29,7 @@ def _find_c2py_files(base_dir):
 
 
 def _module_name(c2py_path):
-    """Parse to get module name — try ast, then YAML, then c2py parser."""
+    """Parse to get module name -- try ast, then YAML, then c2py parser."""
     with open(c2py_path) as f:
         text = f.read()
 

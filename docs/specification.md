@@ -14,7 +14,7 @@ categories of bugs -- leaks, use-after-free, ownership confusion -- while keepin
 the C code trivially simple.
 
 The project defines a strict subset language: Python on one side (memory
-blocks with metadata — acquired via NumPy struct-cast, DLPack, or the
+blocks with metadata  --  acquired via NumPy struct-cast, DLPack, or the
 PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
 The interface is described declaratively in YAML. The code generator
 transpiles this into a CPython C extension that acquires pointers to the
@@ -561,23 +561,23 @@ must have `default: true` (the default).
 
 The `name` field on a variant defaults to the C function name extracted
 from `sig` (e.g., `poly_f32_avx512`). If specified, `name` must match
-the C function name exactly — enforced at parse time. This ensures
+the C function name exactly  --  enforced at parse time. This ensures
 `_variants_<name>()` returns names that correspond to real .so symbols.
 
 ```yaml
 variants:
-  - sig: "void poly_f32_avx512(...)"   # name → "poly_f32_avx512"
+  - sig: "void poly_f32_avx512(...)"   # name -> "poly_f32_avx512"
     when: "c2py_amd64_avx512f"
-  - sig: "void poly_f32_scalar(...)"   # name → "poly_f32_scalar"
+  - sig: "void poly_f32_scalar(...)"   # name -> "poly_f32_scalar"
 ```
 
 #### Variant Enumeration and Rebind
 
 Every function with grouped variants gets:
 
-- `_rebind_<name>(variant_name)` — sets the active variant by name.
+- `_rebind_<name>(variant_name)`  --  sets the active variant by name.
   Call with `None` to re-run auto-resolve.
-- `_variants_<name>()` — returns a tuple of all variant names (including
+- `_variants_<name>()`  --  returns a tuple of all variant names (including
   `default: false` variants) in declaration order.
 
 ### Default Raise
@@ -1305,15 +1305,15 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **`--pythonh` mode** — Build via `python tests/setup.py build_ext --inplace --pythonh`.
+- **`--pythonh` mode**  --  Build via `python tests/setup.py build_ext --inplace --pythonh`.
   Produces a standard CPython extension that includes `<Python.h>` directly.  No dlsym
   trick.  Required for GraalPy (Native Image `dlopen(NULL)` exports zero
   symbols).  See `docs/pythonh.md` for the full runtime support matrix.
-- **PyPy support** — Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
+- **PyPy support**  --  Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
   PyPy-compatible `.so` files (tested on PyPy 2.7, 3.9, 3.11 via
-  `ubuntu24.04_pypy.sif` container).  No CI — likely to regress without
+  `ubuntu24.04_pypy.sif` container).  No CI  --  likely to regress without
   maintenance.  See `PLAN.md` for current test matrix.
-- **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
+- **Pyodide/WASM**  --  Pyodide is CPython compiled to WASM via Emscripten.
   `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
   `--target wasm` CLI flag available (emcc, `-s SIDE_MODULE=1`, skips -ldl/-shared/-fPIC,
   32-bit rejection guarded with `#ifndef __EMSCRIPTEN__`).

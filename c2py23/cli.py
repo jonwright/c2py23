@@ -1,4 +1,4 @@
-"""CLI entry point for c2py23 — generate C wrapper from .c2py interface.
+"""CLI entry point for c2py23 -- generate C wrapper from .c2py interface.
 
 Usage:
     c2py23 file.c2py -o wrapper.c        # generate wrapper to file

@@ -52,13 +52,13 @@ to load on Python 2.7 through 3.15 without recompilation.
 ## Usage
 
 ```bash
-# CPython — picks up running interpreter's headers
+# CPython  --  picks up running interpreter's headers
 python3.12 -m c2py23 build --pythonh mymodule.c2py
 
-# PyPy — builds against PyPy's Python.h
+# PyPy  --  builds against PyPy's Python.h
 pypy3.9 -m c2py23 build --pythonh mymodule.c2py
 
-# GraalPy — builds against GraalPy's Python.h
+# GraalPy  --  builds against GraalPy's Python.h
 graalpy -m c2py23 build --pythonh mymodule.c2py
 ```
 
@@ -68,7 +68,7 @@ include paths (`sysconfig.get_config_var("INCLUDEPY")`), the correct
 only).
 
 `--pythonh` is incompatible with `--target wasm` (WASM does not use
-Python.h).  It can be combined with `--target pypy` — the PyPy binary
+Python.h).  It can be combined with `--target pypy`  --  the PyPy binary
 provides its own `<Python.h>` via cpyext.
 
 ## Runtime support matrix
@@ -97,7 +97,7 @@ See `docs/benchmarks.md` for current numbers.  Summary:
   the only option.
 
 For buffer computations (vnorm, N=3 vectors), the delta is ~3 ns per
-call — noise relative to the buffer acquisition and computation costs.
+call  --  noise relative to the buffer acquisition and computation costs.
 
 ## LTO and devirtualization
 

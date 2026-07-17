@@ -52,7 +52,7 @@ Build and use:
 # Generate the wrapper
 c2py23 arraysum.c2py -o arraysum_wrapper.c
 
-# Compile (dlsym mode — portable, no libpython)
+# Compile (dlsym mode  --  portable, no libpython)
 cc -shared -fPIC -I c2py23/runtime/ arraysum_wrapper.c arraysum.c \
    c2py23/runtime/c2py_runtime.c -ldl -lm -o arraysum.so
 
@@ -93,12 +93,12 @@ Windows (x64/i386, MSVC/MinGW). Free-threaded Python 3.13+ supported.
 The [GitHub repository](https://github.com/jonwright/c2py23) includes build examples
 (not in the PyPI sdist):
 
-- `examples/kissfft_wrap/` — real + complex FFT over float buffers
-- `examples/lz4_wrap/` — compress/decompress over byte buffers
-- `examples/simd_dispatch/` — CPU feature dispatch (SSE2/AVX2/AVX-512, NEON, Altivec)
-- `examples/threading_bench/` — GIL release, free-threading, OpenMP
-- `examples/wheel_demo/` — multi-platform wheel packaging
-- `examples/cmake_demo/`, `examples/meson_demo/` — build system integration
+- `examples/kissfft_wrap/`  --  real + complex FFT over float buffers
+- `examples/lz4_wrap/`  --  compress/decompress over byte buffers
+- `examples/simd_dispatch/`  --  CPU feature dispatch (SSE2/AVX2/AVX-512, NEON, Altivec)
+- `examples/threading_bench/`  --  GIL release, free-threading, OpenMP
+- `examples/wheel_demo/`  --  multi-platform wheel packaging
+- `examples/cmake_demo/`, `examples/meson_demo/`  --  build system integration
 
 ## Documentation
 

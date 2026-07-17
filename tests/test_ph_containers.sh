@@ -1,5 +1,5 @@
 #!/bin/bash
-# tests/test_ph_containers.sh — test dlsym + pythonh across snakepit containers
+# tests/test_ph_containers.sh  --  test dlsym + pythonh across snakepit containers
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

@@ -46,7 +46,7 @@
 
 /* ---- Shared globals (visible to both backends) ---- */
 
-/* CPU feature flags — always defined so .c2py files can reference
+/* CPU feature flags  --  always defined so .c2py files can reference
  * any arch features without link errors.  Non-matching arches stay 0. */
 
 int c2py_amd64_mmx = 0;
@@ -197,7 +197,7 @@ static void _c2py_probe_cpu_features(void)
         c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
     }
 #else
-    /* no inline assembly — CPU features stay 0 */
+    /* no inline assembly  --  CPU features stay 0 */
 #endif /* _MSC_VER / __GNUC__ */
 #endif
 
@@ -305,7 +305,7 @@ static void _c2py_probe_cpu_features(void)
             }
         }
 #else
-        /* no inline assembly — cycle counter frequency stays 0 */
+        /* no inline assembly  --  cycle counter frequency stays 0 */
 #endif /* _MSC_VER / __GNUC__ */
     }
 #elif (defined(__aarch64__) || defined(__arm64__)) && !defined(_MSC_VER) \

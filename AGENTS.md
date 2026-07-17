@@ -79,11 +79,11 @@ When code does not build or run on a platform, compiler, or Python version,
 the root cause is ALWAYS insufficient guards or fallbacks in our codebase.
 Never attribute failure to:
 
-- "That compiler doesn't support X" — guard non-C99 extensions with `#ifdef`
-- "That Python version is too old" — we support 2.7 through 3.15
-- "The build system doesn't handle that" — our code is the common denominator
-- "The test output is approximate" — tests must be exact
-- "That CI runner is quirky" — our CI YAML must be robust
+- "That compiler doesn't support X"  --  guard non-C99 extensions with `#ifdef`
+- "That Python version is too old"  --  we support 2.7 through 3.15
+- "The build system doesn't handle that"  --  our code is the common denominator
+- "The test output is approximate"  --  tests must be exact
+- "That CI runner is quirky"  --  our CI YAML must be robust
 
 Every failure is a missing `#ifdef`, a missing fallback, or a missing check.
 Find it. Fix it in c2py23. Never dismiss it.
@@ -101,7 +101,7 @@ compiler builtins, intrinsics) must be guarded:
 #endif
 ```
 
-The `#else` fallback must always compile and run correctly — degraded
+The `#else` fallback must always compile and run correctly  --  degraded
 functionality (no SIMD dispatch, no cycle counter) is acceptable;
 compilation failure is not.
 
@@ -122,7 +122,7 @@ c2py23 path/to/module.c2py -o wrapper.c
 python -m c2py23 path/to/module.c2py -o wrapper.c  # same, via python -m
 ```
 
-Build test modules for testing (dlsym mode — portable, no libpython):
+Build test modules for testing (dlsym mode  --  portable, no libpython):
 ```bash
 python tests/runner.py               # generate + build + test
 python tests/runner.py --no-build    # test only (use existing .so files)
@@ -139,7 +139,7 @@ CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" \
   python tests/runner.py
 ```
 
-Build for PyPy (experimental, no CI — see issue #81):
+Build for PyPy (experimental, no CI  --  see issue #81):
 ```bash
 # dlsym mode uses --target pypy at compile time via CFLAGS:
 CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace
@@ -147,7 +147,7 @@ CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace
 
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
-# uses emcc, not setuptools — kept in tests/test_all_wasm.sh
+# uses emcc, not setuptools  --  kept in tests/test_all_wasm.sh
 ```
 
 Run the full WASM test suite (80 tests):
@@ -251,7 +251,7 @@ c2py23 installed -- see the README for the gcc command.
 ### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
 
 - Build with `python tests/setup.py build_ext --inplace --pythonh`
-- Produces a standard CPython extension with `#include <Python.h>` — no dlsym trick
+- Produces a standard CPython extension with `#include <Python.h>`  --  no dlsym trick
 - Required for GraalPy (Native Image exports zero CPython symbols)
 - Useful for debugging dlsym issues, static builds, and LTO devirtualization
 - See `docs/pythonh.md` for full documentation
@@ -445,7 +445,7 @@ The human uses a classic `repo`-scoped token for admin tasks.
 14. **Never embed timing/benchmark results in source code.** Timing numbers
     are measurements, not code.  They come from running benchmarks at a
     specific time on specific hardware.  Putting them in Python comments,
-    docstrings, or generated C output is lying — the number will be stale
+    docstrings, or generated C output is lying  --  the number will be stale
     the next time the benchmark runs.  Print timings to stdout during the
     measurement, report them in the commit message or issue comment, but
     never bake them into the source tree.

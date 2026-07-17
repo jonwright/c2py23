@@ -1,6 +1,6 @@
 ## test_lto_devirt.sh
 
-**Local-only test — not run in CI.** Requires `gcc`, `objdump`, `python3-config`.
+**Local-only test  --  not run in CI.** Requires `gcc`, `objdump`, `python3-config`.
 
 Proves that `--pythonh` + `-flto` devirtualizes all C2PY function
 pointer calls to direct CPython API calls.
@@ -13,7 +13,7 @@ inspects the generated assembly:
 | Config | Expected indirect calls | Reality |
 |--------|------------------------|---------|
 | Nimpy `-O2` | >0 (dlsym requires function pointers) | 2 |
-| Pythonh `-O2` | — (compiler can see C2PY fields) | 0 |
+| Pythonh `-O2` |  --  (compiler can see C2PY fields) | 0 |
 | Pythonh `-O2 -flto` | 0 (LTO proves C2PY never mutates) | 0 (excl. glibc _init stub) |
 
 ### Usage
@@ -42,7 +42,7 @@ This builds all modules for both nimpy (dlsym) and pythonh (direct),
 runs the same benchmark code against both, prints results to stdout,
 and writes `docs/benchmarks.md`.  The delta between nimpy and pythonh
 columns is the cost of cross-version portability.  All numbers are
-printed at runtime — none are embedded in source.
+printed at runtime  --  none are embedded in source.
 
 ```bash
 cd benchmarks && python3 generate_docs.py
