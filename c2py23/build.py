@@ -37,37 +37,26 @@ class _BaseBuildExt(build_ext):
         build_ext.run(self)
 
 
-class DlsymBuildExt(_BaseBuildExt):
-    """Build extensions in dlsym mode: plain .so, no libpython link.
+class _BenchmarkRouting(object):
+    """Mixin: route benchmark extensions to build/ (dlsym) or build_ph/ (pythonh)."""
 
-    Strips the ABI-tagged filename suffix so the .so loads on any
-    Python version without recompilation.
-
-    Users should set LIBS="-ldl -lm" to override any python libs that
-    setuptools may inject from sysconfig.
-    """
-
-    def get_ext_filename(self, ext_name):
-        return ext_name.split(".")[0] + ".so"
+    _benchmark_build_subdir = "build"
 
     def get_ext_fullpath(self, ext_name):
-        """Place benchmarks under benchmarks/build/, others alongside source."""
         import os
 
         base = self.get_ext_filename(ext_name)
         ext = self.ext_map.get(ext_name)
         if ext and ext.sources:
             wrapper_dir = os.path.dirname(ext.sources[0])
-            # If source is under benchmarks/src, output to benchmarks/build/
             if "benchmarks" + os.sep + "src" in wrapper_dir.replace("/", os.sep):
-                build_dir = os.path.join(os.path.dirname(os.path.dirname(wrapper_dir)), "build")
+                build_dir = os.path.join(os.path.dirname(wrapper_dir), self._benchmark_build_subdir)
                 return os.path.join(build_dir, base)
             return os.path.join(wrapper_dir, base)
         return build_ext.get_ext_fullpath(self, ext_name)
 
     def run(self):
         build_ext.run(self)
-        # Copy from build_lib to get_ext_fullpath locations
         import os
         import shutil
 
@@ -81,12 +70,31 @@ class DlsymBuildExt(_BaseBuildExt):
                 shutil.copy2(built, dest)
 
 
-class PythonhBuildExt(_BaseBuildExt):
+class DlsymBuildExt(_BenchmarkRouting, _BaseBuildExt):
+    """Build extensions in dlsym mode: plain .so, no libpython link.
+
+    Strips the ABI-tagged filename suffix so the .so loads on any
+    Python version without recompilation.
+
+    Users should set LIBS="-ldl -lm" to override any python libs that
+    setuptools may inject from sysconfig.
+    """
+
+    def get_ext_filename(self, ext_name):
+        return ext_name.split(".")[0] + ".so"
+
+
+class PythonhBuildExt(_BenchmarkRouting, _BaseBuildExt):
     """Build extensions in pythonh mode: #include <Python.h>, link libpython.
 
     Standard setuptools behaviour — ABI-tagged filename, libpython linked.
     Adds -DC2PY_USE_PYTHON_H to every extension.
+
+    Benchmarks go to build_ph/ (matching dlsym's build/ convention).
+    Other modules go alongside source with ABI-tagged filenames.
     """
+
+    _benchmark_build_subdir = "build_ph"
 
     def build_extensions(self):
         for ext in self.extensions:
