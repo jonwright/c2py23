@@ -16,7 +16,7 @@ EXAMPLES_DIR = os.path.join(PROJECT_DIR, "examples")
 RUNTIME_DIR = os.path.join(PROJECT_DIR, "c2py23", "runtime")
 
 # Exclude container orchestrators from test collection
-collect_ignore = ["test_all.py", "test_manylinux.py"]
+collect_ignore = ["test_all.py", "test_manylinux.py", "test_ph_ci_27.py", "test_ph_ci_314t.py"]
 
 
 def _module_name(c2py_path):

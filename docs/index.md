@@ -5,6 +5,10 @@ Zero-copy C99 function wrapping for Python 2.7 through 3.15.
 One compiled `.so` works everywhere -- no recompilation, no `#include <Python.h>`,
 no numpy dependency.
 
+**GraalPy, PyPy, or debugging?** Use `c2py23 build --pythonh` to produce a
+standard CPython extension that includes `<Python.h>` directly.
+See [--pythonh mode](pythonh.md).
+
 ## How It Works
 
 1. Write a `.c2py` interface file describing your C function signatures, buffer

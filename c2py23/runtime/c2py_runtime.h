@@ -12,6 +12,139 @@
 #ifndef C2PY_RUNTIME_H
 #define C2PY_RUNTIME_H
 
+#ifdef C2PY_USE_PYTHON_H
+/*  --pythonh mode: standard CPython extension, no dlsym trick --
+ *  Include the real CPython headers.  No cross-version portability.
+ *  Used for GraalPy, debugging, static builds.
+ *  C2PY is a non-const global filled by c2py_runtime_init() at
+ *  module load.  Generated wrappers are unchanged.
+ */
+
+#undef _GNU_SOURCE   /* runtime.c defines it; PyPy/GraalPy Python.h may redefine */
+#undef _POSIX_C_SOURCE  /* Python 2.7 pyconfig.h may redefine */
+#undef _XOPEN_SOURCE
+#include <Python.h>
+#include <stddef.h>
+
+/* Python 2.7: provide forward declarations for 3.x-only types
+ * referenced by the C2PY struct and generated wrapper code. */
+#if PY_MAJOR_VERSION == 2
+typedef struct {
+    PyObject_HEAD
+    void *m_init;
+    Py_ssize_t m_index;
+    void *m_copy;
+    const char *m_name;
+    const char *m_doc;
+    Py_ssize_t m_size;
+    PyMethodDef *m_methods;
+    void *m_slots;
+    void *m_traverse;
+    void *m_clear;
+    void *m_free;
+} PyModuleDef;
+#define PyModuleDef_HEAD_INIT 1, NULL, NULL, 0, NULL
+#endif
+
+#ifndef METH_FASTCALL
+#define METH_FASTCALL 0x0080
+#endif
+
+/* Buffer flags — pythonh aliases for CPython constants */
+#define C2PY_BUF_READ   PyBUF_READ
+#define C2PY_BUF_WRITE  PyBUF_WRITE
+
+/* These inline helpers are defined in the common section below,
+ * but in pythonh mode we provide thin wrappers that call
+ * the real CPython API rather than going through C2PY. */
+#define c2py_acquire_buffer(o,b,w) \
+    PyObject_GetBuffer((PyObject*)(o),(b), \
+        ((w) ? (PyBUF_FORMAT|PyBUF_C_CONTIGUOUS|PyBUF_STRIDES|PyBUF_ND|PyBUF_WRITABLE) \
+              : (PyBUF_FORMAT|PyBUF_C_CONTIGUOUS|PyBUF_STRIDES|PyBUF_ND)))
+#define c2py_release_buffer(b)  PyBuffer_Release(b)
+
+#ifdef _WIN32
+#define C2PY_EXPORT __declspec(dllexport)
+#else
+#define C2PY_EXPORT
+#endif
+
+/* C2PY struct — same field layout as nimpy path, using real types */
+typedef struct {
+    void *dl_handle;
+    int version_major;
+    int version_minor;
+    int use_fastcall;
+    int is_free_threaded;
+    int is_pypy;
+    Py_ssize_t pybuffer_size;
+    Py_ssize_t pyobject_size;
+    Py_ssize_t pyobject_size_ft;
+    Py_ssize_t pymoduledef_max_size;
+    ptrdiff_t ob_refcnt_offset;
+    ptrdiff_t ob_type_offset;
+    int (*GetBuffer)(PyObject*, Py_buffer*, int);
+    void (*ReleaseBuffer)(Py_buffer*);
+    int (*AsReadBuffer)(PyObject*, const void**, Py_ssize_t*);
+    int (*AsWriteBuffer)(PyObject*, void**, Py_ssize_t*);
+    void (*Err_Clear)(void);
+    int buffer_api_is_pep3118;
+    int (*ParseTuple)(PyObject*, const char*, ...);
+    PyObject* (*Long_FromLong)(long);
+    PyObject* (*Long_FromLongLong)(long long);
+    PyObject* (*Long_FromUnsignedLongLong)(unsigned long long);
+    PyObject* (*Float_FromDouble)(double);
+    PyObject* (*Tuple_New)(Py_ssize_t);
+    int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
+    PyObject* (*Bytes_FromStringAndSize)(const char*, Py_ssize_t);
+    long (*Long_AsLong)(PyObject*);
+    long long (*Long_AsLongLong)(PyObject*);
+    double (*Float_AsDouble)(PyObject*);
+    void *exc_TypeError;
+    void *exc_ValueError;
+    void *exc_RuntimeError;
+    void *exc_MemoryError;
+    void *exc_BufferError;
+    void (*Err_SetString)(PyObject*, const char*);
+    PyObject* (*Err_Occurred)(void);
+    PyObject* (*Err_Format)(PyObject*, const char*, ...);
+    PyObject *none_obj;
+    int none_immortal;
+    PyObject* (*Module_Create2)(PyModuleDef*, int);
+    PyObject* (*InitModule_2_7)(const char*, PyMethodDef*);
+    void (*IncRef)(PyObject*);
+    void (*DecRef)(PyObject*);
+    int (*SetAttrString)(PyObject*, const char*, PyObject*);
+    PyObject* (*GetAttrString)(PyObject*, const char*);
+    PyObject* (*Module_GetDict)(PyObject*);
+    void *_ds_set_item_string;
+    int _ds_pypy_workaround;
+    PyObject* (*CallObject)(PyObject*, PyObject*);
+    void* (*Capsule_GetPointer)(PyObject*, const char*);
+    PyObject* (*Long_FromVoidPtr)(void*);
+    void* (*SaveThread)(void);
+    void (*RestoreThread)(void*);
+    void (*Unstable_Module_SetGIL)(PyObject*, void*);
+} c2py_api_t;
+
+extern c2py_api_t C2PY;
+
+/* When pythonh is used, the free-threaded module def is just
+ * the standard one — c2py23 has no free-threading support here. */
+#define PyModuleDef_FT         PyModuleDef
+#define PyModuleDef_HEAD_INIT_FT  PyModuleDef_HEAD_INIT
+
+/* Init stub — all assignment happens in c2py_runtime.c (pythonh path) */
+int c2py_runtime_init(void);
+
+/* c2py_set_module_attr — simple wrapper for pythonh mode */
+#define c2py_set_module_attr(mod, name, val) \
+    PyObject_SetAttrString((PyObject*)(mod), (name), (PyObject*)(val))
+
+/* Common macros, helper types, and inline functions follow below,
+ * available to both pythonh and nimpy paths. */
+#else  /* !C2PY_USE_PYTHON_H — original nimpy-style dlsym path */
+
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -358,8 +491,11 @@ typedef struct {
 /* The global API table */
 extern c2py_api_t C2PY;
 
+#endif /* !C2PY_USE_PYTHON_H */
+
+#ifndef C2PY_USE_PYTHON_H
 /* ------------------------------------------------------------------ */
-/* Convenience macros                                                 */
+/* Convenience macros  — nimpy path only (Python.h provides these in pythonh mode) */
 /* ------------------------------------------------------------------ */
 
 #define PyObject_GetBuffer(o, b, f)    C2PY.GetBuffer((PyObject*)(o), (b), (f))
@@ -522,8 +658,9 @@ c2py_release_buffer(Py_buffer *buf)
     if (buf->obj != NULL) {
         PyBuffer_Release(buf);
     }
-    /* Old buffer API (PyObject_AsRead/WriteBuffer) needs no release */
+     /* Old buffer API (PyObject_AsRead/WriteBuffer) needs no release */
 }
+#endif /* !C2PY_USE_PYTHON_H */
 
 /* ------------------------------------------------------------------ */
 /* Unified buffer info struct -- the common interface for all         */
@@ -886,13 +1023,13 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
         return -1;
 
-    dl_method = C2PY.GetAttrString(obj, "__dlpack__");
+    dl_method = PyObject_GetAttrString(obj, "__dlpack__");
     if (!dl_method) { PyErr_Clear(); return -1; }
 
     dl_args = PyTuple_New(0);
     if (!dl_args) goto fail;
 
-    capsule = C2PY.CallObject(dl_method, dl_args);
+    capsule = PyObject_CallObject(dl_method, dl_args);
     if (!capsule) { PyErr_Clear(); goto fail; }
 
     managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor");

@@ -3,7 +3,7 @@
 #
 # Prerequisites (one-time setup):
 #   sudo apt install nodejs npm emscripten
-#   cd brainstorm/tests && npm install
+#   cd tests/wasm/pyodide_pkg && npm install
 #   pip install -e .
 #
 # Usage:
@@ -21,11 +21,11 @@ echo "=== c2py23 WASM/Pyodide test suite ==="
 
 # ---- Prerequisites ----
 NODE_RUNNER="$ROOT/tests/run_wasm_tests.js"
-PYODIDE_LIB="$ROOT/brainstorm/tests/node_modules/pyodide"
+PYODIDE_LIB="$ROOT/tests/wasm/pyodide_pkg/node_modules/pyodide"
 
 if [ ! -f "$PYODIDE_LIB/package.json" ]; then
     echo "ERROR: Pyodide npm package not found."
-    echo "  Fix:  cd brainstorm/tests && npm install"
+    echo "  Fix:  cd tests/wasm/pyodide_pkg && npm install"
     exit 1
 fi
 command -v node >/dev/null 2>&1 || { echo "ERROR: Node.js not found. Install: sudo apt install nodejs"; exit 1; }
@@ -151,7 +151,7 @@ echo ""
 echo "=== Running tests in Pyodide ==="
 echo ""
 
-NODE_DIR="$ROOT/brainstorm/tests"
+NODE_DIR="$ROOT/tests/wasm/pyodide_pkg"
 (
     cd "$NODE_DIR"
     NODE_PATH="$NODE_DIR/node_modules" node "$ROOT/tests/run_wasm_tests.js"

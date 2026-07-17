@@ -9,6 +9,8 @@ to the GitHub issues where each decision was made.
   objects via PEP 3118, with Python 2.7 old-buffer fallback
 - **One `.so` everywhere** -- uses `dlopen(NULL)` + `dlsym()` (the nimpy trick)
   rather than linking `-lpython`.  No `#include <Python.h>` anywhere.
+  For runtimes where this fails (GraalPy) or for debugging, use
+  `--pythonh` instead ([docs](pythonh.md)).
 - **Format dispatch** -- route to different C overloads based on PEP 3118 format
   characters: `'d'` (float64), `'f'` (float32), `'i'` (int32), etc.
 - **CPU feature dispatch** -- compile the same C source with different `-m` flags

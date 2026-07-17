@@ -99,6 +99,11 @@ Build for PyPy (experimental, no CI):
 c2py23 build --target pypy path/to/module.c2py
 ```
 
+Build with `#include <Python.h>` directly (GraalPy, debugging, max perf):
+```bash
+c2py23 build --pythonh path/to/module.c2py
+```
+
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
 c2py23 build --target wasm path/to/module.c2py
@@ -108,7 +113,7 @@ Run the full WASM test suite (80 tests):
 ```bash
 # One-time setup:
 sudo apt install nodejs npm emscripten
-cd brainstorm/tests && npm install
+cd tests/wasm/pyodide_pkg && npm install
 pip install -e .
 
 # Build + test:
@@ -201,6 +206,14 @@ c2py23 installed -- see the README for the gcc command.
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
 - Build with `c2py23 build --target pypy file.c2py`
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
+
+### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
+
+- Build with `c2py23 build --pythonh file.c2py`
+- Produces a standard CPython extension with `#include <Python.h>` — no dlsym trick
+- Required for GraalPy (Native Image exports zero CPython symbols)
+- Useful for debugging dlsym issues, static builds, and LTO devirtualization
+- See `docs/pythonh.md` for full documentation
 
 ### Experimental: Pyodide/WASM (no CI, not tested regularly)
 
@@ -388,6 +401,13 @@ The human uses a classic `repo`-scoped token for admin tasks.
     change.  Full-file rewrites destroy history, introduce drift, and
     make diffs unreviewable.  This applies especially to PLAN.md and
     AGENTS.md.
+14. **Never embed timing/benchmark results in source code.** Timing numbers
+    are measurements, not code.  They come from running benchmarks at a
+    specific time on specific hardware.  Putting them in Python comments,
+    docstrings, or generated C output is lying — the number will be stale
+    the next time the benchmark runs.  Print timings to stdout during the
+    measurement, report them in the commit message or issue comment, but
+    never bake them into the source tree.
 
 ## Writing Safe .c2py Definitions
 

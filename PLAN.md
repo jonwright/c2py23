@@ -37,6 +37,30 @@ on wasm32).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
 
 Next: build+test fill or uniform modules inside Pyodide in node.js.
 
+### `--pythonh` mode (direct `#include <Python.h>`, no dlsym)
+
+**Status: implemented, benchmarked, documented (see `docs/pythonh.md`).**
+
+`c2py23 build --pythonh file.c2py` produces a standard CPython extension
+that includes `<Python.h>` directly.  No dlsym trick, no cross-version
+portability.  The .so is tied to one Python version.
+
+Works on all tested runtimes: CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12.
+CI covers end members (2.7 + 3.14t) in `.github/workflows/linux_pythonh.yml`.
+13/13 snakepit containers tested via `tests/test_ph_containers.sh`.
+
+Performance delta (pythonh vs nimpy on noargs, timing off):
+  CPython: ~1 ns faster
+  PyPy:    ~6 ns faster
+  GraalPy: nimpy does not work; pythonh is ~1000 ns (timing on)
+
+Full documentation: `docs/pythonh.md` (tradeoffs, runtime support matrix,
+internals, LTO devirtualization proof).
+
+**Note**: Removed `brainstorm/` from git tracking.  Useful cross-platform
+benchmark scripts moved to `tests/cross_platform/`.  Pyodide npm package
+moved to `tests/wasm/pyodide_pkg/`.
+
 ## Deferred
 
 ### ppc64le CI (was P3)
@@ -182,7 +206,7 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 - Template expansion -- `expand:` key with `${VAR}` substitution
 - Comprehensive dispatch-over-all-types example -- typedispatch test case, Example 4 in spec
 - Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
-- Test coverage -- 11 versions x 14 uniform tests, 10 peer review tests
+- Test coverage -- 13 versions x 18 uniform tests, 10 peer review tests
 - GIL release design rationale -- documented in specification.md
 - ABI matrix populated across all 10 Python versions
 - Arch-specific clocks -- rdtsc (x86), CNTVCT_EL0 (ARM64), mftb (POWER)
@@ -201,7 +225,7 @@ first.  Consider using `vswhere.exe` for VS detection on user machines.
 - `__array_struct__` evaluated and removed
 - Buffer struct layout mismatch fixed
 - `-Wall -Werror` clean on all generated code
-- 11 Python versions in test matrix (2.7, 3.6-3.14, 3.14t); 3.15 struct layouts verified identical
+- 13 Python versions in test matrix (2.7, 3.6-3.15, 3.14t, 3.15t)
 - Contiguity check: rejects strided arrays, negative strides, accepts C/F-contiguous
 - Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)

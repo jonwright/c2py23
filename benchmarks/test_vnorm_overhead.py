@@ -6,7 +6,16 @@ import sys
 import time
 
 import numpy as np
-from conftest import make_vectors, make_mods, read_builtin_perf, _results, TINY_VNORM_N, TINY_VNORM_ITERS, LARGE_VNORM_N
+from conftest import (
+    make_vectors,
+    make_mods,
+    read_builtin_perf,
+    _results,
+    TINY_VNORM_N,
+    TINY_VNORM_ITERS,
+    LARGE_VNORM_N,
+    load_pythonh_module,
+)
 import c2py23.perf
 
 
@@ -104,6 +113,16 @@ class TestVnormTiny:
             add("c2py23 checks + cycle", "getbuffer", "yes", " cycle", ns, c_m, w_m)
         except Exception:
             add("c2py23 checks + cycle", "getbuffer", "yes", " cycle", 0)
+
+        # ---- Pythonh variant (no timing/checks variant for direct comparison) ----
+        try:
+            ph_vnorm = load_pythonh_module("c2py_vnorm")
+            c2py23.perf.set_enabled(ph_vnorm.vnorm, 0)
+            c2py23.perf.reset_perf(ph_vnorm.vnorm)
+            ns = run("c2py23 --pythonh", ph_vnorm.vnorm)
+            add("c2py23 --pythonh", "getbuffer", "yes", "  off", ns)
+        except Exception as e:
+            print("    (pythonh vnorm not built: {})".format(e))
         print()
 
 
@@ -197,4 +216,14 @@ class TestVnormLarge:
             add("c2py23 checks + cycle", "getbuffer", "yes", " cycle", ms, tp, c_m, w_m)
         except Exception:
             add("c2py23 checks + cycle", "getbuffer", "yes", " cycle", 0, 0)
+
+        # ---- Pythonh variant ----
+        try:
+            ph_vnorm = load_pythonh_module("c2py_vnorm")
+            c2py23.perf.set_enabled(ph_vnorm.vnorm, 0)
+            c2py23.perf.reset_perf(ph_vnorm.vnorm)
+            ms, tp = run("c2py23 --pythonh", ph_vnorm.vnorm)
+            add("c2py23 --pythonh", "getbuffer", "yes", "  off", ms, tp)
+        except Exception as e:
+            print("    (pythonh vnorm not built: {})".format(e))
         print()

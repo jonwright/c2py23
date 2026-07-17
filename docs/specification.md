@@ -1306,6 +1306,10 @@ Makefile and Python test harness).
 
 ## Future Work
 
+- **`--pythonh` mode** — `c2py23 build --pythonh file.c2py` produces a
+  standard CPython extension that includes `<Python.h>` directly.  No dlsym
+  trick.  Required for GraalPy (Native Image `dlopen(NULL)` exports zero
+  symbols).  See `docs/pythonh.md` for the full runtime support matrix.
 - **PyPy support** — `c2py23 build --target pypy` produces PyPy-compatible
   `.so` files (tested on PyPy 2.7, 3.9, 3.11 via `ubuntu24.04_pypy.sif`
   container).  No CI — likely to regress without maintenance.
