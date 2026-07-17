@@ -36,8 +36,9 @@ for entry in "${PY_VERSIONS[@]}"; do
     result=$(apptainer exec "$SNAKEPIT_DIR/$sif" bash -c "
 mkdir -p /tmp/work && cd /tmp/work
 rm -rf /tmp/work/* 2>/dev/null
-cp -r '$PROJECT_DIR'/c2py23 '$PROJECT_DIR'/tests '$PROJECT_DIR'/setup.py '$PROJECT_DIR'/pyproject.toml '$PROJECT_DIR'/README.md /tmp/work/ 2>/dev/null
+cp -r '$PROJECT_DIR'/c2py23 '$PROJECT_DIR'/tests '$PROJECT_DIR'/setup.py '$PROJECT_DIR'/pyproject.toml '$PROJECT_DIR'/README.md '/tmp/work/' 2>/dev/null
 '$py' -m pip install -e '.[yaml]' 2>&1 | tail -1 >/dev/null
+'$py' -m pip install setuptools wheel 2>&1 | tail -1 >/dev/null
 '$py' tests/test_ph_all.py 2>&1
 " 2>&1)
     echo "$result"

@@ -81,14 +81,30 @@ build_one() {
     local out="$2"
     local label
     label="$(basename "$out" .wasm)"
+    local c2py_dir
+    c2py_dir="$(dirname "$c2py")"
+    local wrapper="$c2py_dir/${label}_wrapper.c"
     printf "  %-22s" "$label"
     local logfile="/tmp/_build_${label}.log"
-    if python3 -m c2py23.cli build --target wasm "$c2py" -o "$out" >"$logfile" 2>&1; then
+
+    # 1. Generate wrapper
+    if ! python3 -m c2py23 "$c2py" -o "$wrapper" >"$logfile" 2>&1; then
+        echo " FAIL (generate)"
+        cat "$logfile"
+        rm -f "$logfile"
+        return 1
+    fi
+
+    # 2. Compile with emcc for WASM
+    local c_file="${c2py_dir}/${label}.c"
+    local runtime="$ROOT/c2py23/runtime/c2py_runtime.c"
+    local includes="-I $ROOT/c2py23/runtime -I $c2py_dir"
+    if "$CC" -s SIDE_MODULE=1 $includes "$runtime" "$wrapper" "$c_file" -o "$out" >>"$logfile" 2>&1; then
         echo " OK"
         rm -f "$logfile"
         return 0
     else
-        echo " FAIL"
+        echo " FAIL (compile)"
         cat "$logfile"
         rm -f "$logfile"
         return 1

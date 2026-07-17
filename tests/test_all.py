@@ -185,9 +185,13 @@ def run_python_version(python_version, sif_file):
     system_py = "python" + python_version
     # ubuntu26.04 has packages pre-installed at system level
     if sif_file == "ubuntu26.04.sif":
-        test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py + " preinstalled"
+        test_cmd = "cd /workspace && " + system_py + " tests/runner.py"
     else:
-        test_cmd = "cd /workspace && bash tests/run_tests.sh " + system_py
+        test_cmd = (
+            "cd /workspace && "
+            "pip install -e . --quiet && "
+            "pip install pytest PyYAML setuptools wheel --quiet && " + system_py + " tests/runner.py"
+        )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 
@@ -251,12 +255,6 @@ def prepare_workspace():
         else:
             if not item.endswith(".pyc"):
                 shutil.copy2(src, dst)
-
-    # Make scripts executable
-    for script in ["tests/run_tests.sh"]:
-        sp = os.path.join(WORKSPACE_DIR, script)
-        if os.path.exists(sp):
-            os.chmod(sp, 0o755)
 
     print_success("Workspace prepared at " + WORKSPACE_DIR)
 
