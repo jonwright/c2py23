@@ -85,6 +85,7 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
 def _pythonh_libs(libs):
     """When --pythonh is set, drop -ldl (not needed) and add -lpythonX.Y if on CPython.
     PyPy and GraalPy provide cpyext symbols at load time, no -lpython needed.
+    On Windows, uses the .lib import library directly (MSVC does not understand -l).
     Returns (libs, extra_linker_flags)."""
     libs = [l for l in libs if l != "-ldl"]
     extra_ldflags = []
@@ -94,12 +95,19 @@ def _pythonh_libs(libs):
 
             ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
             if ld_ver:
-                libs.append("-lpython" + ld_ver)
-                # For non-standard libpython locations (uv, static builds),
-                # add -L to the library directory
-                libdir = _sc.get_config_var("LIBDIR")
-                if libdir:
-                    extra_ldflags.append("-L" + libdir)
+                if sys.platform == "win32":
+                    libdir = _sc.get_config_var("LIBDIR")
+                    if libdir:
+                        libfile = os.path.join(libdir, "python" + ld_ver + ".lib")
+                        if os.path.exists(libfile):
+                            libs.append(libfile)
+                else:
+                    libs.append("-lpython" + ld_ver)
+                    # For non-standard libpython locations (uv, static builds),
+                    # add -L to the library directory
+                    libdir = _sc.get_config_var("LIBDIR")
+                    if libdir:
+                        extra_ldflags.append("-L" + libdir)
         except Exception:
             pass
     return libs, extra_ldflags

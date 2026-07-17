@@ -25,6 +25,7 @@
 #undef _XOPEN_SOURCE
 #include <Python.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* Python 2.7: provide forward declarations for 3.x-only types
  * referenced by the C2PY struct and generated wrapper code. */
