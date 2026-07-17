@@ -19,11 +19,7 @@ Environment variables honoured by both:
 from __future__ import print_function
 
 from setuptools import Extension
-
-try:
-    from setuptools.command.build_ext import build_ext
-except ImportError:
-    from distutils.command.build_ext import build_ext
+from distutils.command.build_ext import build_ext
 
 
 class _BaseBuildExt(build_ext):
@@ -31,7 +27,7 @@ class _BaseBuildExt(build_ext):
 
     def initialize_options(self):
         build_ext.initialize_options(self)
-        self.build_lib = self.build_lib  # may be overridden
+        self.ext_map = {}  # may be overridden
 
     def run(self):
         # Ensure wrapper .c files exist before building.
@@ -60,6 +56,7 @@ class _BenchmarkRouting(object):
         return build_ext.get_ext_fullpath(self, ext_name)
 
     def run(self):
+        self.ext_map = {ext.name: ext for ext in self.extensions}
         build_ext.run(self)
         import os
         import shutil
