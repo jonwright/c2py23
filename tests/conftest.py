@@ -18,8 +18,6 @@ RUNNER = os.path.join(PROJECT_DIR, "tests", "runner.py")
 collect_ignore = [
     "test_all.py",
     "test_manylinux.py",
-    "test_ph_ci_27.py",
-    "test_ph_ci_314t.py",
     "runner.py",
 ]
 

@@ -104,13 +104,24 @@ def build_all():
     env.setdefault("LIBS", "-ldl -lm")
     env.setdefault("LDSHARED", env.get("CC", "gcc") + " -shared")
 
-    print("[runner] Building extensions...")
+    print("[runner] Building dlsym extensions...")
     subprocess.check_call(
         [sys.executable, setup_py, "build_ext", "--inplace"],
         cwd=PROJECT,
         env=env,
     )
     print("[runner] Build complete")
+
+
+def build_pythonh():
+    """Build all .so files via setuptools in pythonh mode."""
+    setup_py = os.path.join(HERE, "setup.py")
+    print("[runner] Building pythonh extensions...")
+    subprocess.check_call(
+        [sys.executable, setup_py, "build_ext", "--inplace", "--pythonh"],
+        cwd=PROJECT,
+    )
+    print("[runner] Pythonh build complete")
 
 
 def run_tests():
@@ -131,6 +142,7 @@ def run_tests():
 def main():
     no_build = "--no-build" in sys.argv
     no_test = "--no-test" in sys.argv
+    pythonh = "--pythonh" in sys.argv
 
     print("=== c2py23 test runner ===")
     print("Python: %s" % sys.version.split()[0])
@@ -138,6 +150,8 @@ def main():
     if not no_build:
         generate_all()
         build_all()
+        if pythonh:
+            build_pythonh()
 
     if not no_test:
         sys.exit(run_tests())

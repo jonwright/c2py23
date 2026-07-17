@@ -154,13 +154,46 @@ def test_build_wheel(tmpdir):
         f.write('        "_mysum.c2py23-linux_x86_64.so"))\n')
         f.write("    mysum = _mod.mysum\n")
 
-    # Build the module
-    build_cmd = [sys.executable, "-m", "c2py23.cli", "build", c2py_path]
-    rc, out, err = _run(build_cmd, cwd=src_dir)
+    # Generate wrapper then build with setuptools
+    wrapper_c = os.path.join(src_dir, "_mysum_wrapper.c")
+    gen_cmd = [sys.executable, "-m", "c2py23", c2py_path, "-o", wrapper_c]
+    rc, out, err = _run(gen_cmd)
     if rc != 0:
-        print("c2py23 build failed:", err, file=sys.stderr)
-        print("Output:", out, file=sys.stderr)
-        raise AssertionError("c2py23 build failed: %s" % err)
+        print("c2py23 generate failed:", err, file=sys.stderr)
+        raise AssertionError("c2py23 generate failed: %s" % err)
+
+    import shutil
+
+    runtime_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "c2py23",
+        "runtime",
+    )
+    for rt_fn in os.listdir(runtime_dir):
+        if rt_fn.endswith((".c", ".h")):
+            shutil.copy(os.path.join(runtime_dir, rt_fn), os.path.join(src_dir, rt_fn))
+
+    build_cmd = [
+        sys.executable,
+        "-c",
+        """
+from setuptools import setup, Extension
+from c2py23.build import DlsymCmdclass
+setup(name='_mysum',
+      ext_modules=[Extension('_mysum',
+          ['_mysum_wrapper.c', 'mysum.c', 'c2py_runtime.c'])],
+      cmdclass=DlsymCmdclass,
+      script_args=['build_ext', '--inplace'])
+""",
+    ]
+    env = os.environ.copy()
+    env.setdefault("CC", "gcc")
+    env.setdefault("LIBS", "-ldl -lm")
+    env.setdefault("LDSHARED", "gcc -shared")
+    rc, out, err = _run(build_cmd, cwd=src_dir, env=env)
+    if rc != 0:
+        print("setuptools build failed:", err, file=sys.stderr)
+        raise AssertionError("setuptools build failed: %s" % err)
 
     # Rename the .so to follow the c2py_loader convention
     ext = ".pyd" if os.name == "nt" else ".so"
