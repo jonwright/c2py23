@@ -183,7 +183,7 @@ setup(name='_mysum',
       ext_modules=[Extension('_mysum',
           ['_mysum_wrapper.c', 'mysum.c', 'c2py_runtime.c'])],
       cmdclass=DlsymCmdclass,
-      script_args=['build_ext', '--inplace'])
+      script_args=['build_ext'])
 """,
     ]
     env = os.environ.copy()

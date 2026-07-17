@@ -56,11 +56,18 @@ _example_exts = discover_modules(
     os.path.join(_PROJECT, "c2py23", "runtime"),
 )
 
-all_extensions = _test_exts + _example_exts
+# Discover benchmark modules
+_bench_exts = discover_modules(
+    os.path.join(_PROJECT, "benchmarks", "src"),
+    os.path.join(_PROJECT, "c2py23", "runtime"),
+)
+
+all_extensions = _test_exts + _example_exts + _bench_exts
 
 print(
-    "[c2py23 tests/setup] Mode: %s  Extensions: %d (tests) + %d (examples) = %d"
-    % ("pythonh" if _pythonh else "dlsym", len(_test_exts), len(_example_exts), len(all_extensions))
+    "[c2py23 tests/setup] Mode: %s  Extensions: %d (tests) + %d (examples)"
+    " + %d (benchmarks) = %d"
+    % ("pythonh" if _pythonh else "dlsym", len(_test_exts), len(_example_exts), len(_bench_exts), len(all_extensions))
 )
 
 setup(

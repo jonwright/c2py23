@@ -50,6 +50,36 @@ class DlsymBuildExt(_BaseBuildExt):
     def get_ext_filename(self, ext_name):
         return ext_name.split(".")[0] + ".so"
 
+    def get_ext_fullpath(self, ext_name):
+        """Place benchmarks under benchmarks/build/, others alongside source."""
+        import os
+
+        base = self.get_ext_filename(ext_name)
+        ext = self.ext_map.get(ext_name)
+        if ext and ext.sources:
+            wrapper_dir = os.path.dirname(ext.sources[0])
+            # If source is under benchmarks/src, output to benchmarks/build/
+            if "benchmarks" + os.sep + "src" in wrapper_dir.replace("/", os.sep):
+                build_dir = os.path.join(os.path.dirname(os.path.dirname(wrapper_dir)), "build")
+                return os.path.join(build_dir, base)
+            return os.path.join(wrapper_dir, base)
+        return build_ext.get_ext_fullpath(self, ext_name)
+
+    def run(self):
+        build_ext.run(self)
+        # Copy from build_lib to get_ext_fullpath locations
+        import os
+        import shutil
+
+        for ext in self.extensions:
+            built = os.path.join(self.build_lib, self.get_ext_filename(ext.name))
+            dest = self.get_ext_fullpath(ext.name)
+            if os.path.isfile(built) and built != dest:
+                d = os.path.dirname(dest)
+                if not os.path.isdir(d):
+                    os.makedirs(d)
+                shutil.copy2(built, dest)
+
 
 class PythonhBuildExt(_BaseBuildExt):
     """Build extensions in pythonh mode: #include <Python.h>, link libpython.

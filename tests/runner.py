@@ -106,7 +106,7 @@ def build_all():
 
     print("[runner] Building dlsym extensions...")
     subprocess.check_call(
-        [sys.executable, setup_py, "build_ext", "--inplace"],
+        [sys.executable, setup_py, "build_ext"],
         cwd=PROJECT,
         env=env,
     )
