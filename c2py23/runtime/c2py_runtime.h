@@ -26,6 +26,9 @@
 #include <Python.h>
 #include <stddef.h>
 #include <stdint.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /* Python 2.7: provide forward declarations for 3.x-only types
  * referenced by the C2PY struct and generated wrapper code. */
