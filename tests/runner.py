@@ -155,6 +155,7 @@ def run_tests():
 
     args = [
         "-v",
+        "--durations=10",
         "--tb=short",
         "--ignore=" + os.path.join(HERE, "test_workspace"),
         HERE,

@@ -34,9 +34,14 @@ jobs:
           pip install -e . --quiet
           pip install pytest PyYAML setuptools wheel --quiet
 
-      - name: Install numpy
+      - name: ABI diagnostic
+        run: python tests/abi_list_dlls.py
+
+      - name: Install numpy (skip on failure for pre-release versions)
         run: |
-          pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+          pip install --only-binary=:all: numpy --quiet 2>/dev/null || \
+          pip install --only-binary=:all: --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy --quiet 2>/dev/null || \
+          echo "(numpy skipped)"
 
       - name: Run tests
         run: python tests/runner.py
@@ -63,10 +68,13 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML numpy --quiet
+          python -m pip install pytest PyYAML --quiet
+
+      - name: Install numpy
+        run: python -m pip install 'numpy<1.17' --quiet
 
       - name: Run tests
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --durations=10 --tb=short
 
   # Pythonh: end-member smoke tests (build + import fill)
   test-pythonh:
