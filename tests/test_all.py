@@ -4,7 +4,7 @@ c2py23 test suite across all Python versions via snakepit containers.
 
 Mirrors snakepit's test_images.py pattern:
 1. Copies c2py23 project + test cases into workspace
-2. For each Python version (2.7-3.15), runs run_tests.sh inside
+2. For each Python version (2.7-3.15), runs tests/runner.py inside
    the appropriate Apptainer container
 3. Collects pass/fail results
 """

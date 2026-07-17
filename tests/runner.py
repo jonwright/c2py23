@@ -29,18 +29,43 @@ def _find_c2py_files(base_dir):
 
 
 def _module_name(c2py_path):
-    """Quick parse to get module name without full parser load."""
+    """Parse to get module name — try ast, then YAML, then c2py parser."""
     with open(c2py_path) as f:
         text = f.read()
+
+    # Python dict format
     try:
         import ast
         import re
 
         data = ast.literal_eval(re.sub(r"(?m)^\s*#.*$", "", text))
         if isinstance(data, dict):
-            return data.get("module")
+            name = data.get("module")
+            if name:
+                return name
     except Exception:
         pass
+
+    # YAML format
+    try:
+        import yaml as _yaml
+
+        data = _yaml.safe_load(text)
+        if isinstance(data, dict):
+            name = data.get("module")
+            if name:
+                return name
+    except Exception:
+        pass
+
+    # c2py parser (robust, handles all formats)
+    try:
+        from c2py23.parser import load_c2py
+
+        return load_c2py(c2py_path).name
+    except Exception:
+        pass
+
     return None
 
 

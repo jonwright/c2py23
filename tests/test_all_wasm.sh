@@ -76,6 +76,21 @@ WASM_OUT="${WASM_OUT:-/tmp/c2py_wasm_test}"
 rm -rf "$WASM_OUT" 2>/dev/null || true
 mkdir -p "$WASM_OUT"
 
+_parse_c2py() {
+    python3 -c "
+from c2py23.parser import load_c2py
+import os
+m = load_c2py('$1')
+print(m.name)
+for s in m.sources:
+    print(s)
+for h in m.headers:
+    # only .c headers need to be compiled
+    if h.endswith('.c'):
+        print(h)
+"
+}
+
 build_one() {
     local c2py="$1"
     local out="$2"
@@ -83,11 +98,23 @@ build_one() {
     label="$(basename "$out" .wasm)"
     local c2py_dir
     c2py_dir="$(dirname "$c2py")"
-    local wrapper="$c2py_dir/${label}_wrapper.c"
-    printf "  %-22s" "$label"
-    local logfile="/tmp/_build_${label}.log"
 
-    # 1. Generate wrapper
+    # Parse module name and source files from .c2py
+    local parsed
+    parsed=$(_parse_c2py "$c2py" 2>/dev/null) || true
+    if [ -z "$parsed" ]; then
+        printf "  %-22s" "$label"
+        echo " FAIL (parse c2py)"
+        return 1
+    fi
+    local mod_name="${parsed%%$'\n'*}"
+    local source_list="${parsed#*$'\n'}"
+    local wrapper="$c2py_dir/${mod_name}_wrapper.c"
+
+    printf "  %-22s" "$mod_name"
+    local logfile="/tmp/_build_${mod_name}.log"
+
+    # 1. Generate wrapper (module name from c2py, not label)
     if ! python3 -m c2py23 "$c2py" -o "$wrapper" >"$logfile" 2>&1; then
         echo " FAIL (generate)"
         cat "$logfile"
@@ -95,11 +122,20 @@ build_one() {
         return 1
     fi
 
-    # 2. Compile with emcc for WASM
-    local c_file="${c2py_dir}/${label}.c"
+    # 2. Collect all source files
     local runtime="$ROOT/c2py23/runtime/c2py_runtime.c"
     local includes="-I $ROOT/c2py23/runtime -I $c2py_dir"
-    if "$CC" -s SIDE_MODULE=1 $includes "$runtime" "$wrapper" "$c_file" -o "$out" >>"$logfile" 2>&1; then
+    local src_files=""
+    for src in $source_list; do
+        local sp="$c2py_dir/$src"
+        if [ ! -f "$sp" ]; then
+            sp="$ROOT/$src"
+        fi
+        src_files="$src_files $sp"
+    done
+
+    # 3. Compile with emcc for WASM
+    if "$CC" -s SIDE_MODULE=1 $includes "$runtime" "$wrapper" $src_files -o "$out" >>"$logfile" 2>&1; then
         echo " OK"
         rm -f "$logfile"
         return 0

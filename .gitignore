@@ -3,6 +3,8 @@
 *.o
 tests/cases/*/*_wrapper.c
 !tests/cases/transform/*_wrapper.c
+node_modules/
+package-lock.json
 
 # Python
 __pycache__/
