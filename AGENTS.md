@@ -245,12 +245,12 @@ c2py23 installed -- see the README for the gcc command.
 ### Experimental: PyPy (no CI, not tested regularly)
 
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
-- Build with `c2py23 build --target pypy file.c2py`
+- Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace`
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
 ### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
 
-- Build with `c2py23 build --pythonh file.c2py`
+- Build with `python tests/setup.py build_ext --inplace --pythonh`
 - Produces a standard CPython extension with `#include <Python.h>` — no dlsym trick
 - Required for GraalPy (Native Image exports zero CPython symbols)
 - Useful for debugging dlsym issues, static builds, and LTO devirtualization
@@ -258,7 +258,7 @@ c2py23 installed -- see the README for the gcc command.
 
 ### Experimental: Pyodide/WASM (no CI, not tested regularly)
 
-- Build with `c2py23 build --target wasm file.c2py`
+- Build with `c2py23 file.c2py -o wrapper.c` then `emcc -s SIDE_MODULE=1 -I runtime/ wrapper.c src.c runtime/c2py_runtime.c -o module.wasm`
 - Uses `emcc -s SIDE_MODULE=1` for Pyodide 3.12+
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
@@ -269,7 +269,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 ### Core Files
 - `c2py23/parser.py` -- Parses `.c2py` YAML interface files into a ModuleDef AST
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
-- `c2py23/cli.py` -- Command-line interface (`c2py23 build`)
+- `c2py23/cli.py` -- Command-line interface (`c2py23 file.c2py -o wrapper.c`)
 - `c2py23/perf.py` -- ctypes-free performance data decoder (uses generated C accessors)
 - `c2py23/invariant_checker.py` -- Validates generated C code structure
 - `c2py23/c2py_loader.py` -- Multi-platform .so loader
@@ -279,7 +279,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 
 ### How It Works
 1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
-2. `c2py23 build` generates a CPython C wrapper and compiles it with gcc into a `.so`
+2. `c2py23 file.c2py -o wrapper.c` generates a C wrapper, then compiled with any C99 compiler
 3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
 4. One `.so` works on Python 2.7 through 3.15 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
@@ -344,7 +344,7 @@ python tests/test_peer_review.py
 
 For segfault investigation, build with debug symbols and no optimization:
 ```bash
-CC=gcc CFLAGS="-g -O0 -Wall -Werror" c2py23 build tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-g -O0 -Wall -Werror" python tests/runner.py
 ```
 
 Then run under GDB:
@@ -354,7 +354,7 @@ gdb --args python3 -c "import sys; sys.path.insert(0,'tests/cases/fill'); import
 
 With ASan for memory error detection:
 ```bash
-c2py23 build --asan tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py
 ```
 
 Valgrind leak check:

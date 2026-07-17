@@ -43,7 +43,7 @@ functions:
 Build it:
 
 ```bash
-c2py23 build myadd.c2py
+c2py23 myadd.c2py -o myadd_wrapper.c
 ```
 
 This produces `myadd.c2py23-linux_x86_64.so` (name varies by platform).

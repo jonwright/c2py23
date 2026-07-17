@@ -197,7 +197,21 @@ def _build_check(skip_build):
 
         c2py_abs = os.path.join(REPO_DIR, c2py_rel)
         print("  Building: {}".format(c2py_rel))
-        ret, out, err = _run('c2py23 build "{}"'.format(c2py_abs))
+        # Generate wrapper then build via tests/setup.py
+        ret, out, err = _run(
+            'c2py23 "{}" -o "{}/{}_wrapper.c"'.format(
+                c2py_abs, os.path.dirname(c2py_abs), os.path.splitext(os.path.basename(c2py_abs))[0]
+            )
+        )
+        if ret != 0:
+            print("  [FAIL] generate failed:")
+            print("    " + out[:200] if out else "")
+            print("    " + err[:200] if err else "")
+            return False
+        ret, out, err = _run(
+            'CC=gcc LIBS="-ldl -lm" {} -m tests.setup build_ext'.format(sys.executable),
+            cwd=REPO_DIR,
+        )
         if ret != 0:
             print("  [FAIL] build failed:")
             if err:

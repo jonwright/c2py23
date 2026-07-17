@@ -5,7 +5,7 @@ Zero-copy C99 function wrapping for Python 2.7 through 3.15.
 One compiled `.so` works everywhere -- no recompilation, no `#include <Python.h>`,
 no numpy dependency.
 
-**GraalPy, PyPy, or debugging?** Use `c2py23 build --pythonh` to produce a
+**GraalPy, PyPy, or debugging?** See `docs/pythonh.md` for
 standard CPython extension that includes `<Python.h>` directly.
 See [--pythonh mode](pythonh.md).
 
@@ -13,7 +13,7 @@ See [--pythonh mode](pythonh.md).
 
 1. Write a `.c2py` interface file describing your C function signatures, buffer
    formats, and dispatch conditions
-2. Run `c2py23 build mymod.c2py` -- generates a C wrapper and compiles it with gcc
+2. Run `c2py23 mymod.c2py -o mymod_wrapper.c` -- generates a C wrapper (compile with any C99 compiler)
 3. Import the resulting `.so` from Python and call your C functions with
    ctypes arrays, memoryviews, or any buffer-protocol object
 

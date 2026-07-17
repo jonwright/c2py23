@@ -1277,14 +1277,13 @@ when timing is disabled or not compiled in.
 
 ### Address Sanitizer (ASan)
 
-Pass `--asan` to `c2py23 build` or `c2py23 compile` to enable AddressSanitizer:
+Set compiler flags via environment variables when building:
 
 ```bash
-c2py23 build --asan module.c2py
-c2py23 compile --asan module_wrapper.c -s module.c -o module.so
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py
 ```
 
-This adds `-fsanitize=address` to the compile and link flags, enabling
+This adds `-fsanitize=address` to the compile and link flags via setuptools, enabling
 detection of buffer overflows and memory leaks during testing.
 
 ## SIMD Dispatch and Multi-Flag Compilation
@@ -1306,14 +1305,14 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **`--pythonh` mode** — `c2py23 build --pythonh file.c2py` produces a
-  standard CPython extension that includes `<Python.h>` directly.  No dlsym
+- **`--pythonh` mode** — Build via `python tests/setup.py build_ext --inplace --pythonh`.
+  Produces a standard CPython extension that includes `<Python.h>` directly.  No dlsym
   trick.  Required for GraalPy (Native Image `dlopen(NULL)` exports zero
   symbols).  See `docs/pythonh.md` for the full runtime support matrix.
-- **PyPy support** — `c2py23 build --target pypy` produces PyPy-compatible
-  `.so` files (tested on PyPy 2.7, 3.9, 3.11 via `ubuntu24.04_pypy.sif`
-  container).  No CI — likely to regress without maintenance.
-  See `PLAN.md` for current test matrix.
+- **PyPy support** — Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
+  PyPy-compatible `.so` files (tested on PyPy 2.7, 3.9, 3.11 via
+  `ubuntu24.04_pypy.sif` container).  No CI — likely to regress without
+  maintenance.  See `PLAN.md` for current test matrix.
 - **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
   `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
   `--target wasm` CLI flag available (emcc, `-s SIDE_MODULE=1`, skips -ldl/-shared/-fPIC,

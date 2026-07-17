@@ -159,9 +159,9 @@ end-to-end.
 
 | Tool | Command | Catches |
 |------|---------|---------|
-| ASan | `c2py23 build --asan tests/cases/fill/fill.c2py` | Buffer overflows, use-after-free |
+| ASan | `CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py` | Buffer overflows, use-after-free |
 | Valgrind | `valgrind --leak-check=full python3 tests/test_leaks.py` | Memory leaks, uninitialized reads |
-| Debug | `CC=gcc CFLAGS="-g -O0" c2py23 build <case>.c2py` + GDB | Segfault root cause |
+| Debug | `CC=gcc CFLAGS="-g -O0 -Wall -Werror" python tests/runner.py` + GDB | Segfault root cause |
 
 ### Cross-Version Compatibility
 

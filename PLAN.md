@@ -6,7 +6,7 @@
 
 **Status: functional, not in CI.  Separate .so per target.**
 
-Build with `c2py23 build --target pypy file.c2py` produces a PyPy-compatible
+Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace` produces a PyPy-compatible
 `.so` that resolves `PyPy_*`-prefixed cpyext symbols from `libpypy3.X-c.so`.
 Test matrix:
 

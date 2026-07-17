@@ -33,7 +33,7 @@ All approaches call the same `mc_pi()` C function.
 ```bash
 pip install -e .                    # from repo root
 cd examples/mp_bench
-c2py23 build mc_pi.c2py
+c2py23 mc_pi.c2py -o mcpimod_wrapper.c
 python bench_mp.py
 ```
 

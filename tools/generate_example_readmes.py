@@ -136,7 +136,10 @@ def generate_readme(example_dir, example_name, build_output, c2py_file, c_file, 
         lines.append(_source_block(c_path, "c", c_file))
 
     lines.append("## Build\n")
-    lines.append("```bash\n$ c2py23 build %s\n%s\n```\n" % (c2py_file, build_output.rstrip()))
+    lines.append(
+        "```bash\n$ c2py23 %s\n$ cc -shared -fPIC _wrapper.c src.c c2py23/runtime/c2py_runtime.c -ldl -lm -o module.so\n%s\n```\n"
+        % (c2py_file, build_output.rstrip())
+    )
 
     if demo_results:
         lines.append("## Run\n")
@@ -171,7 +174,7 @@ def generate_static_readme(example_dir, example_name):
         lines.append(_source_block(c_path, "c", c_file))
 
     lines.append("## Build\n")
-    lines.append("```bash\n$ c2py23 build %s\n```\n" % (c2py_file or "*.c2py"))
+    lines.append("```bash\n$ c2py23 %s\n```\n" % (c2py_file or "*.c2py"))
 
     if py_scripts:
         lines.append("## Run\n")

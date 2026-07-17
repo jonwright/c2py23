@@ -281,7 +281,7 @@ See [Getting Started](getting_started.md) for installation and first build.
 
 ```bash
 # Build
-c2py23 build mymod.c2py
+c2py23 mymod.c2py -o mymod_wrapper.c
 
 # Test single Python version
 bash tests/run_tests.sh python3.12
