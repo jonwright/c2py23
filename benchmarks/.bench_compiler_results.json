@@ -1,0 +1,35 @@
+{
+  "gcc": {
+    "noargs_clock_ns": 181.5,
+    "noargs_cycle_ns": 69.9,
+    "noargs_off_ns": 22.7,
+    "pythonh": "OK",
+    "tests_passed": 113,
+    "vnorm_large_buffer_MBs": 12786,
+    "vnorm_large_c2py23_bare_MBs": 12618,
+    "vnorm_large_c2py23_checks_MBs": 12550,
+    "vnorm_large_dlpack_MBs": 12779,
+    "vnorm_large_ndarray_MBs": 12637,
+    "vnorm_tiny_buffer_ns": 133,
+    "vnorm_tiny_c2py23_bare_ns": 54,
+    "vnorm_tiny_c2py23_checks_ns": 59,
+    "vnorm_tiny_dlpack_ns": 371,
+    "vnorm_tiny_ndarray_ns": 66
+  },
+  "tcc": {
+    "noargs_clock_ns": 190.8,
+    "noargs_off_ns": 26.5,
+    "pythonh": "fails (tcc: unsupported linker option -O1)",
+    "tests_passed": 113,
+    "vnorm_large_buffer_MBs": 6720,
+    "vnorm_large_c2py23_bare_MBs": 6828,
+    "vnorm_large_c2py23_checks_MBs": 7122,
+    "vnorm_large_dlpack_MBs": 6935,
+    "vnorm_large_ndarray_MBs": 7210,
+    "vnorm_tiny_buffer_ns": 179,
+    "vnorm_tiny_c2py23_bare_ns": 147,
+    "vnorm_tiny_c2py23_checks_ns": 115,
+    "vnorm_tiny_dlpack_ns": 466,
+    "vnorm_tiny_ndarray_ns": 112
+  }
+}
