@@ -861,13 +861,14 @@ extern uint64_t c2py_cycle_counter_frequency_hz;
 static inline uint64_t c2py_cycle_counter_ticks(void) {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
     return __rdtsc();
-#elif defined(__x86_64__) || defined(__i386__)
+#elif (defined(__x86_64__) || defined(__i386__)) \
+      && (defined(__GNUC__) || defined(__clang__))
     {
         unsigned int lo, hi;
         __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
         return ((uint64_t)hi << 32) | lo;
     }
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
     {
         uint64_t cnt;
         __asm__ __volatile__("mrs %0, CNTVCT_EL0" : "=r"(cnt));
@@ -1055,7 +1056,7 @@ static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
     default: return (unsigned int)info[3];
     }
 }
-#else
+#elif defined(__GNUC__) || defined(__clang__)
 static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
     unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
     __asm__ __volatile__(
@@ -1068,6 +1069,11 @@ static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
     case 2: return ecx;
     default: return edx;
     }
+}
+#else
+static inline unsigned int c2py_cpuid_reg(int leaf, int subleaf, int reg) {
+    (void)leaf; (void)subleaf; (void)reg;
+    return 0;
 }
 #endif
 

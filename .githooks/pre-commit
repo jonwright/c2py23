@@ -40,7 +40,7 @@ fi
 
 if [ "$REBUILD" -eq 1 ]; then
     echo "[pre-commit] Rebuilding $WRAPPER..."
-    python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \
+    python3 -m c2py23 tests/cases/transform/transform.c2py \
         -o "$WRAPPER"
     git add "$WRAPPER"
     echo "[pre-commit] $WRAPPER regenerated and staged."

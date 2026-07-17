@@ -149,7 +149,7 @@ static void _c2py_probe_cpu_features(void)
             c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
         }
     }
-#else
+#elif defined(__GNUC__) || defined(__clang__)
     /* Determine max standard leaf */
     __asm__ __volatile__("cpuid"
         : "=a"(eax1) : "a"(0) : "ebx", "ecx", "edx");
@@ -196,7 +196,9 @@ static void _c2py_probe_cpu_features(void)
             : "a"(0x80000001));
         c2py_amd64_lzcnt = (ecx81 >> 5) & 1;
     }
-#endif /* _MSC_VER */
+#else
+    /* no inline assembly — CPU features stay 0 */
+#endif /* _MSC_VER / __GNUC__ */
 #endif
 
 #if (defined(__aarch64__) || defined(__arm64__)) && !defined(_WIN32) && !defined(__APPLE__)
@@ -272,7 +274,7 @@ static void _c2py_probe_cpu_features(void)
                 c2py_cycle_counter_frequency_hz = (uint64_t)qpf.QuadPart;
             }
         }
-#else
+#elif defined(__GNUC__) || defined(__clang__)
         unsigned int eax, ebx, ecx, edx;
         unsigned int max_std;
         int got_freq = 0;
@@ -302,9 +304,12 @@ static void _c2py_probe_cpu_features(void)
                 fclose(f);
             }
         }
-#endif /* _MSC_VER */
+#else
+        /* no inline assembly — cycle counter frequency stays 0 */
+#endif /* _MSC_VER / __GNUC__ */
     }
-#elif (defined(__aarch64__) || defined(__arm64__)) && !defined(_MSC_VER)
+#elif (defined(__aarch64__) || defined(__arm64__)) && !defined(_MSC_VER) \
+      && (defined(__GNUC__) || defined(__clang__))
     {
         uint64_t freq;
         __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));

@@ -73,6 +73,38 @@ else:
 
 ## C Code Constraints
 
+### P0: Portability failure is always our bug
+
+When code does not build or run on a platform, compiler, or Python version,
+the root cause is ALWAYS insufficient guards or fallbacks in our codebase.
+Never attribute failure to:
+
+- "That compiler doesn't support X" — guard non-C99 extensions with `#ifdef`
+- "That Python version is too old" — we support 2.7 through 3.15
+- "The build system doesn't handle that" — our code is the common denominator
+- "The test output is approximate" — tests must be exact
+- "That CI runner is quirky" — our CI YAML must be robust
+
+Every failure is a missing `#ifdef`, a missing fallback, or a missing check.
+Find it. Fix it in c2py23. Never dismiss it.
+
+**Standard C99 is the baseline.** Non-standard extensions (inline assembly,
+compiler builtins, intrinsics) must be guarded:
+
+```c
+#if defined(_MSC_VER)
+    __cpuidex(...)           // MSVC intrinsic
+#elif defined(__GNUC__) || defined(__clang__)
+    __asm__ __volatile__(...) // GCC/Clang inline assembly
+#else
+    /* no-op fallback: safe C99, no feature probing */
+#endif
+```
+
+The `#else` fallback must always compile and run correctly — degraded
+functionality (no SIMD dispatch, no cycle counter) is acceptable;
+compilation failure is not.
+
 - **NEVER include `<Python.h>`** -- all CPython API is resolved at runtime via `dlopen(NULL)` + `dlsym()`
 - Generated wrappers include only `"c2py_runtime.h"` and user-specified C headers
 - **NO malloc, calloc, realloc, or free** in generated wrapper code
