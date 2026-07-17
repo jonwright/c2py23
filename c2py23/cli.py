@@ -89,19 +89,31 @@ def _pythonh_libs(libs):
     Returns (libs, extra_linker_flags)."""
     libs = [l for l in libs if l != "-ldl"]
     extra_ldflags = []
-    if hasattr(sys, "implementation") and sys.implementation.name == "cpython":
+    try:
+        is_cpython = sys.implementation.name == "cpython"
+    except AttributeError:
+        # Python 2.7: sys.implementation does not exist.
+        # Distinguish CPython 2.7 from PyPy 2.7.
+        is_cpython = not hasattr(sys, "pypy_version_info")
+    if is_cpython:
         try:
             import sysconfig as _sc
 
-            ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
-            if ld_ver:
-                if sys.platform == "win32":
-                    libdir = _sc.get_config_var("LIBDIR")
-                    if libdir:
-                        libfile = os.path.join(libdir, "python" + ld_ver + ".lib")
-                        if os.path.exists(libfile):
-                            libs.append(libfile)
-                else:
+            if sys.platform == "win32":
+                libdir = _sc.get_config_var("LIBDIR")
+                if libdir:
+                    ver = sys.version_info
+                    # python312.lib, python27.lib, etc.
+                    libname = "python%d%d.lib" % (ver.major, ver.minor)
+                    libfile = os.path.join(libdir, libname)
+                    if not os.path.exists(libfile):
+                        # fallback: stable ABI name (python3.lib)
+                        libfile = os.path.join(libdir, "python%d.lib" % ver.major)
+                    if os.path.exists(libfile):
+                        libs.append(libfile)
+            else:
+                ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
+                if ld_ver:
                     libs.append("-lpython" + ld_ver)
                     # For non-standard libpython locations (uv, static builds),
                     # add -L to the library directory
