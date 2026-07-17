@@ -219,18 +219,13 @@ typedef long Py_ssize_t;
 
 /* PyObject layout: differs between GIL-enabled and free-threaded builds.
  *
- * GIL-enabled (CPython 2.7 - 3.14 standard): 16 bytes LP64
- *   offset 0: Py_ssize_t ob_refcnt
- *   offset 8: void *ob_type
+ * GIL-enabled (CPython 2.7 - 3.14 standard):
+ *   LP64:    16 bytes.  ob_refcnt at 0, ob_type at 8.
+ *   ILP32:    8 bytes.  ob_refcnt at 0, ob_type at 4.
  *
- * Free-threaded (CPython 3.13t+ --disable-gil): 32 bytes LP64
- *   offset  0: uintptr_t ob_tid
- *   offset  8: uint16_t ob_flags
- *   offset 10: uint8_t  ob_mutex
- *   offset 11: uint8_t  ob_gc_bits
- *   offset 12: uint32_t ob_ref_local
- *   offset 16: Py_ssize_t ob_ref_shared   <-- external refcount
- *   offset 24: void *ob_type
+ * Free-threaded (CPython 3.13t+ --disable-gil, LP64 only):
+ *   32 bytes.   ob_ref_shared at 16, ob_type at 24.
+ *   FT does not exist on ILP32.
  *
  * We define both layouts.  Generated code uses macros (C2PY_SET_MNAME,
  * C2PY_SET_MDOC, etc.) that work with either layout via C2PY offsets.

@@ -149,9 +149,7 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         cc = os.environ.get("CC", "emcc")
         is_msvc = False
     elif is_win:
-        cc = os.environ.get("CC", "")
-        if not cc:
-            cc = _find_msvc() or "gcc"
+        cc = os.environ.get("CC", "gcc")
         if cc == "cl" or cc.endswith("cl.exe") or cc.endswith("cl"):
             is_msvc = True
         else:
@@ -237,17 +235,6 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         sys.exit(1)
 
     print("Success: {}".format(output_so))
-
-
-def _find_msvc():
-    """Find MSVC cl.exe in PATH or standard VS install locations.
-    Returns path string or None."""
-    for candidate in ["cl", "cl.exe"]:
-        for path in os.environ.get("PATH", "").split(os.pathsep):
-            full = os.path.join(path, candidate)
-            if os.path.isfile(full):
-                return candidate
-    return None
 
 
 def _determine_so_path(output_arg, default_name, base_dir, target="cpython", pythonh=False):

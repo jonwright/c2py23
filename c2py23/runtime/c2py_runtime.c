@@ -498,18 +498,6 @@ static void _c2py_runtime_init_once(void)
     /* CPU feature probing runs first -- does not depend on Python */
     _c2py_probe_cpu_features();
 
-    /* --- Reject 32-bit builds --- */
-#ifndef __EMSCRIPTEN__
-    if (sizeof(void*) != 8) {
-        fprintf(stderr, "c2py_runtime: 32-bit platforms are not supported. "
-                "Detected %d-bit pointer width. "
-                "c2py23 targets LP64 (64-bit) only; "
-                "32-bit Py_buffer layout is unverified.\n",
-                (int)(sizeof(void*) * 8));
-        return;
-    }
-#endif
-
 #ifdef _WIN32
     {
         static const char *candidates[] = {
@@ -983,21 +971,25 @@ static void _c2py_runtime_init_once(void)
         if (by) {
             memset(probe, 0xAA, sizeof(probe));
             if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {
-                /* internal=NULL at offset 72 (80-byte layout, LP64) or
-                 * offset 88 (96-byte layout, LP64).  The offset 72 is
-                 * LP64-specific; on ILP32 the correct offset would be 40.
-                 * The 32-bit rejection above ensures we never reach here
-                 * on platforms where this offset would be wrong.
+                /* internal=NULL at the offset for post-312 Py_buffer:
+                 * LP64/Win64: 72 (80-byte) vs 88 (96-byte with smalltable).
+                 * ILP32:      40 (44-byte) vs 48 (52-byte with smalltable).
+                 * CPython < 3.12 has smalltable[2] between suboffsets
+                 * and internal; 3.12+ removed it (PEP 697).
+                 * We check for zero (NULL) at the post-312 internal offset.
                  * See also: c2py_runtime.h C2PY_PYBUFFER_SZ_* definitions. */
-#ifdef __LP64__
-                if (*((char*)pb + 72) == 0)
-                    C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
-                else
-                    C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+                {
+                    Py_ssize_t internal_off;
+#if defined(__LP64__) || defined(_WIN64)
+                    internal_off = 72;
 #else
-                /* 32-bit not supported; previous check rejects it */
-                C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+                    internal_off = 40;
 #endif
+                    if (*((char*)pb + internal_off) == 0)
+                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
+                    else
+                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
+                }
                 C2PY.ReleaseBuffer(pb);
             }
             C2PY.DecRef(by);
