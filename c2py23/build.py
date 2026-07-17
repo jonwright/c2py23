@@ -82,7 +82,10 @@ class DlsymBuildExt(_BenchmarkRouting, _BaseBuildExt):
     """
 
     def get_ext_filename(self, ext_name):
-        return ext_name.split(".")[0] + ".so"
+        import sys
+
+        base = ext_name.split(".")[0]
+        return base + ".pyd" if sys.platform == "win32" else base + ".so"
 
 
 class PythonhBuildExt(_BenchmarkRouting, _BaseBuildExt):
