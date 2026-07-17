@@ -19,7 +19,11 @@ Environment variables honoured by both:
 from __future__ import print_function
 
 from setuptools import Extension
-from setuptools.command.build_ext import build_ext
+
+try:
+    from setuptools.command.build_ext import build_ext
+except ImportError:
+    from distutils.command.build_ext import build_ext
 
 
 class _BaseBuildExt(build_ext):

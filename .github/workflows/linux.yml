@@ -87,7 +87,7 @@ jobs:
           allow-prereleases: true
 
       - name: Install c2py23
-        run: pip install -e ".[yaml]" --quiet
+        run: pip install -e ".[yaml]" setuptools wheel --quiet
 
       - name: Build and test pythonh
         env:
