@@ -21,45 +21,8 @@ is 24 bytes (includes `ob_pypy_link`) vs CPython's 16, and `sizeof`
 differences are baked into the compiled binary.  HPy was the path to
 single-binary cross-implementation support but is not in released PyPy.
 
-No CI — will regress without maintenance.  Pyodide is the next priority.
-
-### Pyodide/WASM support
-
-**Status: `--target wasm` CLI flag implemented.  Tested building a fill.wasm module.**
-
-Pyodide is CPython compiled to WASM via Emscripten.  `dlopen(NULL)` +
-`dlsym()` both work.  Gold `vnorm` and `noargs` benchmarks run at
-177ns and 1204ns respectively.  `c2py23 build --target wasm` uses
-emcc instead of gcc with `-s SIDE_MODULE=1`, skips 32-bit pointer
-rejection (`#ifndef __EMSCRIPTEN__`), and drops `-ldl`/`-shared`/`-fPIC`.
-CPU feature probes are naturally skipped (no x86/aarch64/ppc64 defines
-on wasm32).  DLPack works on Pyodide (numpy in Pyodide exports `__dlpack__`).
-
-Next: build+test fill or uniform modules inside Pyodide in node.js.
-
-### `--pythonh` mode (direct `#include <Python.h>`, no dlsym)
-
-**Status: implemented, benchmarked, documented (see `docs/pythonh.md`).**
-
-`c2py23 build --pythonh file.c2py` produces a standard CPython extension
-that includes `<Python.h>` directly.  No dlsym trick, no cross-version
-portability.  The .so is tied to one Python version.
-
-Works on all tested runtimes: CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12.
-CI covers end members (2.7 + 3.14t) in `.github/workflows/linux_pythonh.yml`.
-13/13 snakepit containers tested via `tests/test_ph_containers.sh`.
-
-Performance delta (pythonh vs nimpy on noargs, timing off):
-  CPython: ~1 ns faster
-  PyPy:    ~6 ns faster
-  GraalPy: nimpy does not work; pythonh is ~1000 ns (timing on)
-
-Full documentation: `docs/pythonh.md` (tradeoffs, runtime support matrix,
-internals, LTO devirtualization proof).
-
-**Note**: Removed `brainstorm/` from git tracking.  Useful cross-platform
-benchmark scripts moved to `tests/cross_platform/`.  Pyodide npm package
-moved to `tests/wasm/pyodide_pkg/`.
+Container exists (`ubuntu24.04_pypy.sif`) but no CI workflow exercises it.
+Will regress without maintenance.
 
 ## Deferred
 
@@ -111,28 +74,77 @@ function to wrap.
 
 ### Free Threading (FT) globals audit (P5)
 
-Review `_c2py_gil_release_enabled`, `_c2py_timing_enabled`, per-function
-`_gil_release_*`, variant `_var_*` globals for atomic safety under
-free-threading. Low priority since FT is opt-in.
+Per-module globals (`_c2py_gil_release_enabled`, `_c2py_timing_enabled`,
+per-function `_gil_release_*`, variant `_var_*_*`) are read-mostly after
+init.  They are set once during module init (single-threaded) and read
+during every call.  The only write paths are module-level toggle setters
+(exposed as `_c2py_gil_release_enabled`, `_c2py_timing_enabled` attributes)
+which are rarely called after init.
+
+Under free-threading with `free_threading: true`, concurrent toggles could
+race.  Practically harmless: reads are non-atomic int loads (tearing on
+int is impossible on all supported LP64 platforms).  Write-write races on
+the same int are meaningless (last writer wins).  The GIL is re-enabled
+for modules that do NOT declare `free_threading: true`, so the race window
+only exists for explicitly FT-safe modules.
 
 The `free_threading` .c2py feature (`tests/cases/freethreading/`) has
 NO integration test that imports `freethreadmod` at runtime (the
 conftest builds the .so but no test exercises it).
 
+Low priority.  If strict atomicity is ever needed: change globals to
+`_Atomic int` (C11).
+
 ### 32-bit CI
 
-No 32-bit CI target (i386/ARM32).  Reject 32-bit builds at module import
-with a clear diagnostic.  Only LP64 (64-bit) targets are tested.
+No 32-bit CI target (i386/ARM32).  Runtime rejects 32-bit at module import
+(`sizeof(void*) != 8` check in `c2py_runtime.c:501`).  Only LP64 (64-bit)
+targets are tested.
+
+Windows 64-bit uses LLP64 (`sizeof(long)=4`) which we handle correctly
+(format-dispatch, length type).  Windows 32-bit i386 would be the same
+LLP64 + 4-byte pointers — but 32-bit Py_buffer layout differs
+(`sizeof(Py_buffer)` is 48 on ILP32 vs 68/80/96 on LP64), and FT does
+not exist on ILP32.
+
+Gohlke's numpy binaries cover Windows 32-bit (i386) — but for c2py23,
+32-bit support would require:
+1. ILP32 Py_buffer layout verification (2.7, 3.x)
+2. `_c2py_py_buffer_layout` enum entries for 48-byte layout
+3. `SIZE_T_MAX` -> `INT_MAX` guards on buffer sizes
+4. i386 CI runner (GitHub Actions `windows-latest` is x64 only)
+
+Lowest priority.  Users needing 32-bit can use `--pythonh` on their
+target Python (bypasses all dlsym layout detection).
 
 ### MSVC detection only searches PATH (P5)
 
-`_find_msvc` in `cli.py` iterates only `PATH` entries for `cl.exe`.
-Standard Visual Studio installs require `vcvarsall.bat` to be sourced
-first.  Consider using `vswhere.exe` for VS detection on user machines.
+`_find_msvc` in `cli.py` (line 250) iterates `PATH` entries for `cl.exe`.
+Standard Visual Studio installs place `cl.exe` outside PATH until
+`vcvarsall.bat` is sourced.  Enhancement: use `vswhere.exe` (ships with
+VS 2017+) to locate all installed VS toolchains, then select the
+newest/MSVC version.
+
+Workaround: user runs c2py23 from a Developer Command Prompt, or sets
+`CC=cl` explicitly.  Low priority — MinGW/gcc works on Windows without
+this issue.
 
 ---
 
 ## Completed
+
+- **`--pythonh` mode (2026-07)** — direct `#include <Python.h>` build, no dlsym
+  trick.  Works on all runtimes (CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12).
+  CI covers end members (2.7 + 3.14t) in `linux_pythonh.yml`.  13/13 snakepit
+  containers pass both dlsym and pythonh builds.  Full docs in `docs/pythonh.md`.
+  LTO devirtualization proof in `tests/test_lto_devirt.sh`.
+
+- **Pyodide/WASM support (2026-07)** — `--target wasm` CLI flag.  23 WASM modules,
+  80/80 tests pass inside Pyodide via Node.js.  CI in `wasm.yml`.
+
+- **Buffers on disk: brainstorm/ removed (2026-07)** — useful cross-platform
+  scripts moved to `tests/cross_platform/`, Pyodide npm package to
+  `tests/wasm/pyodide_pkg/`, setup scripts to `docs/`.
 
 - **Multi-backend buffer acquisition (2026-07)** — NumPy struct-cast, PEP 3118
   buffer protocol, and DLPack capsule extraction, selectable via `acquire:` YAML key.
