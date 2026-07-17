@@ -180,6 +180,8 @@ jobs:
         if: matrix.python-version == '2.7'
         env:
           CC: cl
+          DISTUTILS_USE_SDK: "1"
+          MSSdk: "1"
         run: |
           python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
           python -c "from setuptools import setup, Extension; from c2py23.build import PythonhCmdclass; setup(name='fill_ph', ext_modules=[Extension('fillmod', ['fillmod_wrapper.c', 'tests/cases/fill/fill.c', 'c2py23/runtime/c2py_runtime.c'], include_dirs=['c2py23/runtime', 'tests/cases/fill'])], cmdclass=PythonhCmdclass, script_args=['build_ext', '--inplace'])"
