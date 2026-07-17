@@ -16,7 +16,7 @@
       ],
       "c_overloads": [
         {
-          "sig": "vnorm(const double vec[][3], double mods[], int n)",
+          "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",
           "map": {
             "vec": "vec.ptr",
             "mods": "mods.ptr",
