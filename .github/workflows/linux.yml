@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Dlsym: compile once, test on multiple Python versions
   test-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -30,18 +31,14 @@ jobs:
           pip install -e . --quiet
           pip install pytest PyYAML setuptools wheel --quiet
 
-      - name: ABI diagnostic
-        run: python tests/abi_list_dlls.py
-
-      - name: Install numpy (skip on failure for pre-release versions)
+      - name: Install numpy
         run: |
-          pip install --only-binary=:all: numpy --quiet 2>/dev/null || \
-          pip install --only-binary=:all: --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy --quiet 2>/dev/null || \
-          echo "(numpy skipped)"
+          pip install --only-binary=:all: numpy --quiet 2>/dev/null || echo "(numpy skipped)"
 
       - name: Run tests
-        run: pytest tests/ -v --durations=10 --tb=short
+        run: python tests/runner.py
 
+  # Python 2.7: dlsym only (no pythonh on 2.7 in CI)
   test-linux-27:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
@@ -65,8 +62,54 @@ jobs:
           python -m pip install -e . --quiet
           python -m pip install pytest PyYAML --quiet
 
-      - name: Install numpy
-        run: python -m pip install 'numpy<1.17' --quiet
-
       - name: Run tests
-        run: python -m pytest tests/ -v --durations=10 --tb=short
+        run: python -m pytest tests/ -v --tb=short
+
+  # Pythonh: end-member smoke tests (build + import fill)
+  test-pythonh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14t"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install c2py23
+        run: pip install -e . --quiet
+
+      - name: Build and test pythonh
+        env:
+          CC: gcc
+        run: |
+          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          CC=gcc LIBS="-ldl -lm" python -c "
+          from setuptools import setup, Extension
+          from c2py23.build import PythonhCmdclass
+          setup(name='fill_ph',
+              ext_modules=[Extension('fillmod',
+              ['fillmod_wrapper.c', 'tests/cases/fill/fill.c',
+               'c2py23/runtime/c2py_runtime.c'],
+              include_dirs=['c2py23/runtime', 'tests/cases/fill'])],
+              cmdclass=PythonhCmdclass,
+              script_args=['build_ext', '--inplace'])
+          "
+          python -c "
+          import sys, ctypes, importlib.util, importlib.machinery
+          l = importlib.machinery.ExtensionFileLoader('fillmod', 'fillmod' + __import__('sysconfig').get_config_var('EXT_SUFFIX'))
+          s = importlib.util.spec_from_file_location('fillmod', 'fillmod' + __import__('sysconfig').get_config_var('EXT_SUFFIX'), loader=l)
+          m = importlib.util.module_from_spec(s)
+          l.exec_module(m)
+          arr = (ctypes.c_float * 4)(0,0,0,0)
+          m.fill(arr, 42.0)
+          assert list(arr) == [42.0, 42.0, 42.0, 42.0]
+          print('Python ${{ matrix.python-version }} --pythonh: PASS')
+          "

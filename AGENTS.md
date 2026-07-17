@@ -84,29 +84,38 @@ else:
 
 ## Quick Commands
 
-Build a module from a .c2py interface:
+Generate a C wrapper from a .c2py interface:
 ```bash
-c2py23 build path/to/module.c2py
+c2py23 path/to/module.c2py -o wrapper.c
+python -m c2py23 path/to/module.c2py -o wrapper.c  # same, via python -m
+```
+
+Build test modules for testing (dlsym mode — portable, no libpython):
+```bash
+python tests/runner.py               # generate + build + test
+python tests/runner.py --no-build    # test only (use existing .so files)
+```
+
+Build test modules in pythonh mode (per-version, links libpython):
+```bash
+python tests/setup.py build_ext --inplace --pythonh
 ```
 
 Build with ASan for leak detection:
 ```bash
-c2py23 build --asan path/to/module.c2py
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" \
+  python tests/runner.py
 ```
 
-Build for PyPy (experimental, no CI):
+Build for PyPy (experimental, no CI — see issue #81):
 ```bash
-c2py23 build --target pypy path/to/module.c2py
-```
-
-Build with `#include <Python.h>` directly (GraalPy, debugging, max perf):
-```bash
-c2py23 build --pythonh path/to/module.c2py
+# dlsym mode uses --target pypy at compile time via CFLAGS:
+CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace
 ```
 
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
-c2py23 build --target wasm path/to/module.c2py
+# uses emcc, not setuptools — kept in tests/test_all_wasm.sh
 ```
 
 Run the full WASM test suite (80 tests):
@@ -127,7 +136,7 @@ pip install -e .
 
 Test a single Python version locally:
 ```bash
-bash tests/run_tests.sh python3.12
+python tests/runner.py
 ```
 
 Test across all supported Python versions via snakepit containers:
@@ -142,12 +151,12 @@ python3 tests/test_manylinux.py
 
 Build only (no tests) for one Python version on any container:
 ```bash
-bash tests/build_all.sh python3.12
+python tests/runner.py --no-test
 ```
 
 Run tests only (no rebuild) for one Python version:
 ```bash
-bash tests/run_tests_only.sh python3.12
+python tests/runner.py --no-build
 ```
 
 Valgrind leak check:
@@ -288,9 +297,9 @@ All tests use `ctypes` arrays (buffer protocol works on Python 2.7 and 3.x) and 
 
 On Python 2.7, the `transform` test is skipped because `memoryview.cast(shape)` is Python 3.3+ only.
 
-Run the uniform test script directly (requires built `.so` files):
+Run the test suite:
 ```bash
-python tests/test_uniform.py
+python tests/runner.py
 ```
 
 Run the peer review tests (alias + contiguity, requires numpy):
@@ -392,7 +401,7 @@ The human uses a classic `repo`-scoped token for admin tasks.
 6. Test across all supported Python versions before committing
 7. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
 8. Generated C code should compile with `gcc -Wall -Werror`
-9. Run the full test suite before committing: `bash tests/run_tests.sh python3`
+9. Run the full test suite before committing: `python tests/runner.py`
 10. Run `python3 tests/test_all.py` for multi-version container validation
 11. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
 12. Run valgrind on leak and error-path tests when changing wrapper generation
