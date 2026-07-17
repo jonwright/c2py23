@@ -911,12 +911,15 @@ static inline uint64_t c2py_ticks(void) {
         QueryPerformanceCounter(&counter);
         return (uint64_t)(counter.QuadPart * 1000000000ULL / freq.QuadPart);
     }
-#else
+#elif !defined(__STRICT_ANSI__)
     {
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
         return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
     }
+#else
+    /* no clock_gettime -- fall back to 0 */
+    return 0;
 #endif
 }
 

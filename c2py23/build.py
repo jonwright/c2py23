@@ -37,7 +37,7 @@ class _BaseBuildExt(build_ext):
         build_ext.run(self)
 
 
-class _BenchmarkRouting(object):
+class _BenchmarkRouting:
     """Mixin: route benchmark extensions to build/ (dlsym) or build_ph/ (pythonh)."""
 
     _benchmark_build_subdir = "build"
