@@ -85,21 +85,48 @@ def _collect_include_dirs(base_dir, module_def, extra_dirs=None):
 def _pythonh_libs(libs):
     """When --pythonh is set, drop -ldl (not needed) and add -lpythonX.Y if on CPython.
     PyPy and GraalPy provide cpyext symbols at load time, no -lpython needed.
+    On Windows, uses the .lib import library directly (MSVC does not understand -l).
     Returns (libs, extra_linker_flags)."""
     libs = [l for l in libs if l != "-ldl"]
     extra_ldflags = []
-    if hasattr(sys, "implementation") and sys.implementation.name == "cpython":
+    try:
+        is_cpython = sys.implementation.name == "cpython"
+    except AttributeError:
+        # Python 2.7: sys.implementation does not exist.
+        # Distinguish CPython 2.7 from PyPy 2.7.
+        is_cpython = not hasattr(sys, "pypy_version_info")
+    if is_cpython:
         try:
             import sysconfig as _sc
 
-            ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
-            if ld_ver:
-                libs.append("-lpython" + ld_ver)
-                # For non-standard libpython locations (uv, static builds),
-                # add -L to the library directory
-                libdir = _sc.get_config_var("LIBDIR")
+            if sys.platform == "win32":
+                # LIBDIR is empty string on Windows CPython (falsy).
+                # Fallback: <prefix>/libs (same logic as abi_check_win.py).
+                libdir = _sc.get_config_var("LIBDIR") or ""
+                if not libdir:
+                    prefix = _sc.get_config_var("prefix") or ""
+                    if prefix:
+                        libdir = os.path.join(prefix, "libs")
                 if libdir:
-                    extra_ldflags.append("-L" + libdir)
+                    ver = sys.version_info
+                    candidates = [
+                        "python%d%d.lib" % (ver.major, ver.minor),
+                        "python%d.lib" % ver.major,
+                    ]
+                    for libname in candidates:
+                        libfile = os.path.join(libdir, libname)
+                        if os.path.exists(libfile):
+                            libs.append(libfile)
+                            break
+            else:
+                ld_ver = _sc.get_config_var("LDVERSION") or _sc.get_config_var("VERSION")
+                if ld_ver:
+                    libs.append("-lpython" + ld_ver)
+                    # For non-standard libpython locations (uv, static builds),
+                    # add -L to the library directory
+                    libdir = _sc.get_config_var("LIBDIR")
+                    if libdir:
+                        extra_ldflags.append("-L" + libdir)
         except Exception:
             pass
     return libs, extra_ldflags
@@ -149,9 +176,7 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         cc = os.environ.get("CC", "emcc")
         is_msvc = False
     elif is_win:
-        cc = os.environ.get("CC", "")
-        if not cc:
-            cc = _find_msvc() or "gcc"
+        cc = os.environ.get("CC", "gcc")
         if cc == "cl" or cc.endswith("cl.exe") or cc.endswith("cl"):
             is_msvc = True
         else:
@@ -237,17 +262,6 @@ def _compile_wrapper(wrapper_path, source_files, include_dirs, output_so, asan=F
         sys.exit(1)
 
     print("Success: {}".format(output_so))
-
-
-def _find_msvc():
-    """Find MSVC cl.exe in PATH or standard VS install locations.
-    Returns path string or None."""
-    for candidate in ["cl", "cl.exe"]:
-        for path in os.environ.get("PATH", "").split(os.pathsep):
-            full = os.path.join(path, candidate)
-            if os.path.isfile(full):
-                return candidate
-    return None
 
 
 def _determine_so_path(output_arg, default_name, base_dir, target="cpython", pythonh=False):

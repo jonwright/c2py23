@@ -91,3 +91,107 @@ jobs:
         env:
           CC: cl
         run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
+
+  test-windows-i386:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["2.7", "3.12"]
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        if: matrix.python-version != '2.7'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: 'x86'
+
+      - name: Set up Python 2.7 (i386)
+        if: matrix.python-version == '2.7'
+        run: |
+          $url = "https://www.python.org/ftp/python/2.7.18/python-2.7.18.msi"
+          $msi = "$env:RUNNER_TEMP\python-2.7.18.msi"
+          Invoke-WebRequest -Uri $url -OutFile $msi
+          Start-Process msiexec.exe -Wait -ArgumentList "/i `"$msi`" /quiet /norestart TARGETDIR=C:\Python27"
+          echo "C:\Python27" >> $env:GITHUB_PATH
+          echo "C:\Python27\Scripts" >> $env:GITHUB_PATH
+          $env:Path = "C:\Python27;C:\Python27\Scripts;$env:Path"
+          python --version
+          python -m ensurepip 2>$null
+          python -m pip install --upgrade pip --quiet
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: 'x86'
+
+      - name: ABI diagnostic (C compile)
+        if: matrix.python-version != '2.7'
+        run: python tests/abi_check_win.py
+
+      - name: Install c2py23 and test deps
+        run: |
+          python -m pip install -e . --quiet
+          python -m pip install pytest PyYAML setuptools wheel --quiet
+
+      - name: Install numpy (3.12)
+        if: matrix.python-version != '2.7'
+        run: python -m pip install numpy --quiet
+
+      - name: Run tests (3.12, dlsym)
+        if: matrix.python-version != '2.7'
+        env:
+          CC: cl
+        run: python -m pytest tests/ -v --durations=10 --tb=short
+
+      - name: Run tests (2.7, dlsym)
+        if: matrix.python-version == '2.7'
+        env:
+          CC: cl
+        run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
+
+      - name: Build and test (pythonh, 3.12)
+        if: matrix.python-version != '2.7'
+        env:
+          CC: cl
+        run: |
+          python -m c2py23.cli build --pythonh tests/cases/fill/fill.c2py -o fill_ph.pyd
+          @"
+          import sys, ctypes, importlib.util, importlib.machinery
+          l = importlib.machinery.ExtensionFileLoader('fillmod', 'fill_ph.pyd')
+          s = importlib.util.spec_from_file_location('fillmod', 'fill_ph.pyd', loader=l)
+          m = importlib.util.module_from_spec(s)
+          l.exec_module(m)
+          arr = (ctypes.c_float * 4)(0, 0, 0, 0)
+          m.fill(arr, 42.0)
+          assert list(arr) == [42.0, 42.0, 42.0, 42.0], str(list(arr))
+          print('Python 3.12 i386 --pythonh: PASS')
+          "@ | Out-File -Encoding ASCII -FilePath test_ph_i386.py
+          python test_ph_i386.py
+
+      - name: Build and test (pythonh, 2.7)
+        if: matrix.python-version == '2.7'
+        env:
+          CC: cl
+        run: |
+          python -m c2py23.cli build --pythonh tests/cases/fill/fill.c2py -o fill_ph.pyd
+          @"
+          import sys, ctypes, imp
+          m = imp.load_dynamic('fillmod', 'fill_ph.pyd')
+          arr = (ctypes.c_float * 4)(0, 0, 0, 0)
+          m.fill(arr, 42.0)
+          assert list(arr) == [42.0, 42.0, 42.0, 42.0], str(list(arr))
+          print('Python 2.7 i386 --pythonh: PASS')
+          "@ | Out-File -Encoding ASCII -FilePath test_ph_i386_27.py
+          python test_ph_i386_27.py
