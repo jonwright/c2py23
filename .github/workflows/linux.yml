@@ -63,7 +63,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML --quiet
+          python -m pip install pytest PyYAML numpy --quiet
 
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
