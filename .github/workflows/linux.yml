@@ -122,5 +122,47 @@ jobs:
           arr = (ctypes.c_float * 4)(0,0,0,0)
           m.fill(arr, 42.0)
           assert list(arr) == [42.0, 42.0, 42.0, 42.0]
-          print('Python ${{ matrix.python-version }} --pythonh: PASS')
-          "
+           print('Python ${{ matrix.python-version }} --pythonh: PASS')
+           "
+
+  # PyPy: dlsym only (PyPy's cpyext + C2PY_TARGET_PYPY)
+  test-linux-pypy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pypy-version: ['pypy3.10', 'pypy3.9']
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up PyPy
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.pypy-version }}
+
+      - name: Install c2py23 and test deps
+        run: |
+          pip install -e . --quiet
+          pip install pytest --quiet
+
+      - name: Install numpy (PyPy may not have wheels)
+        run: pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        continue-on-error: true
+
+      - name: Run tests (dlsym)
+        env:
+          CC: gcc
+          CFLAGS: -DC2PY_TARGET_PYPY -O1
+        run: |
+          python tests/runner.py --no-test
+          python -m pytest tests/ -v --durations=10 --tb=short \
+            --ignore=tests/test_workspace \
+            --ignore=tests/test_peer_review.py \
+            --ignore=tests/test_aos_soa.py \
+            --ignore=tests/test_ndarray_backends.py \
+            --ignore=tests/test_abi_tag_compatibility.py
