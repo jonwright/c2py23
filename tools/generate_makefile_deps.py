@@ -70,7 +70,7 @@ def main():
 
     for dir_rel, mod, interface_fn, c_fn in modules:
         print("{dir}/{mod}_wrapper.c: {dir}/{ifn} $(RUNTIME_HDRS)".format(dir=dir_rel, mod=mod, ifn=interface_fn))
-        print("\tpython3 -m c2py23 {dir}/{ifn} -o $@".format(dir=dir_rel, ifn=interface_fn))
+        print("\tpython3 -m c2py23 {dir}/{ifn} -o $@ $(C2PY_FLAGS)".format(dir=dir_rel, ifn=interface_fn))
         print()
         print("ifndef MSVC")
         print(

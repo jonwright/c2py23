@@ -3,15 +3,67 @@
 c2py23 generates C code.  It does NOT compile it.  You choose the build
 system.
 
-## Two modes
+## Three modes
 
 | Mode | How to build | Result |
 |------|-------------|--------|
 | **dlsym** (default) | Any C99 compiler | One `.so`/`.pyd` for Python 2.7 through 3.15 |
+| **single-header** | `--emit-header` flag | Same as dlsym, but no `-I` flag or runtime `.c` needed |
 | **pythonh** | setuptools + `<Python.h>` | Version-specific `.so`, links libpython |
 
-dlsym is the portable mode.  pythonh is for GraalPy, debugging, or static
+dlsym is the portable mode.  The single-header variant (below) is
+convenient for distribution.  pythonh is for GraalPy, debugging, or static
 builds.  See [--pythonh mode](pythonh.md) for details.
+
+## Single-header mode -- stb-style blob
+
+Instead of compiling `c2py_runtime.c` and passing `-I c2py23/runtime`,
+you can use the **single-header blob** `c2py.h`.  It uses the stb-style
+pattern: include normally for declarations, or define `C2PY_IMPLEMENTATION`
+before include in exactly one translation unit for the implementation.
+
+### Usage with the CLI
+
+```bash
+# Generate wrapper + emit c2py.h alongside it
+c2py23 mymod.c2py -o mymod_wrapper.c --emit-header
+
+# The generated wrapper already has #define C2PY_IMPLEMENTATION
+# and #include "c2py.h".  Compile with no extra flags:
+cc -shared -fPIC \
+    mymod_wrapper.c mymod.c \
+    -o mymod.so -ldl -lm
+```
+
+No `-I` flag or `c2py_runtime.c` needed -- the single-header bundles
+everything.  The resulting `.so` is identical to dlsym mode.
+
+### Usage from the package data
+
+The bundled header is at `c2py23/runtime/c2py.h`.  You can copy it into
+your project or reference it directly:
+
+```bash
+C2PY_H=$(python -c "import c2py23; print(__import__('c2py23').__file__)" \
+        | xargs dirname)/runtime/c2py.h
+cp "$C2PY_H" .
+# Then in exactly one .c file:
+#   #define C2PY_IMPLEMENTATION
+#   #include "c2py.h"
+# In all other .c files:
+#   #include "c2py.h"
+```
+
+### Regenerating the header
+
+If you modify the runtime sources, regenerate `c2py.h` with:
+
+```bash
+python3 -m c2py23 --regenerate-header
+```
+
+This runs `merge_single_header.py` which merges `c2py_runtime.h/.c`,
+`c2py_dlsym.h/.c`, and `c2py_pythonh.h/.c` into a single file.
 
 ## dlsym mode -- vanilla C compilation
 
