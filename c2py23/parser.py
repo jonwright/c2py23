@@ -334,14 +334,35 @@ def from_c2py_dict(raw_dict, path="<dict>"):
 
 
 def load_c2py(path):
-    """Load and parse a .c2py file, returning a ModuleDef.
+    """Load and parse an interface definition, returning a ModuleDef.
 
-    Supports two formats, auto-detected:
-      1. Python dict: a file containing a Python dict literal
-         (parsed via ast.literal_eval, no PyYAML needed).
+    Supports three formats, auto-detected:
+      1. C source (.c, .h): C2PY_BEGIN..C2PY_END blocks embedded in
+         comments (parsed via c2py23.harvester, no dependencies).
+      2. Python dict (.c2py or .c2py.py): a file containing a Python
+         dict literal (parsed via ast.literal_eval, no PyYAML needed).
          Lines starting with '#' are stripped as comments.
-      2. YAML: standard .c2py YAML format (requires PyYAML).
+      3. YAML (.c2py): standard YAML format (requires PyYAML).
+
+    For .c and .h files, interface definitions are embedded as:
+        /* C2PY_BEGIN
+        module: mymod
+        source: [mymod.c]
+        functions: ...
+        C2PY_END */
     """
+    # C source files -- extract C2PY_BEGIN blocks via harvester
+    if path.endswith(".c") or path.endswith(".h"):
+        from c2py23.harvester import extract_from_file
+
+        raw = extract_from_file(path)
+        if not isinstance(raw, dict) or "module" not in raw:
+            raise ValueError("No C2PY_BEGIN block with 'module' key found in {}".format(path))
+        mod = from_c2py_dict(raw, path)
+        base_dir = os.path.dirname(os.path.abspath(path))
+        _validate_module(mod, base_dir)
+        return mod
+
     with open(path, "r") as f:
         text = f.read()
 

@@ -1,5 +1,65 @@
 #include <stdint.h>
 
+/* C2PY_BEGIN
+{
+    "functions": [
+        {
+            "c_overloads": [
+                {
+                    "map": {
+                        "gv": "data.ptr",
+                        "ng": "data.shape[0]"
+                    },
+                    "sig": "double sum_rows(const double gv[][3], intptr_t ng)"
+                }
+            ],
+            "py_sig": "sum_rows(data: buffer) -> float"
+        },
+        {
+            "c_overloads": [
+                {
+                    "map": {
+                        "ubi": "data.ptr"
+                    },
+                    "sig": "double sum_33(const double ubi[3][3])"
+                }
+            ],
+            "py_sig": "sum_33(data: buffer) -> float"
+        },
+        {
+            "c_overloads": [
+                {
+                    "map": {
+                        "arr": "data.ptr"
+                    },
+                    "sig": "double sum_1d_fixed(const double arr[5])"
+                }
+            ],
+            "checks": [
+                "data.format == 'd'"
+            ],
+            "py_sig": "sum_1d_fixed(data: buffer) -> float"
+        },
+        {
+            "c_overloads": [
+                {
+                    "map": {
+                        "blk": "data.ptr",
+                        "nblk": "data.shape[0]"
+                    },
+                    "sig": "double sum_3d(const double blk[][5][5], intptr_t nblk)"
+                }
+            ],
+            "py_sig": "sum_3d(data: buffer) -> float"
+        }
+    ],
+    "module": "arraymod",
+    "source": [
+        "array_sig.c"
+    ]
+}
+C2PY_END */
+
 double sum_rows(const double gv[][3], intptr_t ng)
 {
     double s = 0.0;

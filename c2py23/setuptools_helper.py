@@ -36,10 +36,11 @@ PythonhCmdclass = {"build_ext": PythonhBuildExt}
 
 
 def discover_modules(scan_dir, runtime_dir):
-    """Return setuptools Extension objects for all .c2py modules.
+    """Return setuptools Extension objects for all c2py23 modules.
 
-    Walks scan_dir, parses .c2py files, builds Extension lists
-    that include the generated _wrapper.c + runtime.c + user sources.
+    Walks scan_dir for interface definitions: .c files with embedded
+    C2PY_BEGIN blocks, or .c2py files.  Builds Extension lists that
+    include the generated _wrapper.c + runtime.c + user sources.
     """
     import os
 
@@ -49,22 +50,30 @@ def discover_modules(scan_dir, runtime_dir):
 
     for root, dirs, files in os.walk(scan_dir):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
-        for fn in sorted(files):
-            if not fn.endswith(".c2py"):
-                continue
-            if fn.endswith(".c2py.py"):
-                continue
-            c2py_path = os.path.join(root, fn)
 
+        interface_paths = []
+        for fn in sorted(files):
+            fp = os.path.join(root, fn)
+            if fn.endswith(".c") and not fn.endswith("_wrapper.c"):
+                try:
+                    with open(fp) as f:
+                        if "C2PY_BEGIN" in f.read():
+                            interface_paths.append(fp)
+                except Exception:
+                    pass
+            elif fn.endswith(".c2py") and not fn.endswith(".c2py.py"):
+                interface_paths.append(fp)
+
+        for interface_path in interface_paths:
             try:
-                module, sources, includes = _parse_c2py(c2py_path)
+                module, sources, includes = _parse_c2py(interface_path)
             except Exception:
                 continue
 
             if module is None:
                 continue
 
-            wrapper_c = os.path.join(os.path.dirname(c2py_path), module + "_wrapper.c")
+            wrapper_c = os.path.join(os.path.dirname(interface_path), module + "_wrapper.c")
             if not os.path.exists(wrapper_c):
                 continue
 

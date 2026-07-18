@@ -1,5 +1,66 @@
 #include <stddef.h>
 
+/* C2PY_BEGIN
+{
+    "functions": [
+        {
+            "c_overloads": [
+                {
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val"
+                    },
+                    "sig": "void fill_sse2(float *buf, int n, float val)",
+                    "when": "c2py_amd64_sse2"
+                },
+                {
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val"
+                    },
+                    "sig": "void fill_neon(float *buf, int n, float val)",
+                    "when": "c2py_arm64_asimd"
+                },
+                {
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val"
+                    },
+                    "sig": "void fill_altivec(float *buf, int n, float val)",
+                    "when": "c2py_ppc64_altivec"
+                },
+                {
+                    "map": {
+                        "buf": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val"
+                    },
+                    "sig": "void fill_scalar(float *buf, int n, float val)"
+                }
+            ],
+            "checks": [
+                "buf.format == 'f'",
+                "buf.n > 0"
+            ],
+            "py_sig": "fill(buf: buffer, val: float=3.14) -> void"
+        }
+    ],
+    "headers": [
+        "c2py_amd64.h",
+        "c2py_arm64.h",
+        "c2py_ppc64.h"
+    ],
+    "module": "simd_fillmod",
+    "source": [
+        "simd_fill.c"
+    ],
+    "timing": true
+}
+C2PY_END */
+
 #ifdef __x86_64__
 #include <emmintrin.h>
 #endif

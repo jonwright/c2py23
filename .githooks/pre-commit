@@ -34,7 +34,6 @@ TRIGGERS=(
     c2py23/generator.py
     c2py23/runtime/c2py_runtime.h
     c2py23/runtime/c2py_runtime.c
-    tests/cases/transform/transform.c2py
     tests/cases/transform/transform.c
 )
 
@@ -51,7 +50,7 @@ fi
 
 if [ "$REBUILD" -eq 1 ]; then
     echo "[pre-commit] Rebuilding $WRAPPER..."
-    python3 -m c2py23 tests/cases/transform/transform.c2py \
+    python3 -m c2py23 tests/cases/transform/transform.c \
         -o "$WRAPPER"
     git add "$WRAPPER"
     echo "[pre-commit] $WRAPPER regenerated and staged."

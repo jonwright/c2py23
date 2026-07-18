@@ -20,18 +20,39 @@ RUNTIME = os.path.join(PROJECT, "c2py23", "runtime")
 
 
 def _find_c2py_files(base_dir):
-    """Yield all .c2py files (excluding .c2py.py sidecars)."""
+    """Yield all interface files (.c with C2PY_BEGIN, .c2py, .c2py.py)."""
     for root, dirs, files in os.walk(base_dir):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for fn in sorted(files):
             if fn.endswith(".c2py") and not fn.endswith(".c2py.py"):
                 yield os.path.join(root, fn)
+            elif fn.endswith(".c") and not fn.endswith("_wrapper.c"):
+                fp = os.path.join(root, fn)
+                try:
+                    with open(fp) as f:
+                        if "C2PY_BEGIN" in f.read():
+                            yield fp
+                except Exception:
+                    pass
 
 
 def _module_name(c2py_path):
-    """Parse to get module name -- try ast, then YAML, then c2py parser."""
+    """Parse interface to get module name -- try .c (C2PY_BEGIN), then .c2py."""
     with open(c2py_path) as f:
         text = f.read()
+
+    # Check for embedded C2PY_BEGIN blocks in .c files
+    if "C2PY_BEGIN" in text:
+        try:
+            from c2py23.harvester import extract_from_file
+
+            data = extract_from_file(c2py_path)
+            if isinstance(data, dict):
+                name = data.get("module")
+                if name:
+                    return name
+        except Exception:
+            pass
 
     # Python dict format
     try:

@@ -534,14 +534,24 @@ def test_keyword_argument_rejection():
 
 
 def test_docstring_verification():
-    """Verify every .c2py YAML field appears in the generated docstring."""
+    """Verify every interface file's fields appear in the generated docstring."""
     import glob as glob_mod
 
     cases_dir = os.path.join(os.path.dirname(__file__), "cases")
-    c2py_files = glob_mod.glob(os.path.join(cases_dir, "*", "*.c2py"))
-    assert c2py_files, "No .c2py files found in cases/"
 
-    for c2py_path in sorted(c2py_files):
+    # Find .c files with embedded C2PY_BEGIN blocks
+    interface_files = []
+    for cf in glob_mod.glob(os.path.join(cases_dir, "*", "*.c")):
+        if cf.endswith("_wrapper.c"):
+            continue
+        with open(cf) as f:
+            if "C2PY_BEGIN" in f.read():
+                interface_files.append(cf)
+    # Also .c2py files (legacy or external examples)
+    interface_files.extend(glob_mod.glob(os.path.join(cases_dir, "*", "*.c2py")))
+    assert interface_files, "No interface files found in cases/"
+
+    for c2py_path in sorted(interface_files):
         mod = load_c2py(c2py_path)
         for func in mod.functions:
             doc = _doc(func)
@@ -837,10 +847,10 @@ def test_array_dims_dedup_with_user_checks():
     from c2py23.parser import load_c2py
     import os
 
-    # The existing array_sig.c2py has sum_1d_fixed with user check
+    # The existing array_sig.c has sum_1d_fixed with user check
     # "data.format == 'd'" and auto-generated checks from arr[5].
     # This test verifies no duplicate check expressions.
-    c2py_path = os.path.join(os.path.dirname(__file__), "cases", "array_sig", "array_sig.c2py")
+    c2py_path = os.path.join(os.path.dirname(__file__), "cases", "array_sig", "array_sig.c")
     mod = load_c2py(c2py_path)
     for func in mod.functions:
         expr_strings = set(str(c) for c in func.checks)
@@ -1223,7 +1233,15 @@ def test_python_dict_format():
 
 
 def test_yaml_dict_equivalence():
-    """Verify .c2py (YAML) and .c2py.py (dict) parse identically for all files."""
+    """Verify interface definitions parse identically as Python dicts.
+
+    For .c2py.py sidecars, finds the corresponding interface file:
+      - .c2py file (legacy YAML format)
+      - .c file with C2PY_BEGIN block (new embedded format)
+
+    Compares the parsed ModuleDef from the interface file against
+    the pure-Python dict sidecar.
+    """
     from c2py23.parser import load_c2py
     import os
 
@@ -1232,36 +1250,45 @@ def test_yaml_dict_equivalence():
     pairs = []
     for root, dirs, files in os.walk(cases_dir):
         for fn in files:
-            if fn.endswith(".c2py") and not fn.endswith(".c2py.py"):
-                yaml_path = os.path.join(root, fn)
-                dict_path = yaml_path + ".py"
-                if os.path.isfile(dict_path):
-                    pairs.append((yaml_path, dict_path))
+            if not fn.endswith(".c2py.py"):
+                continue
+            dict_path = os.path.join(root, fn)
+            base = fn[:-3]  # strip .py suffix, leaves .c2py
+            yaml_path = os.path.join(root, base)
+            if os.path.isfile(yaml_path):
+                pairs.append((yaml_path, dict_path))
+                continue
+            # Look for .c file with C2PY_BEGIN in same directory
+            c_path = os.path.join(root, base.replace(".c2py", ".c"))
+            if os.path.isfile(c_path):
+                with open(c_path) as f:
+                    if "C2PY_BEGIN" in f.read():
+                        pairs.append((c_path, dict_path))
 
-    assert len(pairs) > 0, "No YAML/dict pairs found"
+    assert len(pairs) > 0, "No interface/dict pairs found"
     errors = []
-    for yaml_path, dict_path in pairs:
-        rel = os.path.relpath(yaml_path, cases_dir)
+    for source_path, dict_path in pairs:
+        rel = os.path.relpath(source_path, cases_dir)
         try:
-            yaml_mod = load_c2py(yaml_path)
+            source_mod = load_c2py(source_path)
             dict_mod = load_c2py(dict_path)
         except Exception as e:
             errors.append("%s: load failed - %s" % (rel, e))
             continue
 
         checks = []
-        checks.append(("module name", yaml_mod.name == dict_mod.name))
-        checks.append(("sources", yaml_mod.sources == dict_mod.sources))
-        checks.append(("headers", yaml_mod.headers == dict_mod.headers))
-        checks.append(("constants", yaml_mod.constants == dict_mod.constants))
-        checks.append(("timing", yaml_mod.timing == dict_mod.timing))
-        checks.append(("free_threading", yaml_mod.free_threading == dict_mod.free_threading))
-        checks.append(("function count", len(yaml_mod.functions) == len(dict_mod.functions)))
-        for i, (yf, df) in enumerate(zip(yaml_mod.functions, dict_mod.functions)):
-            checks.append(("func[%d].name" % i, yf.name == df.name))
-            checks.append(("func[%d].overload count" % i, len(yf.overloads) == len(df.overloads)))
-            checks.append(("func[%d].doc" % i, yf.doc == df.doc))
-            checks.append(("func[%d].gil_release" % i, yf.gil_release == df.gil_release))
+        checks.append(("module name", source_mod.name == dict_mod.name))
+        checks.append(("sources", source_mod.sources == dict_mod.sources))
+        checks.append(("headers", source_mod.headers == dict_mod.headers))
+        checks.append(("constants", source_mod.constants == dict_mod.constants))
+        checks.append(("timing", source_mod.timing == dict_mod.timing))
+        checks.append(("free_threading", source_mod.free_threading == dict_mod.free_threading))
+        checks.append(("function count", len(source_mod.functions) == len(dict_mod.functions)))
+        for i, (sf, df) in enumerate(zip(source_mod.functions, dict_mod.functions)):
+            checks.append(("func[%d].name" % i, sf.name == df.name))
+            checks.append(("func[%d].overload count" % i, len(sf.overloads) == len(df.overloads)))
+            checks.append(("func[%d].doc" % i, sf.doc == df.doc))
+            checks.append(("func[%d].gil_release" % i, sf.gil_release == df.gil_release))
 
         failed = [label for label, ok in checks if not ok]
         if failed:
@@ -1269,7 +1296,7 @@ def test_yaml_dict_equivalence():
 
     if errors:
         raise AssertionError("\n".join(errors))
-    print("PASS: yaml-dict equivalence (%d files)" % len(pairs))
+    print("PASS: dict equivalence (%d files)" % len(pairs))
 
 
 if __name__ == "__main__":
