@@ -49,11 +49,11 @@ LZ4_SRC := examples/lz4_wrap/lz4mod_wrapper.c \
 
 ifndef MSVC
 examples/kissfft_wrap/kissfftmod$(EXT): $(KISSFFT_SRC)
-	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/kissfft_wrap -Iexamples/kissfft \
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Iexamples/kissfft_wrap -Iexamples/kissfft \
 		$(KISSFFT_SRC) -o $@ $(LDFLAGS) $(LIBS) -lm
 
 examples/lz4_wrap/lz4mod$(EXT): $(LZ4_SRC)
-	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/lz4_wrap -Iexamples/lz4/lib \
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Iexamples/lz4_wrap -Iexamples/lz4/lib \
 		$(LZ4_SRC) -o $@ $(LDFLAGS) $(LIBS)
 endif
 

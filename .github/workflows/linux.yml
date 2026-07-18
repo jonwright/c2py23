@@ -122,7 +122,7 @@ jobs:
           arr = (ctypes.c_float * 4)(0,0,0,0)
           m.fill(arr, 42.0)
           assert list(arr) == [42.0, 42.0, 42.0, 42.0]
-           print('Python ${{ matrix.python-version }} --pythonh: PASS')
+          print('Python ${{ matrix.python-version }} --pythonh: PASS')
            "
 
   # PyPy: dlsym only (PyPy's cpyext + C2PY_TARGET_PYPY)
