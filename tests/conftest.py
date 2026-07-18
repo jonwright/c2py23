@@ -56,6 +56,7 @@ def _preload_modules():
     examples_dir = os.path.join(PROJECT_DIR, "examples")
     so_files = glob.glob(os.path.join(cases_dir, "*", "*.so"))
     so_files.extend(glob.glob(os.path.join(examples_dir, "*", "*.so")))
+    so_files.extend(glob.glob(os.path.join(PROJECT_DIR, "benchmarks", "build", "*.so")))
     for so_path in so_files:
         modname = os.path.basename(so_path)[:-3]
         if modname in sys.modules:
