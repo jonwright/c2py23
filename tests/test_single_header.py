@@ -2,6 +2,9 @@
 
 Generates a wrapper with --emit-header, compiles it using only
 c2py.h (no c2py_runtime.c), and verifies the module works.
+
+Detects the C compiler from the CC environment variable (gcc or cl).
+On MSVC, uses cl with /LD instead of gcc with -shared.
 """
 
 from __future__ import print_function
@@ -18,6 +21,37 @@ except ImportError:
     pytest = None
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+C2PY_H = os.path.join(PROJECT_DIR, "c2py23", "runtime", "c2py.h")
+
+
+def _is_msvc():
+    """Return True if the CC environment variable indicates MSVC."""
+    cc = os.environ.get("CC", "")
+    return cc in ("cl", "cl.exe") or os.environ.get("MSVC", "").strip() != ""
+
+
+def _compile_cflags():
+    """Return a list of compiler flags appropriate for the detected compiler."""
+    if _is_msvc():
+        return ["/O2", "/LD"]
+    else:
+        return ["-O2", "-Wall", "-fPIC", "-shared"]
+
+
+def _compile_ext():
+    """Return the shared library extension (.so or .pyd)."""
+    if _is_msvc():
+        return ".pyd"
+    else:
+        return ".so"
+
+
+def _compile_link_flags():
+    """Return a list of link flags appropriate for the detected compiler."""
+    if _is_msvc():
+        return ["/link"]
+    else:
+        return ["-ldl", "-lm"]
 
 
 def _c2py_generate(c2py_path, output_c, use_single_header=False):
@@ -43,34 +77,36 @@ def _c2py_generate(c2py_path, output_c, use_single_header=False):
         raise RuntimeError("c2py23 failed:\n" + stderr.decode("utf-8", "replace"))
 
 
-def _compile_module(workdir, source_c, so_name, extra_c=None):
-    """Compile wrapper and optional extra C source into a .so."""
-    cmd = [
-        "gcc",
-        "-O2",
-        "-Wall",
-        "-fPIC",
-        "-shared",
-        source_c,
-    ]
+def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None):
+    """Compile wrapper and C source into a shared library.
+
+    Uses the compiler detected from the CC environment variable.
+    On MSVC (CC=cl), uses cl with /LD.  On GCC (default), uses -shared.
+    """
+    cc = os.environ.get("CC", "gcc")
+    cmd = [cc] + _compile_cflags()
+    cmd.append("-I" + PROJECT_DIR)  # to find c2py23/runtime/c2py.h via wrapper include
+    cmd.append(wrapper_c)
+    cmd.append(c_source)
     if extra_c:
         cmd.append(os.path.join(PROJECT_DIR, extra_c))
-    cmd.extend(["-o", os.path.join(workdir, so_name), "-ldl", "-lm"])
+    target = os.path.join(workdir, so_name)
+    cmd.extend(["-o", target] + _compile_link_flags())
+
     proc = subprocess.Popen(
         cmd,
-        cwd=workdir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
     _, stderr = proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError("gcc failed:\n" + stderr.decode("utf-8", "replace"))
+        raise RuntimeError("compile failed:\n" + stderr.decode("utf-8", "replace"))
+    return target
 
 
 def test_single_header_transform():
     """Generate and build a transform module using only c2py.h."""
-    c2py_h = os.path.join(PROJECT_DIR, "c2py23", "runtime", "c2py.h")
-    if not os.path.exists(c2py_h):
+    if not os.path.exists(C2PY_H):
         print("SKIP: c2py.h not found -- run 'python3 -m c2py23 --regenerate-header'")
         return
 
@@ -79,7 +115,7 @@ def test_single_header_transform():
 
     with tempfile.TemporaryDirectory(prefix="c2py_sh_") as tmpdir:
         wrapper_c = os.path.join(tmpdir, "xfrm_wrapper.c")
-        so_path = os.path.join(tmpdir, "xfrm.so")
+        ext = _compile_ext()
 
         # Generate wrapper with single-header mode
         _c2py_generate(c2py_path, wrapper_c, use_single_header=True)
@@ -93,29 +129,7 @@ def test_single_header_transform():
         assert '#include "c2py_runtime.h"' not in content, "Generated wrapper should NOT include c2py_runtime.h"
 
         # Compile with only c2py.h and the C source (no c2py_runtime.c)
-        cmd = [
-            "gcc",
-            "-O2",
-            "-Wall",
-            "-fPIC",
-            "-shared",
-            "-I" + PROJECT_DIR,  # to find c2py23/runtime/c2py.h
-            wrapper_c,
-            c_source,
-            "-o",
-            so_path,
-            "-ldl",
-            "-lm",
-        ]
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        _, stderr = proc.communicate()
-        if proc.returncode != 0:
-            raise RuntimeError("gcc failed:\n" + stderr.decode("utf-8", "replace"))
-        assert os.path.exists(so_path)
+        so_path = _build_module(tmpdir, wrapper_c, c_source, "xfrm" + ext)
 
         # Import and test
         sys.path.insert(0, tmpdir)
@@ -123,8 +137,9 @@ def test_single_header_transform():
             import importlib.machinery as im
             import importlib.util as iu
 
-            loader = im.ExtensionFileLoader("xfrm", so_path)
-            spec = iu.spec_from_file_location("xfrm", so_path, loader=loader)
+            modname = "xfrm"
+            loader = im.ExtensionFileLoader(modname, so_path)
+            spec = iu.spec_from_file_location(modname, so_path, loader=loader)
             if spec is None:
                 raise RuntimeError("Failed to create module spec for {}".format(so_path))
             mod = iu.module_from_spec(spec)
@@ -151,11 +166,11 @@ def test_single_header_transform():
 
         # Clean up sys.path
         sys.path.pop(0)
+        del sys.modules["xfrm"]
 
 
 def test_single_header_cli_flags():
     """Verify --emit-header and --regenerate-header flags work."""
-    # --emit-header without output file
     c2py_path = os.path.join(PROJECT_DIR, "tests", "cases", "arraysum", "arraysum.c2py")
     with tempfile.TemporaryDirectory(prefix="c2py_sh_") as tmpdir:
         cmd = [

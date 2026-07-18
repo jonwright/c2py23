@@ -25,6 +25,7 @@ RUNTIME_INC  := c2py23/runtime
 RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
                 c2py23/runtime/c2py_dlsym.h \
                 c2py23/runtime/c2py_pythonh.h
+C2PY_FLAGS   :=
 endif
 
 # Auto-detect MSVC from CC or env var
