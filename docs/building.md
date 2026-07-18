@@ -69,7 +69,8 @@ with common build systems for dlsym-mode extensions:
 
 ### Generating a POSIX Makefile snippet
 
-Run this to emit POSIX make rules for all `.c2py` modules in a directory:
+Run this in the source checkout to emit POSIX make rules for all `.c2py` modules
+in a directory:
 
 ```bash
 python tools/generate_makefile_deps.py > my_project_deps.mk

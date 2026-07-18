@@ -311,3 +311,25 @@ if __name__ == "__main__":
     main()
 ```
 
+## Example Output
+
+Running on Linux x86_64, Python 3.12, GCC 13.3.0, 4 cores:
+
+```text
+=== Monte Carlo Pi -- Threading Benchmark ===
+Python: 3.12.3 (free-threaded: no)
+Iterations: 200,000,000 (4 chunks of 50,000,000)
+
+1. Serial
+   pi = 3.141508, wall = 0.745s
+
+2. GIL release + 4 threads
+   pi = 3.141613, wall = 0.225s, speedup = 3.3x
+   efficiency = 83%
+
+3. OpenMP -- SKIP (rebuild with EXTRA_CFLAGS=-fopenmp)
+
+Tip: rebuild with OpenMP for mode 3:
+  make omp
+```
+

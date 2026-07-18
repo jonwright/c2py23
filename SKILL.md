@@ -42,24 +42,33 @@ Key capabilities:
 ### 1. Write a .c2py interface file
 
 ```python
-module: mymod
-source: [kernel.c]
-
-functions:
-  - py_sig: "add_arrays(a: buffer, b: buffer, out: buffer)"
-    checks:
-      - "a.format == 'd'"
-      - "b.format == 'd'"
-      - "out.format == 'd'"
-      - "a.n == b.n"
-      - "out.n >= a.n"
-    c_overloads:
-      - sig: "void add_double(int n, const double *a, const double *b, double *out)"
-        map:
-          a: "a.ptr"
-          b: "b.ptr"
-          out: "out.ptr"
-          n: "min(a.n, b.n)"
+{
+    "module": "mymod",
+    "source": ["kernel.c"],
+    "functions": [
+        {
+            "py_sig": "add_arrays(a: buffer, b: buffer, out: buffer)",
+            "checks": [
+                "a.format == 'd'",
+                "b.format == 'd'",
+                "out.format == 'd'",
+                "a.n == b.n",
+                "out.n >= a.n",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "void add_double(int n, const double *a, const double *b, double *out)",
+                    "map": {
+                        "a": "a.ptr",
+                        "b": "b.ptr",
+                        "out": "out.ptr",
+                        "n": "min(a.n, b.n)",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 ### 2. Build the module
@@ -93,9 +102,10 @@ mymod.add_arrays(a, b, out)
 Without size checks, a caller can pass a too-small output buffer, causing a segfault. This is the most important rule:
 
 ```python
-checks:
-  - "out.format == 'd'"       # element type
-  - "out.n >= a.n"             # output large enough (prevents segfaults!)
+    "checks": [
+        "out.format == 'd'",       # element type
+        "out.n >= a.n",             # output large enough (prevents segfaults!)
+    ],
 ```
 
 ### 2. Memory is owned by Python
@@ -115,7 +125,7 @@ Never use `'l'` or `'L'` for fixed-width dispatch. They are platform-sized (`siz
 
 ### 4. Interface files use Python dict format
 
-.2cpy files contain Python dict literals (parsed via `ast.literal_eval`):
+`.c2py` files contain Python dict literals (parsed via `ast.literal_eval`):
 
 ```python
 {

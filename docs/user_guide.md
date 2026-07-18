@@ -4,262 +4,272 @@
 
 c2py23 wraps C99 functions as Python C extensions using the buffer protocol.
 One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
+The wrapper is zero-copy and allocation-free -- Python owns all memory,
+C functions receive raw pointers and operate in-place.
+
+**Key features:**
+- Zero-copy buffer access (raw C pointers from Python buffers)
+- Format dispatch (route to different C functions based on dtype)
+- Shape dispatch (AoS vs SoA, variable dimensions)
+- CPU feature dispatch (compile with AVX-512/AVX2/NEON and select at runtime)
+- GIL release for concurrent C computation
+- Free-threading support for Python 3.14t+
+- Performance timing instrumentation
+- Multi-platform wheel packaging
+
+## How It Works
+
+The pipeline has three steps:
+
+1. **Write a `.c2py` interface file** -- a Python dict literal describing your
+   C function signatures, buffer dtype checks, and dispatch conditions.
+2. **Generate the wrapper** -- `c2py23 mymod.c2py -o mymod_wrapper.c` transpiles
+   the interface into a compilable C99 source file.
+3. **Compile and import** -- build the `.so` with any C99 compiler, then
+   `import mymod` from Python and call your wrapped C functions.
+
+The `.so` uses the **nimpy trick**: all CPython API symbols (`PyObject_GetBuffer`,
+`PyTuple_New`, etc.) are resolved at module load time via `dlopen(NULL)`/`dlsym()`.
+This means the compiled binary never links against `-lpython` and never
+`#include <Python.h>`. One `.so` works on Python 2.7 through 3.15.
+
+## Acquisition Backends
+
+When your Python code calls a wrapped function with a `buffer` parameter,
+c2py23 must acquire a raw C pointer from the Python object. Three backends
+are available, selected per-function via the `"acquire"` key:
+
+| Backend | C constant | Method | Overhead | When to Use |
+|---------|-----------|--------|---------|-------------|
+| `ndarray` | `C2PY_PIN_NDARRAY` | NumPy struct-cast (zero API calls) | ~75 ns | **Default.** Fastest for numpy arrays. Fails transparently for non-numpy objects. |
+| `buffer` | `C2PY_PIN_PEP3118` | PEP 3118 `PyObject_GetBuffer` | ~162 ns | ctypes, `array.array`, `memoryview`, any buffer-protocol object. Python 2.7 falls back to old buffer API. |
+| `dlpack` | `C2PY_PIN_DLPACK` | `__dlpack__()` capsule extraction | ~381 ns | GPU device pointers (CuPy, PyTorch), non-CPython runtimes (PyPy, GraalPy) |
+
+The default order is `["ndarray", "buffer"]` -- the ndarray fast-path is
+tried first. For non-numpy types, the struct-cast check fails in ~1 ns and
+falls through to the buffer protocol. Use `"acquire": ["buffer"]` to only
+use the PEP 3118 path. Use `"acquire": ["ndarray", "dlpack", "buffer"]` for
+maximum portability across numpy, DLPack exporters, and buffer-protocol objects.
+
+### Choosing Between dlsym and --pythonh
+
+c2py23 supports two build modes for the runtime:
+
+| Mode | How | Portability | When to Use |
+|------|-----|-------------|-------------|
+| **dlsym** (default) | `dlopen(NULL)`/`dlsym()` | One `.so` for Python 2.7-3.15, all platforms | Default. Works on CPython, Pyodide/WASM, PyPy. |
+| **--pythonh** | `#include <Python.h>`, link `-lpython` | One `.so` per Python version | GraalPy (no exported CPython symbols), debugging, LTO devirtualization |
+
+Build dlsym mode:
+```bash
+cc -shared -fPIC -I c2py23/runtime wrapper.c mysource.c \
+   c2py23/runtime/c2py_runtime.c -ldl -lm -o mymod.so
+```
+
+Build pythonh mode:
+```bash
+python tests/setup.py build_ext --inplace --pythonh
+```
+
+See `docs/pythonh.md` for full pythonh documentation, and `docs/building.md`
+for cmake, meson, and setuptools build integration.
 
 ## Quick Reference
 
 ```python
-# mymod.c2py
-module: mymod
-source: [mymod.c]
-timing: false                           # enable perf timing (optional)
-free_threading: false                   # optional, declare module safe for 3.14t (default: false)
-
-functions:
-  - py_sig: "myfunc(a: buffer, n: int) -> int"
-    checks:
-      - "a.format == 'd'"
-      - "a.n > 0"
-    c_overloads:
-      - sig: "myfunc_c(const double *a, int n) -> int"
-        map: {a: "a.ptr", n: n}
+{
+    "module": "mymod",
+    "source": ["mymod.c"],
+    "timing": False,                       # enable perf timing (optional)
+    "free_threading": False,               # declare module safe for 3.14t (optional)
+    "functions": [
+        {
+            "py_sig": "myfunc(a: buffer, n: int) -> int",
+            "checks": [
+                "a.format == 'd'",
+                "a.n > 0",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "myfunc_c(const double *a, int n) -> int",
+                    "map": {
+                        "a": "a.ptr",
+                        "n": "n",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
-## Thread Safety Guide
+## For Python Programmers: A C Tutorial
 
-### Standard CPython (2.7 through 3.15)
+c2py23 wraps C99 functions. The C you need to write is deliberately simple:
+flat arrays ("buffers"), scalar inputs, and scalar or void returns.
 
-The GIL serializes all Python bytecode. When a C wrapper function is called,
-the GIL is held by default. Other Python threads cannot run until the call
-returns. Use `gil_release: true` to release the GIL during pure-C computation,
-allowing other Python threads to execute in parallel.
+### Pointers and Buffers
 
-### Free Threading (FT) 3.14t
-
-Free-threaded CPython (`--disable-gil`, `python3.14t`) eliminates the GIL
-at the interpreter level. However, c2py23 modules do NOT declare
-`Py_MOD_GIL_NOT_USED` by default (safe default). This triggers CPython to
-re-enable the GIL **globally** on module load -- all Python threads are
-serialized, exactly as on standard CPython.
-
-See `docs/specification.md` for the full technical breakdown.
-
-### Enabling True Free-Threading
-
-Set `free_threading: true` in your `.c2py` file:
+A Python `buffer` parameter becomes a C pointer:
 
 ```python
-module: mymod
-source: [mymod.c]
-free_threading: true
+# Python side: pass any buffer-protocol object
+"py_sig": "process(data: buffer) -> void"
 ```
-
-This causes the generated wrapper to call `PyUnstable_Module_SetGIL(module, 1)`
-at init time (resolved via dlsym -- only available on Free Threading (FT) builds). The GIL is
-NOT re-enabled when this module loads, and other Python threads can run in
-true parallelism.
-
-**You must verify that your C code is thread-safe before enabling this.**
-c2py23 does not analyze your C code for thread safety.
-
-### Migrating from 3.13 to 3.14t
-
-| Aspect | Python 3.13 | Python 3.14t |
-|--------|-------------|---------------|
-| GIL state | Always enabled | Disabled by default; re-enabled globally by c2py23 modules |
-| `gil_release: true` | Releases the GIL | Releases the re-enabled GIL (same effect) |
-| `free_threading: true` | No-op (ignored) | Prevents GIL re-enablement |
-| Thread parallelism | Only via GIL release | True parallelism if `free_threading: true` |
-
-On 3.13, `free_threading: true` has zero effect -- the GIL is always on,
-`PyUnstable_Module_SetGIL` is not exported, and the dlsym returns NULL.
-The option is purely forward-looking for 3.14t.
-
-**Testing workflow:**
-1. Develop and test on standard 3.13 with `gil_release: true` for parallel C
-2. Set `free_threading: true` and test on `python3.14t`
-3. If you see data races or wrong results, your C code has thread-safety bugs
-4. Fall back to `free_threading: false` (GIL re-enabled) while fixing them
-
-### Global State Audit
-
-All mutable global state in c2py23 generated wrappers and runtime is
-race-safe by design. Here is the complete inventory:
-
-**Timing perf structs** (`_perf_*`, `c2py_perf_t`):
-Race condition: concurrent calls lose increments on `call_count`,
-corrupt `t_c_min`/`t_c_max` comparisons, mis-accumulate `t_c_total`.
-Impact: **Harmless** -- diagnostic data only. No Python objects, no
-pointers (variant_name is a compile-time string literal set once).
-
-**Timing toggle** (`_c2py_timing_enabled`, `static int`):
-Race condition: two threads writing simultaneously may see stale values.
-Impact: **Harmless** -- at worst timing is spuriously on or off for one
-call. No safety implications.
-
-**GIL release toggle** (`_c2py_gil_release_enabled`, `_gil_release_*`):
-Race condition: thread reads stale toggle value, decides to hold/release
-GIL based on stale state.
-Impact: **Harmless** -- the toggle is a hint, not a correctness mechanism.
-
-**Variant dispatch cache** (`_var_*`, `_vname_*`):
-Race condition: two threads on first dispatch both compute variant and
-write the cache; second writer wins.
-Impact: **Harmless** -- worst case a suboptimal variant is selected.
-
-**CPU feature flags, API table, tick frequency**:
-Written once via `pthread_once`, then read-only.
-Impact: **Safe** -- no race possible.
-
-**No pathological global state exists.** No mutable static can produce a
-segfault, use-after-free, or type confusion in the wrapper itself. The only
-source of hard crashes is user C code with thread-safety bugs.
-
-### Dangerous Patterns in User C Code
-
-For pure array computations (no file I/O), these patterns become unsafe
-when `free_threading: true` is set and multiple threads call into the
-same function:
-
-**1. Static scratch buffers**
-
 ```c
-/* UNSAFE: two threads clobber each other */
-static double workspace[1024];
-void compute(const double *in, double *out, int n) {
-    for (int i = 0; i < n; i++)
-        workspace[i] = in[i] * 2.0;  // race!
-    for (int i = 0; i < n; i++)
-        out[i] = workspace[i] + 1.0;
+/* C side: receive a raw pointer */
+void process(const double *data, intptr_t n) {
+    for (intptr_t i = 0; i < n; i++)
+        data[i] *= 2.0;
 }
 ```
 
-Fix: allocate on the stack or pass a buffer from Python.
+The pointer has **no bounds information** -- the element count `n` must be
+passed separately (derived from `data.n` in the `"map"` block). Always add
+`"checks"` to validate buffer sizes before the C call:
 
-```c
-/* SAFE: stack allocation (up to reasonable size) */
-void compute(const double *in, double *out, int n) {
-    double workspace[1024];  // per-thread stack
-    for (int i = 0; i < n; i++)
-        workspace[i] = in[i] * 2.0;
-    for (int i = 0; i < n; i++)
-        out[i] = workspace[i] + 1.0;
+```python
+"checks": [
+    "data.format == 'd'",
+    "data.n > 0",
+],
+```
+
+### Const and Writable Buffers
+
+`const double *data` is read-only. `double *out` is writable. c2py23 checks
+that writable buffers do not alias (overlap) each other:
+
+```python
+# c2py23 raises ValueError if 'out' overlaps with 'a' or 'b'
+"py_sig": "add(a: buffer, b: buffer, out: buffer) -> void"
+```
+
+### Memory Ownership
+
+**Python owns all memory.** Your C function receives pointers to
+Python-allocated buffers. Never call `free()` on these pointers. If your C
+code needs temporary workspace, allocate it on the stack or receive it as
+another buffer parameter.
+
+### Return Values
+
+C functions can return `void`, `int`, `float`, or `double`. For multiple
+outputs, use the `"outputs"` key to declare output-by-pointer parameters:
+
+```python
+"outputs": {
+    "minval": "double",
+    "maxval": "double",
 }
 ```
 
-**2. Global/static accumulators**
+c2py23 allocates a 1-element stack variable, passes the address to your C
+function, and returns the values as a Python tuple.
 
-```c
-/* UNSAFE: two threads race on the accumulator */
-static double grand_total = 0.0;
-void accumulate(const double *vals, int n) {
-    for (int i = 0; i < n; i++)
-        grand_total += vals[i];  // lost update
-}
+### Built on FORTRAN's Philosophy
+
+c2py23 enforces a FORTRAN-like programming model in C: flat numeric arrays,
+no aliasing between outputs, memory owned by the caller. C's `restrict`
+keyword is enforced at the wrapper level. This eliminates pointer provenance
+issues, use-after-free bugs, and ownership confusion -- you write simple
+loops over disjoint arrays, and the wrapper handles the rest.
+
+## For C Programmers: A Python Tutorial
+
+### The Buffer Protocol
+
+Python's PEP 3118 buffer protocol is the key interface. Any object that
+exposes a flat memory region can be used as a `buffer` parameter:
+- `ctypes` arrays (Python 2.7+)
+- `memoryview` (Python 3.3+)
+- `numpy.ndarray`
+- `array.array`
+- `bytearray` / `bytes`
+
+```python
+import ctypes
+a = (ctypes.c_double * 1000)(*range(1000))   # allocate 1000 doubles
+out = (ctypes.c_double * 1000)()             # zero-initialized
+mymod.process(a, out)                        # C receives raw pointers
 ```
 
-Fix: return the partial sum and let Python combine, or use atomics.
+### How the `.so` Loads
 
-```c
-/* SAFE: return partial result */
-double accumulate(const double *vals, int n) {
-    double sum = 0.0;  // local variable, per-thread
-    for (int i = 0; i < n; i++)
-        sum += vals[i];
-    return sum;
-}
-```
+c2py23 modules are compiled `.so` files. They use `dlopen(NULL)` +
+`dlsym()` at init time to resolve all CPython API functions from the
+running interpreter. This means:
+- The `.so` has no compile-time dependency on `Python.h`
+- The same `.so` binary imports into Python 2.7, 3.6, ..., 3.15
+- On PyPy, the `.so` resolves `PyPy_*`-prefixed symbols instead
+- On GraalPy, use `--pythonh` mode (see `docs/pythonh.md`)
 
-**3. One-time initialization with static flag**
+### No Heap Allocation in Wrappers
 
-```c
-/* UNSAFE: two threads race on initialization */
-static int table_initialized = 0;
-static double lookup[256];
-static void ensure_table(void) {
-    if (!table_initialized) {
-        for (int i = 0; i < 256; i++)
-            lookup[i] = some_expensive_computation(i);
-        table_initialized = 1;  // double-init, or use before init
-    }
-}
-```
+The generated wrapper never calls `malloc`, `calloc`, `realloc`, or `free`.
+All memory comes from Python. Your C code owns nothing that Python didn't
+provide. This means no leaks, no double-frees, and no ownership confusion.
 
-Fix: use `call_once` / `pthread_once`, or a static const initializer.
+### The Call Flow
 
-```c
-/* SAFE: compile-time constant */
-static const double lookup[256] = { /* precomputed values */ };
-```
+When Python calls `mymod.myfunc(a, b, out, 42)`:
 
-**4. Non-reentrant C library functions**
+1. `PyArg_ParseTuple` extracts the Python objects and scalar values
+2. `c2py_pin` acquires raw pointers from each buffer object (using the
+   configured acquisition backend: ndarray struct-cast, PEP 3118, or DLPack)
+3. Restrict check: verifies no writable buffers overlap
+4. Checks: evaluates all `"checks"` expressions; raises `ValueError` on failure
+5. Overload dispatch: iterates the `"c_overloads"` list, evaluates `"when"`
+   conditions, calls the first matching C function
+6. Cleanup: releases all acquired buffers
+7. Returns the result to Python
 
-```c
-/* UNSAFE: strtok uses internal static state */
-void tokenize(double *out, char *str) {
-    char *tok = strtok(str, ",");  // not reentrant!
-}
-```
+## Type Mapping
 
-Fix: use the `_r` variants (`strtok_r`, `rand_r`, etc.) or thread-local
-alternatives.
+c2py23 bridges Python and C types as follows:
 
-**5. Lazy-populated global caches**
+| Python `py_sig` type | C type (in `sig`) | Python value | Notes |
+|---------------------|-------------------|-------------|-------|
+| `buffer` | `type *ptr` (any pointer) | Any buffer-protocol object | Use `"map"` to bind `buf.ptr`, `buf.n`, `buf.shape[i]` |
+| `int` | `int` | Python `int` | Converted via `PyLong_AsLong` |
+| `int` | `intptr_t`, `size_t` | Python `int` | Pointer-width integer |
+| `float` | `double` | Python `float` | Converted via `PyFloat_AsDouble` |
+| `int` | `void*` | Python `int` (address) | Opaque pointer passthrough (GPU, custom allocators) |
 
-```c
-/* UNSAFE: two threads can both compute and write the same slot */
-static double *cache = NULL;
-static int cache_size = 0;
-double get_cached(int idx) {
-    if (idx >= cache_size) {
-        cache = realloc(cache, (idx + 1) * sizeof(double));
-        cache[idx] = expensive_calc(idx);  // two threads race
-        cache_size = idx + 1;
-    }
-    return cache[idx];
-}
-```
+| Python return type | C return type | Python value |
+|-------------------|--------------|-------------|
+| `void` | `void` | `None` |
+| `int` | `int` | Python `int` |
+| `float` | `double` or `float` | Python `float` |
 
-Fix: pre-allocate at init time, or use a thread-local cache.
+## Tour of Examples
 
-**6. SIMD control register manipulation**
+The `examples/` directory contains worked examples demonstrating different
+features. Clone the GitHub repository to access them (not in the PyPI sdist).
 
-```c
-/* UNSAFE: other thread's FP operations may interleave */
-void set_denormals_zero(void) {
-    unsigned int mxcsr;
-    asm("stmxcsr %0" : "=m"(mxcsr));
-    mxcsr |= (1 << 15);  // set DAZ flag
-    asm("ldmxcsr %0" : : "m"(mxcsr));  // affects other threads
-}
-```
-
-Fix: accept default FP behavior, or use per-thread control (most OSes
-save/restore FP state on context switch so this is actually per-thread
-on Linux, but it is still fragile).
-
-**7. Assuming GIL protects C global state**
-
-```c
-/* UNSAFE without GIL: global counter relies on GIL serialization */
-static int call_count = 0;
-int myfunc(...) {
-    call_count++;  // not atomic on Free Threading (FT) builds without GIL
-}
-```
-
-Fix: use C11 atomics (`atomic_fetch_add`) if you need a counter, or
-remove the global counter.
+| Example | Demonstrates |
+|---------|-------------|
+| `examples/wheel_demo/` | Multi-platform wheel packaging, `c2py_loader` |
+| `examples/simd_dispatch/` | CPU feature dispatch (AVX-512/AVX2/scalar), variant rebind, timing |
+| `examples/threading_bench/` | GIL release, free-threading, OpenMP, Monte Carlo Pi |
+| `examples/timing_demo/` | Performance timing instrumentation, tick source switching |
+| `examples/kissfft_wrap/` | Real + complex FFT over float buffers |
+| `examples/lz4_wrap/` | Compress/decompress over byte buffers |
+| `examples/cmake_demo/` | CMake build integration |
+| `examples/meson_demo/` | Meson build integration |
+| `examples/mp_bench/` | Multiprocessing with GIL release |
 
 ## Performance Timing
 
-Set `timing: true` in your `.c2py` file to enable per-function wall-clock timing.
-Each wrapped function gets a `_perf_<name>()` introspection method returning a dict
-with call count, total C time, and per-overload breakdown.
+Set `"timing": True` in your `.c2py` module to enable per-function timing.
+Each wrapped function gets a `_perf_<name>()` introspection method.
 
 ```python
-module: mymod
-source: [mymod.c]
-timing: true
+{
+    "module": "mymod",
+    "source": ["mymod.c"],
+    "timing": True,
+}
 ```
 
 ```python
@@ -269,15 +279,88 @@ print(mymod._perf_myfunc())
 # {'calls': 1, 't_c_total_ns': 23400, 't_c_min_ns': 23400, ...}
 ```
 
-The tick source defaults to `clock_gettime(CLOCK_MONOTONIC)`.  Call
-`mymod._c2py_set_tick_source("cycle")` to switch to the CPU cycle counter
-(rdtsc on x86, cntvct on arm64) for higher precision.
+### Timing Overhead
 
-See `specification.md` for per-overload timing and the full perf struct schema.
+When timing is enabled, every call toggles a timer before and after the C
+function call. The overhead depends on the tick source:
+
+| Tick source | Overhead per call |
+|-------------|------------------|
+| `clock` (default, `clock_gettime`) | ~130-150 ns |
+| `cycle` (CPU cycle counter, `rdtsc`/`CNTVCT_EL0`) | ~45-70 ns |
+| Timing disabled (`"timing": False`) | 0 ns |
+
+The tick source defaults to `clock_gettime(CLOCK_MONOTONIC)` (nanoseconds).
+Call `mymod._c2py_set_tick_source("cycle")` to switch to the CPU cycle
+counter for higher precision with lower overhead.
+
+All tick calls are guarded by `_c2py_do_time` so there is zero overhead
+when timing is disabled or not compiled in.
+
+See `specification.md` for per-overload timing, the full perf struct schema,
+and the `c2py23.perf` Python-side decoder.
+
+## Thread Safety
+
+### GIL Release
+
+The wrapper holds the GIL by default. Set `"gil_release": True` on a
+function to release the GIL during the C call, allowing other Python
+threads to execute in parallel:
+
+```python
+{
+    "py_sig": "compute(data: buffer) -> void",
+    "gil_release": True,
+    "c_overloads": [
+        {
+            "sig": "void compute(const double *data, intptr_t n)",
+            "map": {"data": "data.ptr", "n": "data.n"},
+        },
+    ],
+}
+```
+
+### Free-Threading (Python 3.14t+)
+
+Free-threaded CPython (`--disable-gil`, `python3.14t`) eliminates the GIL
+at the interpreter level. By default, c2py23 modules re-enable it (safe
+default). Set `"free_threading": True` at module level to leave the GIL
+disabled:
+
+```python
+{
+    "module": "mymod",
+    "source": ["mymod.c"],
+    "free_threading": True,
+}
+```
+
+**You must verify that your C code is thread-safe before enabling this.**
+c2py23 does not analyze your C code for thread safety. All wrapper-internal
+global state (timing counters, dispatch caches, feature flags) is race-safe
+by design; the only source of crashes is user C code with thread-safety bugs.
+
+### Common Unsafe Patterns in C
+
+When `"free_threading": True` is enabled, watch for these patterns:
+
+1. **Static scratch buffers** -- two threads clobber each other. Use
+   stack allocation or pass buffers from Python.
+2. **Global accumulators** -- lost updates. Return partial results.
+3. **One-time initialization with static flag** -- double-init. Use
+   `pthread_once` or static const initializers.
+4. **Non-reentrant C library functions** (`strtok`, `rand`) -- use `_r`
+   variants.
+5. **Lazy-populated global caches** -- races on allocation. Pre-allocate
+   at init.
+6. **Assuming GIL protects C global state** -- counters need atomics on
+   free-threaded builds.
+
+The `examples/threading_bench/` directory has a complete worked example
+comparing serial, GIL release with threads, free-threading, and OpenMP.
 
 ## Building and Testing
-
-See [Getting Started](getting_started.md) for installation and first build.
 
 ```bash
 # Build
@@ -296,13 +379,13 @@ valgrind --leak-check=full python3 tests/test_leaks.py
 ## Packaging as a Wheel
 
 c2py23 modules can be distributed as multi-platform `py3-none-any` wheels.
-One wheel containing .so files for multiple architectures -- pip installs
+One wheel contains `.so` files for multiple architectures -- pip installs
 the same artifact everywhere, the loader selects the right binary at import
 time.
 
 ### Filename Convention
 
-Each .so is named `_module.c2py23-{os}_{arch}.so`:
+Each `.so` is named `_module.c2py23-{os}_{arch}.so`:
 
 ```
 mymodule/_mymodule.c2py23-linux_x86_64.so
@@ -312,9 +395,8 @@ mymodule/_mymodule.c2py23-linux_ppc64le.so
 
 ### Loader
 
-The package's `__init__.py` uses `c2py_loader` to load the right .so
-by explicit path.  No `EXTENSION_SUFFIXES` monkeypatching, no `sys.path`
-hacking.
+The package's `__init__.py` uses `c2py_loader` to load the right `.so`
+by explicit path:
 
 ```python
 import os as _os
@@ -327,53 +409,14 @@ for _k, _v in _mod.__dict__.items():
     globals()[_k] = _v
 ```
 
-Set `C2PY_TRACE=1` to see which .so file was loaded.
-
-### Wheel Setup
-
-The `setup.py` overrides `bdist_wheel.get_tag()` to produce `py3-none-any`:
-
-```python
-from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
-
-class BdistWheel(_bdist_wheel):
-    def finalize_options(self):
-        super().finalize_options(self)
-        self.root_is_pure = True
-
-    def get_tag(self):
-        return ('py3', 'none', 'any')
-```
-
-The .so files are declared as `package_data`, not `ext_modules`, so
-`EXT_SUFFIX` is never applied and the filenames are preserved.
-
-### Building
-
-Build the .so inside a manylinux2014 container (glibc 2.17) for
-maximum portability:
-
-```bash
-c2py23 mymodule.c2py -o wrapper.c
-gcc -shared -fPIC -I c2py23/runtime wrapper.c mymodule.c c2py_runtime.c \
-    -o mymodule/_mymodule.c2py23-linux_x86_64.so
-python3 -m build
-```
-
-Compile per-architecture in each target container, collect all .so files
-into the package directory, then run `python3 -m build` once.  The
-resulting wheel installs on any platform.
-
-Python 2.7 users install from sdist (the wheel is `py3`-tagged).
-
-### Complete Example
-
-See `examples/wheel_demo/` for a minimal working project.  Also
-`examples/meson_demo/` and `examples/cmake_demo/` for meson and
-cmake build system integration.
+Set `C2PY_TRACE=1` to see which `.so` file was loaded. See
+`examples/wheel_demo/` for a complete worked project.
 
 ## See Also
 
 - `docs/specification.md` -- Full grammar, architecture, runtime internals
+- `docs/building.md` -- cmake, meson, setuptools, and wheel packaging
+- `docs/design.md` -- Settled design decisions (what c2py23 intentionally excludes)
+- `docs/pythonh.md` -- `--pythonh` mode for GraalPy and debugging
 - `AGENTS.md` -- Contributor guidelines
 - `PLAN.md` -- Roadmap and future work
