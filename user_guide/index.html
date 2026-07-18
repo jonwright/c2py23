@@ -1,0 +1,2177 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Zero-copy C99 function wrapping for Python 2.7-3.15">
+      
+      
+      
+      
+        <link rel="prev" href="../specification/">
+      
+      
+        <link rel="next" href="../getting_started/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>User Guide - c2py23</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#c2py23-user-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="c2py23" class="md-header__button md-logo" aria-label="c2py23" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            c2py23
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              User Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jonwright/c2py23" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jonwright/c2py23
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="c2py23" class="md-nav__button md-logo" aria-label="c2py23" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    c2py23
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jonwright/c2py23" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jonwright/c2py23
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../specification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Introduction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisition-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acquisition Backends
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Acquisition Backends">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-between-dlsym-and-pythonh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing Between dlsym and --pythonh
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-python-programmers-a-c-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Python Programmers: A C Tutorial
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="For Python Programmers: A C Tutorial">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pointers-and-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pointers and Buffers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#const-and-writable-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Const and Writable Buffers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Ownership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-on-fortrans-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built on FORTRAN's Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-c-programmers-a-python-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For C Programmers: A Python Tutorial
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="For C Programmers: A Python Tutorial">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-buffer-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Buffer Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-the-so-loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the .so Loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-heap-allocation-in-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Heap Allocation in Wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-call-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Call Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tour-of-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tour of Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Timing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Timing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#timing-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timing Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thread Safety
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Thread Safety">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gil-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GIL Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#free-threading-python-314t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Free-Threading (Python 3.14t+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-unsafe-patterns-in-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Unsafe Patterns in C
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-and-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building and Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packaging-as-a-wheel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packaging as a Wheel
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Packaging as a Wheel">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filename-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filename Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building Extensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository Audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/kissfft_wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    KISS FFT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/lz4_wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ4 Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/simd_dispatch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SIMD Dispatch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/threading_bench/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threading Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/mp_bench/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/timing_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance Timing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/cmake_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CMake Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/meson_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meson Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/wheel_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wheel Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Introduction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisition-backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acquisition Backends
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Acquisition Backends">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-between-dlsym-and-pythonh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing Between dlsym and --pythonh
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-python-programmers-a-c-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Python Programmers: A C Tutorial
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="For Python Programmers: A C Tutorial">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pointers-and-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pointers and Buffers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#const-and-writable-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Const and Writable Buffers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory Ownership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#return-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#built-on-fortrans-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Built on FORTRAN's Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-c-programmers-a-python-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For C Programmers: A Python Tutorial
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="For C Programmers: A Python Tutorial">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-buffer-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Buffer Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-the-so-loads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the .so Loads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-heap-allocation-in-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Heap Allocation in Wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-call-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Call Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tour-of-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tour of Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-timing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Timing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Timing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#timing-overhead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timing Overhead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thread-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Thread Safety
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Thread Safety">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gil-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GIL Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#free-threading-python-314t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Free-Threading (Python 3.14t+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-unsafe-patterns-in-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Unsafe Patterns in C
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building-and-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building and Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packaging-as-a-wheel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packaging as a Wheel
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Packaging as a Wheel">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filename-convention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filename Convention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="c2py23-user-guide">c2py23 User Guide</h1>
+<h2 id="introduction">Introduction</h2>
+<p>c2py23 wraps C99 functions as Python C extensions using the buffer protocol.
+One compiled <code>.so</code> works on Python 2.7 through 3.15 with no recompilation.
+The wrapper is zero-copy and allocation-free -- Python owns all memory,
+C functions receive raw pointers and operate in-place.</p>
+<p><strong>Key features:</strong>
+- Zero-copy buffer access (raw C pointers from Python buffers)
+- Format dispatch (route to different C functions based on dtype)
+- Shape dispatch (AoS vs SoA, variable dimensions)
+- CPU feature dispatch (compile with AVX-512/AVX2/NEON and select at runtime)
+- GIL release for concurrent C computation
+- Free-threading support for Python 3.14t+
+- Performance timing instrumentation
+- Multi-platform wheel packaging</p>
+<h2 id="how-it-works">How It Works</h2>
+<p>The pipeline has three steps:</p>
+<ol>
+<li><strong>Write a <code>.c2py</code> interface file</strong> -- a Python dict literal describing your
+   C function signatures, buffer dtype checks, and dispatch conditions.</li>
+<li><strong>Generate the wrapper</strong> -- <code>c2py23 mymod.c2py -o mymod_wrapper.c</code> transpiles
+   the interface into a compilable C99 source file.</li>
+<li><strong>Compile and import</strong> -- build the <code>.so</code> with any C99 compiler, then
+   <code>import mymod</code> from Python and call your wrapped C functions.</li>
+</ol>
+<p>The <code>.so</code> uses the <strong>nimpy trick</strong>: all CPython API symbols (<code>PyObject_GetBuffer</code>,
+<code>PyTuple_New</code>, etc.) are resolved at module load time via <code>dlopen(NULL)</code>/<code>dlsym()</code>.
+This means the compiled binary never links against <code>-lpython</code> and never
+<code>#include &lt;Python.h&gt;</code>. One <code>.so</code> works on Python 2.7 through 3.15.</p>
+<h2 id="acquisition-backends">Acquisition Backends</h2>
+<p>When your Python code calls a wrapped function with a <code>buffer</code> parameter,
+c2py23 must acquire a raw C pointer from the Python object. Three backends
+are available, selected per-function via the <code>"acquire"</code> key:</p>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>C constant</th>
+<th>Method</th>
+<th>Overhead</th>
+<th>When to Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ndarray</code></td>
+<td><code>C2PY_PIN_NDARRAY</code></td>
+<td>NumPy struct-cast (zero API calls)</td>
+<td>~75 ns</td>
+<td><strong>Default.</strong> Fastest for numpy arrays. Fails transparently for non-numpy objects.</td>
+</tr>
+<tr>
+<td><code>buffer</code></td>
+<td><code>C2PY_PIN_PEP3118</code></td>
+<td>PEP 3118 <code>PyObject_GetBuffer</code></td>
+<td>~162 ns</td>
+<td>ctypes, <code>array.array</code>, <code>memoryview</code>, any buffer-protocol object. Python 2.7 falls back to old buffer API.</td>
+</tr>
+<tr>
+<td><code>dlpack</code></td>
+<td><code>C2PY_PIN_DLPACK</code></td>
+<td><code>__dlpack__()</code> capsule extraction</td>
+<td>~381 ns</td>
+<td>GPU device pointers (CuPy, PyTorch), non-CPython runtimes (PyPy, GraalPy)</td>
+</tr>
+</tbody>
+</table>
+<p>The default order is <code>["ndarray", "buffer"]</code> -- the ndarray fast-path is
+tried first. For non-numpy types, the struct-cast check fails in ~1 ns and
+falls through to the buffer protocol. Use <code>"acquire": ["buffer"]</code> to only
+use the PEP 3118 path. Use <code>"acquire": ["ndarray", "dlpack", "buffer"]</code> for
+maximum portability across numpy, DLPack exporters, and buffer-protocol objects.</p>
+<h3 id="choosing-between-dlsym-and-pythonh">Choosing Between dlsym and --pythonh</h3>
+<p>c2py23 supports two build modes for the runtime:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>How</th>
+<th>Portability</th>
+<th>When to Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>dlsym</strong> (default)</td>
+<td><code>dlopen(NULL)</code>/<code>dlsym()</code></td>
+<td>One <code>.so</code> for Python 2.7-3.15, all platforms</td>
+<td>Default. Works on CPython, Pyodide/WASM, PyPy.</td>
+</tr>
+<tr>
+<td><strong>--pythonh</strong></td>
+<td><code>#include &lt;Python.h&gt;</code>, link <code>-lpython</code></td>
+<td>One <code>.so</code> per Python version</td>
+<td>GraalPy (no exported CPython symbols), debugging, LTO devirtualization</td>
+</tr>
+</tbody>
+</table>
+<p>Build dlsym mode:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cc<span class="w"> </span>-shared<span class="w"> </span>-fPIC<span class="w"> </span>-I<span class="w"> </span>c2py23/runtime<span class="w"> </span>wrapper.c<span class="w"> </span>mysource.c<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">   </span>c2py23/runtime/c2py_runtime.c<span class="w"> </span>-ldl<span class="w"> </span>-lm<span class="w"> </span>-o<span class="w"> </span>mymod.so
+</code></pre></div></p>
+<p>Build pythonh mode:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>tests/setup.py<span class="w"> </span>build_ext<span class="w"> </span>--inplace<span class="w"> </span>--pythonh
+</code></pre></div></p>
+<p>See <code>docs/pythonh.md</code> for full pythonh documentation, and <code>docs/building.md</code>
+for cmake, meson, and setuptools build integration.</p>
+<h2 id="quick-reference">Quick Reference</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;mymod&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;mymod.c&quot;</span><span class="p">],</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>                       <span class="c1"># enable perf timing (optional)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="s2">&quot;free_threading&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>               <span class="c1"># declare module safe for 3.14t (optional)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;functions&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="p">{</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>            <span class="s2">&quot;py_sig&quot;</span><span class="p">:</span> <span class="s2">&quot;myfunc(a: buffer, n: int) -&gt; int&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>            <span class="s2">&quot;checks&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>                <span class="s2">&quot;a.format == &#39;d&#39;&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>                <span class="s2">&quot;a.n &gt; 0&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>            <span class="p">],</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>            <span class="s2">&quot;c_overloads&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>                <span class="p">{</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>                    <span class="s2">&quot;sig&quot;</span><span class="p">:</span> <span class="s2">&quot;myfunc_c(const double *a, int n) -&gt; int&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>                    <span class="s2">&quot;map&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>                        <span class="s2">&quot;a&quot;</span><span class="p">:</span> <span class="s2">&quot;a.ptr&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>                        <span class="s2">&quot;n&quot;</span><span class="p">:</span> <span class="s2">&quot;n&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>                    <span class="p">},</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>                <span class="p">},</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>            <span class="p">],</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="p">},</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="p">],</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="p">}</span>
+</code></pre></div>
+<h2 id="for-python-programmers-a-c-tutorial">For Python Programmers: A C Tutorial</h2>
+<p>c2py23 wraps C99 functions. The C you need to write is deliberately simple:
+flat arrays ("buffers"), scalar inputs, and scalar or void returns.</p>
+<h3 id="pointers-and-buffers">Pointers and Buffers</h3>
+<p>A Python <code>buffer</code> parameter becomes a C pointer:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Python side: pass any buffer-protocol object</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="s2">&quot;py_sig&quot;</span><span class="p">:</span> <span class="s2">&quot;process(data: buffer) -&gt; void&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cm">/* C side: receive a raw pointer */</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kt">void</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="o">*</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">intptr_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">intptr_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">        </span><span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="mf">2.0</span><span class="p">;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The pointer has <strong>no bounds information</strong> -- the element count <code>n</code> must be
+passed separately (derived from <code>data.n</code> in the <code>"map"</code> block). Always add
+<code>"checks"</code> to validate buffer sizes before the C call:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="s2">&quot;checks&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;data.format == &#39;d&#39;&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">&quot;data.n &gt; 0&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">],</span>
+</code></pre></div>
+<h3 id="const-and-writable-buffers">Const and Writable Buffers</h3>
+<p><code>const double *data</code> is read-only. <code>double *out</code> is writable. c2py23 checks
+that writable buffers do not alias (overlap) each other:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># c2py23 raises ValueError if &#39;out&#39; overlaps with &#39;a&#39; or &#39;b&#39;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="s2">&quot;py_sig&quot;</span><span class="p">:</span> <span class="s2">&quot;add(a: buffer, b: buffer, out: buffer) -&gt; void&quot;</span>
+</code></pre></div>
+<h3 id="memory-ownership">Memory Ownership</h3>
+<p><strong>Python owns all memory.</strong> Your C function receives pointers to
+Python-allocated buffers. Never call <code>free()</code> on these pointers. If your C
+code needs temporary workspace, allocate it on the stack or receive it as
+another buffer parameter.</p>
+<h3 id="return-values">Return Values</h3>
+<p>C functions can return <code>void</code>, <code>int</code>, <code>float</code>, or <code>double</code>. For multiple
+outputs, use the <code>"outputs"</code> key to declare output-by-pointer parameters:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="s2">&quot;outputs&quot;</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="s2">&quot;minval&quot;</span><span class="p">:</span> <span class="s2">&quot;double&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="s2">&quot;maxval&quot;</span><span class="p">:</span> <span class="s2">&quot;double&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>c2py23 allocates a 1-element stack variable, passes the address to your C
+function, and returns the values as a Python tuple.</p>
+<h3 id="built-on-fortrans-philosophy">Built on FORTRAN's Philosophy</h3>
+<p>c2py23 enforces a FORTRAN-like programming model in C: flat numeric arrays,
+no aliasing between outputs, memory owned by the caller. C's <code>restrict</code>
+keyword is enforced at the wrapper level. This eliminates pointer provenance
+issues, use-after-free bugs, and ownership confusion -- you write simple
+loops over disjoint arrays, and the wrapper handles the rest.</p>
+<h2 id="for-c-programmers-a-python-tutorial">For C Programmers: A Python Tutorial</h2>
+<h3 id="the-buffer-protocol">The Buffer Protocol</h3>
+<p>Python's PEP 3118 buffer protocol is the key interface. Any object that
+exposes a flat memory region can be used as a <code>buffer</code> parameter:
+- <code>ctypes</code> arrays (Python 2.7+)
+- <code>memoryview</code> (Python 3.3+)
+- <code>numpy.ndarray</code>
+- <code>array.array</code>
+- <code>bytearray</code> / <code>bytes</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ctypes</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">a</span> <span class="o">=</span> <span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_double</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)(</span><span class="o">*</span><span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span>   <span class="c1"># allocate 1000 doubles</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">out</span> <span class="o">=</span> <span class="p">(</span><span class="n">ctypes</span><span class="o">.</span><span class="n">c_double</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)()</span>             <span class="c1"># zero-initialized</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">mymod</span><span class="o">.</span><span class="n">process</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span>                        <span class="c1"># C receives raw pointers</span>
+</code></pre></div>
+<h3 id="how-the-so-loads">How the <code>.so</code> Loads</h3>
+<p>c2py23 modules are compiled <code>.so</code> files. They use <code>dlopen(NULL)</code> +
+<code>dlsym()</code> at init time to resolve all CPython API functions from the
+running interpreter. This means:
+- The <code>.so</code> has no compile-time dependency on <code>Python.h</code>
+- The same <code>.so</code> binary imports into Python 2.7, 3.6, ..., 3.15
+- On PyPy, the <code>.so</code> resolves <code>PyPy_*</code>-prefixed symbols instead
+- On GraalPy, use <code>--pythonh</code> mode (see <code>docs/pythonh.md</code>)</p>
+<h3 id="no-heap-allocation-in-wrappers">No Heap Allocation in Wrappers</h3>
+<p>The generated wrapper never calls <code>malloc</code>, <code>calloc</code>, <code>realloc</code>, or <code>free</code>.
+All memory comes from Python. Your C code owns nothing that Python didn't
+provide. This means no leaks, no double-frees, and no ownership confusion.</p>
+<h3 id="the-call-flow">The Call Flow</h3>
+<p>When Python calls <code>mymod.myfunc(a, b, out, 42)</code>:</p>
+<ol>
+<li><code>PyArg_ParseTuple</code> extracts the Python objects and scalar values</li>
+<li><code>c2py_pin</code> acquires raw pointers from each buffer object (using the
+   configured acquisition backend: ndarray struct-cast, PEP 3118, or DLPack)</li>
+<li>Restrict check: verifies no writable buffers overlap</li>
+<li>Checks: evaluates all <code>"checks"</code> expressions; raises <code>ValueError</code> on failure</li>
+<li>Overload dispatch: iterates the <code>"c_overloads"</code> list, evaluates <code>"when"</code>
+   conditions, calls the first matching C function</li>
+<li>Cleanup: releases all acquired buffers</li>
+<li>Returns the result to Python</li>
+</ol>
+<h2 id="type-mapping">Type Mapping</h2>
+<p>c2py23 bridges Python and C types as follows:</p>
+<table>
+<thead>
+<tr>
+<th>Python <code>py_sig</code> type</th>
+<th>C type (in <code>sig</code>)</th>
+<th>Python value</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>buffer</code></td>
+<td><code>type *ptr</code> (any pointer)</td>
+<td>Any buffer-protocol object</td>
+<td>Use <code>"map"</code> to bind <code>buf.ptr</code>, <code>buf.n</code>, <code>buf.shape[i]</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Python <code>int</code></td>
+<td>Converted via <code>PyLong_AsLong</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>intptr_t</code>, <code>size_t</code></td>
+<td>Python <code>int</code></td>
+<td>Pointer-width integer</td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>double</code></td>
+<td>Python <code>float</code></td>
+<td>Converted via <code>PyFloat_AsDouble</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>void*</code></td>
+<td>Python <code>int</code> (address)</td>
+<td>Opaque pointer passthrough (GPU, custom allocators)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Python return type</th>
+<th>C return type</th>
+<th>Python value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>void</code></td>
+<td><code>void</code></td>
+<td><code>None</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Python <code>int</code></td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>double</code> or <code>float</code></td>
+<td>Python <code>float</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="tour-of-examples">Tour of Examples</h2>
+<p>The <code>examples/</code> directory contains worked examples demonstrating different
+features. Clone the GitHub repository to access them (not in the PyPI sdist).</p>
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th>Demonstrates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>examples/wheel_demo/</code></td>
+<td>Multi-platform wheel packaging, <code>c2py_loader</code></td>
+</tr>
+<tr>
+<td><code>examples/simd_dispatch/</code></td>
+<td>CPU feature dispatch (AVX-512/AVX2/scalar), variant rebind, timing</td>
+</tr>
+<tr>
+<td><code>examples/threading_bench/</code></td>
+<td>GIL release, free-threading, OpenMP, Monte Carlo Pi</td>
+</tr>
+<tr>
+<td><code>examples/timing_demo/</code></td>
+<td>Performance timing instrumentation, tick source switching</td>
+</tr>
+<tr>
+<td><code>examples/kissfft_wrap/</code></td>
+<td>Real + complex FFT over float buffers</td>
+</tr>
+<tr>
+<td><code>examples/lz4_wrap/</code></td>
+<td>Compress/decompress over byte buffers</td>
+</tr>
+<tr>
+<td><code>examples/cmake_demo/</code></td>
+<td>CMake build integration</td>
+</tr>
+<tr>
+<td><code>examples/meson_demo/</code></td>
+<td>Meson build integration</td>
+</tr>
+<tr>
+<td><code>examples/mp_bench/</code></td>
+<td>Multiprocessing with GIL release</td>
+</tr>
+</tbody>
+</table>
+<h2 id="performance-timing">Performance Timing</h2>
+<p>Set <code>"timing": True</code> in your <code>.c2py</code> module to enable per-function timing.
+Each wrapped function gets a <code>_perf_&lt;name&gt;()</code> introspection method.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;mymod&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;mymod.c&quot;</span><span class="p">],</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">mymod</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">mymod</span><span class="o">.</span><span class="n">myfunc</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">mymod</span><span class="o">.</span><span class="n">_perf_myfunc</span><span class="p">())</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># {&#39;calls&#39;: 1, &#39;t_c_total_ns&#39;: 23400, &#39;t_c_min_ns&#39;: 23400, ...}</span>
+</code></pre></div>
+<h3 id="timing-overhead">Timing Overhead</h3>
+<p>When timing is enabled, every call toggles a timer before and after the C
+function call. The overhead depends on the tick source:</p>
+<table>
+<thead>
+<tr>
+<th>Tick source</th>
+<th>Overhead per call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clock</code> (default, <code>clock_gettime</code>)</td>
+<td>~130-150 ns</td>
+</tr>
+<tr>
+<td><code>cycle</code> (CPU cycle counter, <code>rdtsc</code>/<code>CNTVCT_EL0</code>)</td>
+<td>~45-70 ns</td>
+</tr>
+<tr>
+<td>Timing disabled (<code>"timing": False</code>)</td>
+<td>0 ns</td>
+</tr>
+</tbody>
+</table>
+<p>The tick source defaults to <code>clock_gettime(CLOCK_MONOTONIC)</code> (nanoseconds).
+Call <code>mymod._c2py_set_tick_source("cycle")</code> to switch to the CPU cycle
+counter for higher precision with lower overhead.</p>
+<p>All tick calls are guarded by <code>_c2py_do_time</code> so there is zero overhead
+when timing is disabled or not compiled in.</p>
+<p>See <code>specification.md</code> for per-overload timing, the full perf struct schema,
+and the <code>c2py23.perf</code> Python-side decoder.</p>
+<h2 id="thread-safety">Thread Safety</h2>
+<h3 id="gil-release">GIL Release</h3>
+<p>The wrapper holds the GIL by default. Set <code>"gil_release": True</code> on a
+function to release the GIL during the C call, allowing other Python
+threads to execute in parallel:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="s2">&quot;py_sig&quot;</span><span class="p">:</span> <span class="s2">&quot;compute(data: buffer) -&gt; void&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="s2">&quot;gil_release&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="s2">&quot;c_overloads&quot;</span><span class="p">:</span> <span class="p">[</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>        <span class="p">{</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>            <span class="s2">&quot;sig&quot;</span><span class="p">:</span> <span class="s2">&quot;void compute(const double *data, intptr_t n)&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>            <span class="s2">&quot;map&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="s2">&quot;data.ptr&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">:</span> <span class="s2">&quot;data.n&quot;</span><span class="p">},</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>        <span class="p">},</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="p">],</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="free-threading-python-314t">Free-Threading (Python 3.14t+)</h3>
+<p>Free-threaded CPython (<code>--disable-gil</code>, <code>python3.14t</code>) eliminates the GIL
+at the interpreter level. By default, c2py23 modules re-enable it (safe
+default). Set <code>"free_threading": True</code> at module level to leave the GIL
+disabled:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;mymod&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;mymod.c&quot;</span><span class="p">],</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="s2">&quot;free_threading&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>You must verify that your C code is thread-safe before enabling this.</strong>
+c2py23 does not analyze your C code for thread safety. All wrapper-internal
+global state (timing counters, dispatch caches, feature flags) is race-safe
+by design; the only source of crashes is user C code with thread-safety bugs.</p>
+<h3 id="common-unsafe-patterns-in-c">Common Unsafe Patterns in C</h3>
+<p>When <code>"free_threading": True</code> is enabled, watch for these patterns:</p>
+<ol>
+<li><strong>Static scratch buffers</strong> -- two threads clobber each other. Use
+   stack allocation or pass buffers from Python.</li>
+<li><strong>Global accumulators</strong> -- lost updates. Return partial results.</li>
+<li><strong>One-time initialization with static flag</strong> -- double-init. Use
+   <code>pthread_once</code> or static const initializers.</li>
+<li><strong>Non-reentrant C library functions</strong> (<code>strtok</code>, <code>rand</code>) -- use <code>_r</code>
+   variants.</li>
+<li><strong>Lazy-populated global caches</strong> -- races on allocation. Pre-allocate
+   at init.</li>
+<li><strong>Assuming GIL protects C global state</strong> -- counters need atomics on
+   free-threaded builds.</li>
+</ol>
+<p>The <code>examples/threading_bench/</code> directory has a complete worked example
+comparing serial, GIL release with threads, free-threading, and OpenMP.</p>
+<h2 id="building-and-testing">Building and Testing</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Build</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>c2py23<span class="w"> </span>mymod.c2py<span class="w"> </span>-o<span class="w"> </span>mymod_wrapper.c
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Test single Python version</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>python<span class="w"> </span>tests/runner.py
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># Test all versions via snakepit containers</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>python3<span class="w"> </span>tests/test_all.py
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="c1"># Leak check</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>valgrind<span class="w"> </span>--leak-check<span class="o">=</span>full<span class="w"> </span>python3<span class="w"> </span>tests/test_leaks.py
+</code></pre></div>
+<h2 id="packaging-as-a-wheel">Packaging as a Wheel</h2>
+<p>c2py23 modules can be distributed as multi-platform <code>py3-none-any</code> wheels.
+One wheel contains <code>.so</code> files for multiple architectures -- pip installs
+the same artifact everywhere, the loader selects the right binary at import
+time.</p>
+<h3 id="filename-convention">Filename Convention</h3>
+<p>Each <code>.so</code> is named <code>_module.c2py23-{os}_{arch}.so</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>mymodule/_mymodule.c2py23-linux_x86_64.so
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>mymodule/_mymodule.c2py23-linux_aarch64.so
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>mymodule/_mymodule.c2py23-linux_ppc64le.so
+</code></pre></div>
+<h3 id="loader">Loader</h3>
+<p>The package's <code>__init__.py</code> uses <code>c2py_loader</code> to load the right <code>.so</code>
+by explicit path:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_os</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">c2py23.c2py_loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_native</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">_mod</span> <span class="o">=</span> <span class="n">load_native</span><span class="p">(</span><span class="n">_os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">_os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)),</span> <span class="s1">&#39;_mymodule&#39;</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="k">for</span> <span class="n">_k</span><span class="p">,</span> <span class="n">_v</span> <span class="ow">in</span> <span class="n">_mod</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>    <span class="k">if</span> <span class="n">_k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">_k</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;__&#39;</span><span class="p">):</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>        <span class="k">continue</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="nb">globals</span><span class="p">()[</span><span class="n">_k</span><span class="p">]</span> <span class="o">=</span> <span class="n">_v</span>
+</code></pre></div>
+<p>Set <code>C2PY_TRACE=1</code> to see which <code>.so</code> file was loaded. See
+<code>examples/wheel_demo/</code> for a complete worked project.</p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><code>docs/specification.md</code> -- Full grammar, architecture, runtime internals</li>
+<li><code>docs/building.md</code> -- cmake, meson, setuptools, and wheel packaging</li>
+<li><code>docs/design.md</code> -- Settled design decisions (what c2py23 intentionally excludes)</li>
+<li><code>docs/pythonh.md</code> -- <code>--pythonh</code> mode for GraalPy and debugging</li>
+<li><code>AGENTS.md</code> -- Contributor guidelines</li>
+<li><code>PLAN.md</code> -- Roadmap and future work</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.sections", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
