@@ -158,7 +158,7 @@ jobs:
       - name: Run tests (dlsym)
         env:
           CC: gcc
-          CFLAGS: -DC2PY_TARGET_PYPY -O1 -fPIC
+          CFLAGS: -DC2PY_TARGET_PYPY -O1
         run: |
           python -m c2py23 tests/cases/fill/fill.c -o tests/cases/fill/fillmod_wrapper.c
           make -f tests/Makefile tests/cases/fill/fillmod.so

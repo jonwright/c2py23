@@ -8,7 +8,7 @@ tests/cases/address/addressmod_wrapper.c: tests/cases/address/address.c2py $(RUN
 
 ifndef MSVC
 tests/cases/address/addressmod$(EXT): tests/cases/address/addressmod_wrapper.c tests/cases/address/address.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/address \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/address \
 		tests/cases/address/addressmod_wrapper.c tests/cases/address/address.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -25,7 +25,7 @@ tests/cases/array_sig/arraymod_wrapper.c: tests/cases/array_sig/array_sig.c2py $
 
 ifndef MSVC
 tests/cases/array_sig/arraymod$(EXT): tests/cases/array_sig/arraymod_wrapper.c tests/cases/array_sig/array_sig.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/array_sig \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/array_sig \
 		tests/cases/array_sig/arraymod_wrapper.c tests/cases/array_sig/array_sig.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -42,7 +42,7 @@ tests/cases/arraysum/arraysum_wrapper.c: tests/cases/arraysum/arraysum.c $(RUNTI
 
 ifndef MSVC
 tests/cases/arraysum/arraysum$(EXT): tests/cases/arraysum/arraysum_wrapper.c tests/cases/arraysum/arraysum.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/arraysum \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/arraysum \
 		tests/cases/arraysum/arraysum_wrapper.c tests/cases/arraysum/arraysum.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -59,7 +59,7 @@ tests/cases/constants/constmod_wrapper.c: tests/cases/constants/constants.c2py $
 
 ifndef MSVC
 tests/cases/constants/constmod$(EXT): tests/cases/constants/constmod_wrapper.c tests/cases/constants/constants.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/constants \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/constants \
 		tests/cases/constants/constmod_wrapper.c tests/cases/constants/constants.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -76,7 +76,7 @@ tests/cases/docstring/docmod_wrapper.c: tests/cases/docstring/docstring.c2py $(R
 
 ifndef MSVC
 tests/cases/docstring/docmod$(EXT): tests/cases/docstring/docmod_wrapper.c tests/cases/docstring/docstring.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/docstring \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/docstring \
 		tests/cases/docstring/docmod_wrapper.c tests/cases/docstring/docstring.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -93,7 +93,7 @@ tests/cases/dot/dotmod_wrapper.c: tests/cases/dot/dot.c2py $(RUNTIME_HDRS)
 
 ifndef MSVC
 tests/cases/dot/dotmod$(EXT): tests/cases/dot/dotmod_wrapper.c tests/cases/dot/dot.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/dot \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/dot \
 		tests/cases/dot/dotmod_wrapper.c tests/cases/dot/dot.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -110,7 +110,7 @@ tests/cases/fill/fillmod_wrapper.c: tests/cases/fill/fill.c $(RUNTIME_HDRS)
 
 ifndef MSVC
 tests/cases/fill/fillmod$(EXT): tests/cases/fill/fillmod_wrapper.c tests/cases/fill/fill.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/fill \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/fill \
 		tests/cases/fill/fillmod_wrapper.c tests/cases/fill/fill.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -127,7 +127,7 @@ tests/cases/freethreading/freethreadmod_wrapper.c: tests/cases/freethreading/fre
 
 ifndef MSVC
 tests/cases/freethreading/freethreadmod$(EXT): tests/cases/freethreading/freethreadmod_wrapper.c tests/cases/freethreading/freethread.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/freethreading \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/freethreading \
 		tests/cases/freethreading/freethreadmod_wrapper.c tests/cases/freethreading/freethread.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -144,7 +144,7 @@ tests/cases/gil_release/gilmod_wrapper.c: tests/cases/gil_release/sleep_fill.c2p
 
 ifndef MSVC
 tests/cases/gil_release/gilmod$(EXT): tests/cases/gil_release/gilmod_wrapper.c tests/cases/gil_release/sleep_fill.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/gil_release \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/gil_release \
 		tests/cases/gil_release/gilmod_wrapper.c tests/cases/gil_release/sleep_fill.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -161,7 +161,7 @@ tests/cases/optional/optmod_wrapper.c: tests/cases/optional/optional.c2py $(RUNT
 
 ifndef MSVC
 tests/cases/optional/optmod$(EXT): tests/cases/optional/optmod_wrapper.c tests/cases/optional/optional.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/optional \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/optional \
 		tests/cases/optional/optmod_wrapper.c tests/cases/optional/optional.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -178,7 +178,7 @@ tests/cases/scalar_output/statmod_wrapper.c: tests/cases/scalar_output/stats.c2p
 
 ifndef MSVC
 tests/cases/scalar_output/statmod$(EXT): tests/cases/scalar_output/statmod_wrapper.c tests/cases/scalar_output/stats.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/scalar_output \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/scalar_output \
 		tests/cases/scalar_output/statmod_wrapper.c tests/cases/scalar_output/stats.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -195,7 +195,7 @@ tests/cases/simd_dispatch/simd_fillmod_wrapper.c: tests/cases/simd_dispatch/simd
 
 ifndef MSVC
 tests/cases/simd_dispatch/simd_fillmod$(EXT): tests/cases/simd_dispatch/simd_fillmod_wrapper.c tests/cases/simd_dispatch/simd_fill.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/simd_dispatch \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/simd_dispatch \
 		tests/cases/simd_dispatch/simd_fillmod_wrapper.c tests/cases/simd_dispatch/simd_fill.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -212,7 +212,7 @@ tests/cases/template/summod_wrapper.c: tests/cases/template/sum.c2py $(RUNTIME_H
 
 ifndef MSVC
 tests/cases/template/summod$(EXT): tests/cases/template/summod_wrapper.c tests/cases/template/template.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/template \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/template \
 		tests/cases/template/summod_wrapper.c tests/cases/template/template.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -229,7 +229,7 @@ tests/cases/timing/timedmod_wrapper.c: tests/cases/timing/timing.c2py $(RUNTIME_
 
 ifndef MSVC
 tests/cases/timing/timedmod$(EXT): tests/cases/timing/timedmod_wrapper.c tests/cases/timing/timing.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/timing \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/timing \
 		tests/cases/timing/timedmod_wrapper.c tests/cases/timing/timing.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -246,7 +246,7 @@ tests/cases/transform/xfrm_wrapper.c: tests/cases/transform/transform.c2py $(RUN
 
 ifndef MSVC
 tests/cases/transform/xfrm$(EXT): tests/cases/transform/xfrm_wrapper.c tests/cases/transform/transform.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/transform \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/transform \
 		tests/cases/transform/xfrm_wrapper.c tests/cases/transform/transform.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -263,7 +263,7 @@ tests/cases/typedispatch/dispatchmod_wrapper.c: tests/cases/typedispatch/typedis
 
 ifndef MSVC
 tests/cases/typedispatch/dispatchmod$(EXT): tests/cases/typedispatch/dispatchmod_wrapper.c tests/cases/typedispatch/typedispatch.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/typedispatch \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/typedispatch \
 		tests/cases/typedispatch/dispatchmod_wrapper.c tests/cases/typedispatch/typedispatch.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
@@ -280,7 +280,7 @@ tests/cases/types/typesmod_wrapper.c: tests/cases/types/types.c2py $(RUNTIME_HDR
 
 ifndef MSVC
 tests/cases/types/typesmod$(EXT): tests/cases/types/typesmod_wrapper.c tests/cases/types/types.c $(RUNTIME_SRC)
-	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/types \
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Itests/cases/types \
 		tests/cases/types/typesmod_wrapper.c tests/cases/types/types.c $(RUNTIME_SRC) \
 		-o $@ $(LDFLAGS) $(LIBS)
 endif
