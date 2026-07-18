@@ -2,7 +2,7 @@ name: CI Summary
 
 on:
   workflow_run:
-    workflows: [Linux CI, Windows CI, aarch64 CI, macOS CI, Full Matrix CI]
+    workflows: [Linux CI, Windows CI, aarch64 CI, macOS CI]
     types: [completed]
 
 jobs:

@@ -462,6 +462,7 @@ _C_TYPES_INT = (
     "int64_t",
     "uint64_t",
     "intptr_t",  # signed pointer-width: matches Py_ssize_t on 64-bit
+    "ptrdiff_t",  # signed pointer-width: stddef.h type (C99)
     "size_t",  # unsigned pointer-width
     "int",
     "float",

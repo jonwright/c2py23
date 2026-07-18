@@ -1,9 +1,10 @@
 #include <math.h>
+#include <stddef.h>
 #include "tiny_kernel.h"
 
-void vnorm(const double vec[][3], double mods[], int n)
+void vnorm(const double vec[restrict][3], double mods[restrict], ptrdiff_t n)
 {
-    int i;
+    ptrdiff_t i;
     for (i = 0; i < n; i++) {
         mods[i] = sqrt(vec[i][0] * vec[i][0] +
                        vec[i][1] * vec[i][1] +

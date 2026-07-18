@@ -1,5 +1,11 @@
-# benchmarks/Makefile -- build gold-standard wrappers and c2py23 wrappers
-# All benchmarks are single-threaded; use taskset -c 0 to pin to one core.
+# benchmarks/Makefile -- build gold-standard CPython extensions and run benchmarks.
+# c2py23 modules are built by 'python tests/setup.py build_ext' (dlsym) or
+# 'python tests/setup.py build_ext --pythonh'.  See tests/runner.py.
+#
+# Usage:
+#   make -C benchmarks                 # build gold + all c2py23 (dlsym + pythonh)
+#   make -C benchmarks bench           # run all benchmarks
+#   make -C benchmarks bench-noargs    # run noargs benchmark only
 
 PYTHON ?= python3
 PYTHON_CONFIG ?= $(PYTHON)-config
@@ -7,22 +13,16 @@ CC ?= gcc
 CFLAGS ?= -O2 -fPIC -Wall -Werror
 CPY_CFLAGS = $(CFLAGS) $(shell $(PYTHON_CONFIG) --includes)
 CPY_LDFLAGS = $(shell $(PYTHON_CONFIG) --ldflags) -shared
-
 NUMPY_INCLUDES := $(shell $(PYTHON) -c "import numpy; print(numpy.get_include())" 2>/dev/null)
-
-C2PY = $(PYTHON) -m c2py23.cli
 
 SRCDIR = src
 BUILDDIR = build
 BUILDDIR_PH = build_ph
 
-all: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem c2py_noargs c2py_vnorm c2py_vnorm_bare c2py_getitem \
-    c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack
+# ---- Gold standard: handwritten CPython extensions (for baseline comparison) ----
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
-
-# ---- Gold standard: handwritten CPython extensions ----
 
 $(BUILDDIR)/gold_noargs.so: $(SRCDIR)/gold_noargs.c | $(BUILDDIR)
 	$(CC) $(CPY_CFLAGS) $(CPY_LDFLAGS) -o $@ $<
@@ -40,128 +40,37 @@ gold_noargs: $(BUILDDIR)/gold_noargs.so
 gold_vnorm:  $(BUILDDIR)/gold_vnorm.so
 gold_numpy_vnorm: $(BUILDDIR)/gold_numpy_vnorm.so
 gold_getitem: $(BUILDDIR)/gold_getitem.so
+golds: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem
 
-# ---- c2py23 wrappers ----
+# ---- c2py23 modules (built by tests/setup.py) ----
 
-$(BUILDDIR)/c2py_noargs.so: $(SRCDIR)/c2py_noargs.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_noargs.c2py
-	mv $(SRCDIR)/c2py_noargs.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
+c2py:
+	cd .. && CC=$(CC) LIBS="-ldl -lm" $(PYTHON) tests/setup.py build_ext
 
-$(BUILDDIR)/c2py_vnorm.so: $(SRCDIR)/c2py_vnorm.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_vnorm.c2py
-	mv $(SRCDIR)/c2py_vnorm.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_vnorm_wrapper.c
+c2py_ph:
+	cd .. && $(PYTHON) tests/setup.py build_ext --pythonh
 
-$(BUILDDIR)/c2py_vnorm_bare.so: $(SRCDIR)/c2py_vnorm_bare.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_vnorm_bare.c2py
-	mv $(SRCDIR)/c2py_vnorm_bare.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_vnorm_bare_wrapper.c
+# ---- Run benchmarks ----
 
-$(BUILDDIR)/c2py_getitem.so: $(SRCDIR)/c2py_getitem.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_getitem.c2py
-	mv $(SRCDIR)/c2py_getitem.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_getitem_wrapper.c
+bench: golds c2py c2py_ph
+	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py test_vnorm_overhead.py test_getitem_overhead.py -v -s
 
-$(BUILDDIR)/c2py_vnorm_ndarray.so: $(SRCDIR)/c2py_vnorm_ndarray.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_vnorm_ndarray.c2py
-	mv $(SRCDIR)/c2py_vnorm_ndarray.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_vnorm_ndarray_wrapper.c
+bench-getitem: gold_getitem c2py
+	taskset -c 0 $(PYTHON) -m pytest test_getitem_overhead.py -v -s
 
-$(BUILDDIR)/c2py_vnorm_buffer.so: $(SRCDIR)/c2py_vnorm_buffer.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_vnorm_buffer.c2py
-	mv $(SRCDIR)/c2py_vnorm_buffer.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_vnorm_buffer_wrapper.c
+bench-noargs: gold_noargs c2py
+	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py -v -s
 
-$(BUILDDIR)/c2py_vnorm_dlpack.so: $(SRCDIR)/c2py_vnorm_dlpack.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR)
-	$(C2PY) build $(SRCDIR)/c2py_vnorm_dlpack.c2py
-	mv $(SRCDIR)/c2py_vnorm_dlpack.so $(BUILDDIR)/
-	rm -f $(SRCDIR)/c2py_vnorm_dlpack_wrapper.c
-
-c2py_noargs: $(BUILDDIR)/c2py_noargs.so
-c2py_vnorm:  $(BUILDDIR)/c2py_vnorm.so
-c2py_vnorm_bare: $(BUILDDIR)/c2py_vnorm_bare.so
-c2py_getitem: $(BUILDDIR)/c2py_getitem.so
-c2py_vnorm_ndarray: $(BUILDDIR)/c2py_vnorm_ndarray.so
-c2py_vnorm_buffer: $(BUILDDIR)/c2py_vnorm_buffer.so
-c2py_vnorm_dlpack: $(BUILDDIR)/c2py_vnorm_dlpack.so
-
-# ---- c2py23 pythonh wrappers (direct #include Python.h, no dlsym) ----
-
-$(BUILDDIR_PH):
-	mkdir -p $(BUILDDIR_PH)
-
-$(BUILDDIR_PH)/c2py_noargs.so: $(SRCDIR)/c2py_noargs.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_noargs.c2py
-	mv $(SRCDIR)/c2py_noargs.*.so $(BUILDDIR_PH)/c2py_noargs.so
-	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
-
-$(BUILDDIR_PH)/c2py_vnorm.so: $(SRCDIR)/c2py_vnorm.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_vnorm.c2py
-	mv $(SRCDIR)/c2py_vnorm.*.so $(BUILDDIR_PH)/c2py_vnorm.so
-	rm -f $(SRCDIR)/c2py_vnorm_wrapper.c
-
-$(BUILDDIR_PH)/c2py_vnorm_bare.so: $(SRCDIR)/c2py_vnorm_bare.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_vnorm_bare.c2py
-	mv $(SRCDIR)/c2py_vnorm_bare.*.so $(BUILDDIR_PH)/c2py_vnorm_bare.so
-	rm -f $(SRCDIR)/c2py_vnorm_bare_wrapper.c
-
-$(BUILDDIR_PH)/c2py_getitem.so: $(SRCDIR)/c2py_getitem.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_getitem.c2py
-	mv $(SRCDIR)/c2py_getitem.*.so $(BUILDDIR_PH)/c2py_getitem.so
-	rm -f $(SRCDIR)/c2py_getitem_wrapper.c
-
-$(BUILDDIR_PH)/c2py_vnorm_ndarray.so: $(SRCDIR)/c2py_vnorm_ndarray.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_vnorm_ndarray.c2py
-	mv $(SRCDIR)/c2py_vnorm_ndarray.*.so $(BUILDDIR_PH)/c2py_vnorm_ndarray.so
-	rm -f $(SRCDIR)/c2py_vnorm_ndarray_wrapper.c
-
-$(BUILDDIR_PH)/c2py_vnorm_buffer.so: $(SRCDIR)/c2py_vnorm_buffer.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_vnorm_buffer.c2py
-	mv $(SRCDIR)/c2py_vnorm_buffer.*.so $(BUILDDIR_PH)/c2py_vnorm_buffer.so
-	rm -f $(SRCDIR)/c2py_vnorm_buffer_wrapper.c
-
-$(BUILDDIR_PH)/c2py_vnorm_dlpack.so: $(SRCDIR)/c2py_vnorm_dlpack.c2py $(SRCDIR)/tiny_kernel.c $(SRCDIR)/tiny_kernel.h | $(BUILDDIR_PH)
-	$(C2PY) build --pythonh $(SRCDIR)/c2py_vnorm_dlpack.c2py
-	mv $(SRCDIR)/c2py_vnorm_dlpack.*.so $(BUILDDIR_PH)/c2py_vnorm_dlpack.so
-	rm -f $(SRCDIR)/c2py_vnorm_dlpack_wrapper.c
-
-c2py_noargs_ph: $(BUILDDIR_PH)/c2py_noargs.so
-c2py_vnorm_ph:  $(BUILDDIR_PH)/c2py_vnorm.so
-c2py_vnorm_bare_ph: $(BUILDDIR_PH)/c2py_vnorm_bare.so
-c2py_getitem_ph: $(BUILDDIR_PH)/c2py_getitem.so
-c2py_vnorm_ndarray_ph: $(BUILDDIR_PH)/c2py_vnorm_ndarray.so
-c2py_vnorm_buffer_ph: $(BUILDDIR_PH)/c2py_vnorm_buffer.so
-c2py_vnorm_dlpack_ph: $(BUILDDIR_PH)/c2py_vnorm_dlpack.so
+bench-vnorm: gold_vnorm gold_numpy_vnorm c2py
+	taskset -c 0 $(PYTHON) -m pytest test_vnorm_overhead.py -v -s
 
 # ---- Clean ----
 
 clean:
 	rm -rf $(BUILDDIR) $(BUILDDIR_PH)
-	rm -f $(SRCDIR)/c2py_noargs*.so $(SRCDIR)/c2py_noargs_wrapper.c
-	rm -f $(SRCDIR)/c2py_vnorm*.so $(SRCDIR)/c2py_vnorm_wrapper.c
-	rm -f $(SRCDIR)/c2py_vnorm_bare*.so $(SRCDIR)/c2py_vnorm_bare_wrapper.c
-	rm -f $(SRCDIR)/c2py_vnorm_ndarray*.so $(SRCDIR)/c2py_vnorm_ndarray_wrapper.c
-	rm -f $(SRCDIR)/c2py_vnorm_buffer*.so $(SRCDIR)/c2py_vnorm_buffer_wrapper.c
-	rm -f $(SRCDIR)/c2py_vnorm_dlpack*.so $(SRCDIR)/c2py_vnorm_dlpack_wrapper.c
-	rm -f $(SRCDIR)/c2py_getitem*.so $(SRCDIR)/c2py_getitem_wrapper.c
+	rm -f $(SRCDIR)/*_wrapper.c
 
-# ---- Run benchmarks (single-threaded via taskset) ----
-
-bench: all c2py_noargs_ph c2py_vnorm_ph c2py_vnorm_bare_ph c2py_getitem_ph \
-    c2py_vnorm_ndarray_ph c2py_vnorm_buffer_ph c2py_vnorm_dlpack_ph
-	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py test_vnorm_overhead.py test_getitem_overhead.py -v -s
-
-bench-getitem: gold_getitem c2py_getitem
-	taskset -c 0 $(PYTHON) -m pytest test_getitem_overhead.py -v -s
-
-bench-noargs: gold_noargs c2py_noargs
-	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py -v -s
-
-bench-vnorm: gold_vnorm gold_numpy_vnorm c2py_vnorm c2py_vnorm_bare
-	taskset -c 0 $(PYTHON) -m pytest test_vnorm_overhead.py -v -s
-
-# ---- Gather results for mkdocs ----
+# ---- Results for mkdocs ----
 
 results:
 	@echo "<!-- Auto-generated by 'make results' -->" > $(SRCDIR)/benchmark_results.md
@@ -172,51 +81,4 @@ results:
 	@$(MAKE) bench 2>&1 | tee -a $(SRCDIR)/benchmark_results.md
 	@echo '```' >> $(SRCDIR)/benchmark_results.md
 
-.PHONY: all clean bench bench-noargs bench-vnorm results \
-        gold_noargs gold_vnorm gold_numpy_vnorm \
-        c2py_noargs c2py_vnorm c2py_vnorm_bare \
-        c2py_vnorm_ndarray c2py_vnorm_buffer c2py_vnorm_dlpack \
-        c2py_noargs_ph c2py_vnorm_ph c2py_vnorm_bare_ph \
-        c2py_getitem_ph c2py_vnorm_ndarray_ph c2py_vnorm_buffer_ph c2py_vnorm_dlpack_ph
-
-# ---- Pythonh cross-platform benchmarks (PyPy, GraalPy) ----
-# Build pythonh noargs for PyPy and GraalPy, then time noargs().
-# Uses the same benchmark code as CPython but runs under the
-# target interpreter.
-
-PYPY ?= pypy3.9
-GRAALPY ?= ../docs/graalpy-install/bin/graalpy || $(shell which graalpy)
-
-bench-ph-pypy: c2py_noargs_ph
-	$(PYPY) -m c2py23.cli build --pythonh $(SRCDIR)/c2py_noargs.c2py
-	mv $(SRCDIR)/c2py_noargs.*.so $(BUILDDIR_PH)/noargs_pypy_ph.so
-	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
-	$(PYPY) -c '\
-import sys,time; sys.path.insert(0,"$(BUILDDIR_PH)");\
-import importlib.machinery as m,importlib.util as u;\
-l=m.ExtensionFileLoader("c2py_noargs","$(BUILDDIR_PH)/noargs_pypy_ph.so");\
-s=u.spec_from_file_location("c2py_noargs","$(BUILDDIR_PH)/noargs_pypy_ph.so",loader=l);\
-mod=u.module_from_spec(s); l.exec_module(mod);\
-for _ in range(1000): mod.noargs();\
-N=2000000; t0=time.perf_counter_ns();\
-for _ in range(N): mod.noargs();\
-ns=(time.perf_counter_ns()-t0)/N;\
-print("pythonh noargs: %6.1f ns/call" % ns)'
-
-bench-ph-graalpy: c2py_noargs_ph
-	$(GRAALPY) -m c2py23.cli build --pythonh $(SRCDIR)/c2py_noargs.c2py
-	mv $(SRCDIR)/c2py_noargs.*.so $(BUILDDIR_PH)/noargs_graalpy_ph.so
-	rm -f $(SRCDIR)/c2py_noargs_wrapper.c
-	$(GRAALPY) -c '\
-import sys,time; sys.path.insert(0,"$(BUILDDIR_PH)");\
-import importlib.machinery as m,importlib.util as u;\
-l=m.ExtensionFileLoader("c2py_noargs","$(BUILDDIR_PH)/noargs_graalpy_ph.so");\
-s=u.spec_from_file_location("c2py_noargs","$(BUILDDIR_PH)/noargs_graalpy_ph.so",loader=l);\
-mod=u.module_from_spec(s); l.exec_module(mod);\
-for _ in range(1000): mod.noargs();\
-N=100000; t0=time.perf_counter_ns();\
-for _ in range(N): mod.noargs();\
-ns=(time.perf_counter_ns()-t0)/N;\
-print("pythonh noargs: %6.1f ns/call" % ns)'
-
-bench-ph-cross: bench-ph-pypy bench-ph-graalpy
+.PHONY: clean bench bench-noargs bench-vnorm bench-getitem results golds c2py c2py_ph

@@ -5,11 +5,12 @@ Compares serial, GIL release with threads, free-threading (3.14t+),
 and OpenMP parallelism for a pure-C compute workload.
 
 Usage:
-    c2py23 build mc_pi.c2py && python bench_mc_pi.py
-    EXTRA_CFLAGS=-fopenmp c2py23 build mc_pi.c2py && python bench_mc_pi.py
+    make && python bench_mc_pi.py
+    make omp && python bench_mc_pi.py
 
 Python 2.7 compatible (uses threading.Thread, not concurrent.futures).
 """
+
 from __future__ import print_function, division
 
 import ctypes
@@ -26,13 +27,13 @@ try:
     import mcpimod
 except ImportError:
     print("ERROR: mcpimod.so not found. Build it first:")
-    print("  cd {} && c2py23 build mc_pi.c2py".format(HERE))
+    print("  cd {} && make".format(HERE))
     sys.exit(1)
 
 IS_PY3 = sys.version_info[0] >= 3
 
-gil_disabled = sysconfig.get_config_var('Py_GIL_DISABLED')
-IS_FREE_THREADED = (gil_disabled == 1)
+gil_disabled = sysconfig.get_config_var("Py_GIL_DISABLED")
+IS_FREE_THREADED = gil_disabled == 1
 
 TOTAL_N = 200000000
 NUM_THREADS = 4
@@ -86,8 +87,7 @@ def run_threaded(n_threads):
         seed = 12345 + idx * 7919
         results[idx] = mcpimod.mc_pi(CHUNK_N, seed)
 
-    threads = [threading.Thread(target=worker, args=(i,))
-               for i in range(n_threads)]
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
 
     t0 = time.time()
     for t in threads:
@@ -122,10 +122,8 @@ def fmt_speedup(t_base, t_parallel):
 
 def main():
     print("=== Monte Carlo Pi -- Threading Benchmark ===")
-    print("Python: {} (free-threaded: {})".format(
-        sys.version.split()[0], "yes" if IS_FREE_THREADED else "no"))
-    print("Iterations: {:,} ({} chunks of {:,})".format(
-        TOTAL_N, NUM_THREADS, CHUNK_N))
+    print("Python: {} (free-threaded: {})".format(sys.version.split()[0], "yes" if IS_FREE_THREADED else "no"))
+    print("Iterations: {:,} ({} chunks of {:,})".format(TOTAL_N, NUM_THREADS, CHUNK_N))
     print()
 
     # ---- 1. Serial baseline ----
@@ -142,8 +140,7 @@ def main():
         label = "2. Free-threading (%d threads)" % NUM_THREADS
     print(label)
     pi_t, t_t = run_threaded(NUM_THREADS)
-    print("   pi = %.6f, wall = %s, speedup = %s" % (
-        pi_t, fmt_time(t_t), fmt_speedup(t_base, t_t)))
+    print("   pi = %.6f, wall = %s, speedup = %s" % (pi_t, fmt_time(t_t), fmt_speedup(t_base, t_t)))
     if NUM_THREADS > 1:
         efficiency = (t_base / t_t) / NUM_THREADS * 100
         print("   efficiency = %.0f%%" % efficiency)
@@ -153,8 +150,7 @@ def main():
     if HAS_OMP:
         print("3. OpenMP (%d threads inside C)" % NUM_THREADS)
         pi_o, t_o = run_openmp()
-        print("   pi = %.6f, wall = %s, speedup = %s" % (
-            pi_o, fmt_time(t_o), fmt_speedup(t_base, t_o)))
+        print("   pi = %.6f, wall = %s, speedup = %s" % (pi_o, fmt_time(t_o), fmt_speedup(t_base, t_o)))
         if NUM_THREADS > 1:
             efficiency = (t_base / t_o) / NUM_THREADS * 100
             print("   efficiency = %.0f%%" % efficiency)
@@ -170,8 +166,8 @@ def main():
         print("  threads overlap natively without requiring gil_release.")
     elif not HAS_OMP:
         print("Tip: rebuild with OpenMP for mode 3:")
-        print("  EXTRA_CFLAGS=-fopenmp c2py23 build mc_pi.c2py")
+        print("  make omp")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

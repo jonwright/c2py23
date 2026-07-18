@@ -53,14 +53,14 @@ Leak detection:
 valgrind --leak-check=full python3 tests/test_leaks.py
 
 # ASan
-c2py23 build --asan tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py
 ```
 
 ## Debug Builds
 
 ```bash
 # With debug symbols
-CC=gcc CFLAGS="-g -O0 -Wall -Werror" c2py23 build tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-g -O0 -Wall -Werror" python tests/runner.py
 
 # Under GDB
 gdb --args python3 -c "import sys; sys.path.insert(0,'tests/cases/fill'); import fillmod; ..."

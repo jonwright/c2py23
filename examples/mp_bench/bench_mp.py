@@ -10,7 +10,7 @@ Compares four approaches:
 All approaches call the same c2py23-wrapped mc_pi() function.
 
 Usage:
-    cd examples/mp_bench && c2py23 build mc_pi.c2py && python bench_mp.py
+    cd examples/mp_bench && make && python bench_mp.py
 
 Python 2.7 compatible for 1 and 2; 3+ enables multiprocessing modes.
 """
@@ -32,7 +32,7 @@ try:
     import mcpimod
 except ImportError:
     print("ERROR: mcpimod.so not found. Build it first:")
-    print("  cd %s && c2py23 build mc_pi.c2py" % HERE)
+    print("  cd %s && make" % HERE)
     sys.exit(1)
 
 gil_disabled = sysconfig.get_config_var("Py_GIL_DISABLED")

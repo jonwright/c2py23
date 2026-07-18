@@ -2,19 +2,21 @@
 
 from __future__ import print_function
 import os
+import re
 from setuptools import setup, find_packages
 
 _here = os.path.dirname(__file__)
-_version = {}
-with open(os.path.join(_here, "c2py23", "__init__.py")) as f:
-    exec(f.read(), _version)
+_init = os.path.join(_here, "c2py23", "__init__.py")
+with open(_init) as f:
+    _match = re.search(r'__version__\s*=\s*"([^"]+)"', f.read())
+_version = _match.group(1) if _match else "0.0.0"
 
 with open(os.path.join(_here, "README.md")) as f:
     long_description = f.read()
 
 setup(
     name="c2py23",
-    version=_version["__version__"],
+    version=_version,
     description="Wrap C99 code to Python via the buffer protocol",
     long_description=long_description,
     long_description_content_type="text/markdown",

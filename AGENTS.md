@@ -73,6 +73,38 @@ else:
 
 ## C Code Constraints
 
+### P0: Portability failure is always our bug
+
+When code does not build or run on a platform, compiler, or Python version,
+the root cause is ALWAYS insufficient guards or fallbacks in our codebase.
+Never attribute failure to:
+
+- "That compiler doesn't support X"  --  guard non-C99 extensions with `#ifdef`
+- "That Python version is too old"  --  we support 2.7 through 3.15
+- "The build system doesn't handle that"  --  our code is the common denominator
+- "The test output is approximate"  --  tests must be exact
+- "That CI runner is quirky"  --  our CI YAML must be robust
+
+Every failure is a missing `#ifdef`, a missing fallback, or a missing check.
+Find it. Fix it in c2py23. Never dismiss it.
+
+**Standard C99 is the baseline.** Non-standard extensions (inline assembly,
+compiler builtins, intrinsics) must be guarded:
+
+```c
+#if defined(_MSC_VER)
+    __cpuidex(...)           // MSVC intrinsic
+#elif defined(__GNUC__) || defined(__clang__)
+    __asm__ __volatile__(...) // GCC/Clang inline assembly
+#else
+    /* no-op fallback: safe C99, no feature probing */
+#endif
+```
+
+The `#else` fallback must always compile and run correctly  --  degraded
+functionality (no SIMD dispatch, no cycle counter) is acceptable;
+compilation failure is not.
+
 - **NEVER include `<Python.h>`** -- all CPython API is resolved at runtime via `dlopen(NULL)` + `dlsym()`
 - Generated wrappers include only `"c2py_runtime.h"` and user-specified C headers
 - **NO malloc, calloc, realloc, or free** in generated wrapper code
@@ -84,29 +116,38 @@ else:
 
 ## Quick Commands
 
-Build a module from a .c2py interface:
+Generate a C wrapper from a .c2py interface:
 ```bash
-c2py23 build path/to/module.c2py
+c2py23 path/to/module.c2py -o wrapper.c
+python -m c2py23 path/to/module.c2py -o wrapper.c  # same, via python -m
+```
+
+Build test modules for testing (dlsym mode  --  portable, no libpython):
+```bash
+python tests/runner.py               # generate + build + test
+python tests/runner.py --no-build    # test only (use existing .so files)
+```
+
+Build test modules in pythonh mode (per-version, links libpython):
+```bash
+python tests/setup.py build_ext --inplace --pythonh
 ```
 
 Build with ASan for leak detection:
 ```bash
-c2py23 build --asan path/to/module.c2py
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" \
+  python tests/runner.py
 ```
 
-Build for PyPy (experimental, no CI):
+Build for PyPy (experimental, no CI  --  see issue #81):
 ```bash
-c2py23 build --target pypy path/to/module.c2py
-```
-
-Build with `#include <Python.h>` directly (GraalPy, debugging, max perf):
-```bash
-c2py23 build --pythonh path/to/module.c2py
+# dlsym mode uses --target pypy at compile time via CFLAGS:
+CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace
 ```
 
 Build for Pyodide/WASM (experimental, no CI):
 ```bash
-c2py23 build --target wasm path/to/module.c2py
+# uses emcc, not setuptools  --  kept in tests/test_all_wasm.sh
 ```
 
 Run the full WASM test suite (80 tests):
@@ -127,7 +168,7 @@ pip install -e .
 
 Test a single Python version locally:
 ```bash
-bash tests/run_tests.sh python3.12
+python tests/runner.py
 ```
 
 Test across all supported Python versions via snakepit containers:
@@ -142,12 +183,12 @@ python3 tests/test_manylinux.py
 
 Build only (no tests) for one Python version on any container:
 ```bash
-bash tests/build_all.sh python3.12
+python tests/runner.py --no-test
 ```
 
 Run tests only (no rebuild) for one Python version:
 ```bash
-bash tests/run_tests_only.sh python3.12
+python tests/runner.py --no-build
 ```
 
 Valgrind leak check:
@@ -181,7 +222,7 @@ gcc -std=c99 -Wall tests/check_dlpack_abi.c -o /tmp/check_dlpack_abi
 
 Regenerate the committed example wrapper (pre-commit hook runs automatically):
 ```bash
-python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \
+python3 -m c2py23 tests/cases/transform/transform.c2py \
     -o tests/cases/transform/xfrm_wrapper.c
 ```
 
@@ -204,20 +245,20 @@ c2py23 installed -- see the README for the gcc command.
 ### Experimental: PyPy (no CI, not tested regularly)
 
 - **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
-- Build with `c2py23 build --target pypy file.c2py`
+- Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace`
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
 ### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
 
-- Build with `c2py23 build --pythonh file.c2py`
-- Produces a standard CPython extension with `#include <Python.h>` — no dlsym trick
+- Build with `python tests/setup.py build_ext --inplace --pythonh`
+- Produces a standard CPython extension with `#include <Python.h>`  --  no dlsym trick
 - Required for GraalPy (Native Image exports zero CPython symbols)
 - Useful for debugging dlsym issues, static builds, and LTO devirtualization
 - See `docs/pythonh.md` for full documentation
 
 ### Experimental: Pyodide/WASM (no CI, not tested regularly)
 
-- Build with `c2py23 build --target wasm file.c2py`
+- Build with `c2py23 file.c2py -o wrapper.c` then `emcc -s SIDE_MODULE=1 -I runtime/ wrapper.c src.c runtime/c2py_runtime.c -o module.wasm`
 - Uses `emcc -s SIDE_MODULE=1` for Pyodide 3.12+
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
@@ -228,7 +269,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 ### Core Files
 - `c2py23/parser.py` -- Parses `.c2py` YAML interface files into a ModuleDef AST
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
-- `c2py23/cli.py` -- Command-line interface (`c2py23 build`)
+- `c2py23/cli.py` -- Command-line interface (`c2py23 file.c2py -o wrapper.c`)
 - `c2py23/perf.py` -- ctypes-free performance data decoder (uses generated C accessors)
 - `c2py23/invariant_checker.py` -- Validates generated C code structure
 - `c2py23/c2py_loader.py` -- Multi-platform .so loader
@@ -238,7 +279,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 
 ### How It Works
 1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
-2. `c2py23 build` generates a CPython C wrapper and compiles it with gcc into a `.so`
+2. `c2py23 file.c2py -o wrapper.c` generates a C wrapper, then compiled with any C99 compiler
 3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
 4. One `.so` works on Python 2.7 through 3.15 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
@@ -288,9 +329,9 @@ All tests use `ctypes` arrays (buffer protocol works on Python 2.7 and 3.x) and 
 
 On Python 2.7, the `transform` test is skipped because `memoryview.cast(shape)` is Python 3.3+ only.
 
-Run the uniform test script directly (requires built `.so` files):
+Run the test suite:
 ```bash
-python tests/test_uniform.py
+python tests/runner.py
 ```
 
 Run the peer review tests (alias + contiguity, requires numpy):
@@ -303,7 +344,7 @@ python tests/test_peer_review.py
 
 For segfault investigation, build with debug symbols and no optimization:
 ```bash
-CC=gcc CFLAGS="-g -O0 -Wall -Werror" c2py23 build tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-g -O0 -Wall -Werror" python tests/runner.py
 ```
 
 Then run under GDB:
@@ -313,7 +354,7 @@ gdb --args python3 -c "import sys; sys.path.insert(0,'tests/cases/fill'); import
 
 With ASan for memory error detection:
 ```bash
-c2py23 build --asan tests/cases/fill/fill.c2py
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py
 ```
 
 Valgrind leak check:
@@ -392,7 +433,7 @@ The human uses a classic `repo`-scoped token for admin tasks.
 6. Test across all supported Python versions before committing
 7. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
 8. Generated C code should compile with `gcc -Wall -Werror`
-9. Run the full test suite before committing: `bash tests/run_tests.sh python3`
+9. Run the full test suite before committing: `python tests/runner.py`
 10. Run `python3 tests/test_all.py` for multi-version container validation
 11. Re-populate the ABI matrix (`python3 tests/populate_abi_matrix.py`) when changing the runtime
 12. Run valgrind on leak and error-path tests when changing wrapper generation
@@ -404,7 +445,7 @@ The human uses a classic `repo`-scoped token for admin tasks.
 14. **Never embed timing/benchmark results in source code.** Timing numbers
     are measurements, not code.  They come from running benchmarks at a
     specific time on specific hardware.  Putting them in Python comments,
-    docstrings, or generated C output is lying — the number will be stale
+    docstrings, or generated C output is lying  --  the number will be stale
     the next time the benchmark runs.  Print timings to stdout during the
     measurement, report them in the commit message or issue comment, but
     never bake them into the source tree.

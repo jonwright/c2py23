@@ -30,7 +30,7 @@ The interactive notebook `examples/timing_demo/timing_demo.ipynb` demonstrates:
 ```bash
 pip install -e .                    # from repo root
 cd examples/timing_demo
-c2py23 build wsum.c2py
+c2py23 wsum.c2py -o wsummod_wrapper.c
 python -c "
 import ctypes
 import timing_demomod as tmod

@@ -1,0 +1,58 @@
+{
+  "clang_18.1": {
+    "noargs_clock_ns": 188.7,
+    "noargs_cycle_ns": 68.8,
+    "noargs_off_ns": 21.9,
+    "pythonh": "not tested",
+    "tests": 113,
+    "vnorm_large_bare_MBs": 12789,
+    "vnorm_large_dlpack_MBs": 12832,
+    "vnorm_large_gold_MBs": 25035,
+    "vnorm_large_ndarray_MBs": 12782,
+    "vnorm_tiny_bare_ns": 51,
+    "vnorm_tiny_dlpack_ns": 367,
+    "vnorm_tiny_ndarray_ns": 56
+  },
+  "gcc_13.3": {
+    "noargs_clock_ns": 181.5,
+    "noargs_cycle_ns": 69.9,
+    "noargs_off_ns": 22.7,
+    "pythonh": "OK",
+    "tests": 113,
+    "vnorm_large_bare_MBs": 12618,
+    "vnorm_large_dlpack_MBs": 12779,
+    "vnorm_large_gold_MBs": 12799,
+    "vnorm_large_ndarray_MBs": 12637,
+    "vnorm_tiny_bare_ns": 54,
+    "vnorm_tiny_dlpack_ns": 371,
+    "vnorm_tiny_ndarray_ns": 66
+  },
+  "tcc_0.9": {
+    "noargs_clock_ns": 190.8,
+    "noargs_cycle_ns": "N/A",
+    "noargs_off_ns": 26.5,
+    "pythonh": "fails (linker flag)",
+    "tests": 113,
+    "vnorm_large_bare_MBs": 6828,
+    "vnorm_large_dlpack_MBs": 6935,
+    "vnorm_large_gold_MBs": 7238,
+    "vnorm_large_ndarray_MBs": 7210,
+    "vnorm_tiny_bare_ns": 147,
+    "vnorm_tiny_dlpack_ns": 466,
+    "vnorm_tiny_ndarray_ns": 112
+  },
+  "zig_cc_0.14": {
+    "noargs_clock_ns": 182.7,
+    "noargs_cycle_ns": 68.6,
+    "noargs_off_ns": 26.6,
+    "pythonh": "not tested",
+    "tests": 113,
+    "vnorm_large_bare_MBs": 12692,
+    "vnorm_large_dlpack_MBs": 12832,
+    "vnorm_large_gold_MBs": 35368,
+    "vnorm_large_ndarray_MBs": 12778,
+    "vnorm_tiny_bare_ns": 54,
+    "vnorm_tiny_dlpack_ns": 376,
+    "vnorm_tiny_ndarray_ns": 58
+  }
+}

@@ -62,8 +62,17 @@ int mc_pi_serial(int n, int seed) {
 ## Build
 
 ```bash
-$ c2py23 build mc_pi.c2py
+$ c2py23 mc_pi.c2py -o mcpimod_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c mcpimod_wrapper.c mc_pi.c -I c2py23/runtime -o mcpimod.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 
 ## Run
 
@@ -80,7 +89,7 @@ Compares four approaches:
 All approaches call the same c2py23-wrapped mc_pi() function.
 
 Usage:
-    cd examples/mp_bench && c2py23 build mc_pi.c2py && python bench_mp.py
+    cd examples/mp_bench && make && python bench_mp.py
 
 Python 2.7 compatible for 1 and 2; 3+ enables multiprocessing modes.
 """
@@ -102,7 +111,7 @@ try:
     import mcpimod
 except ImportError:
     print("ERROR: mcpimod.so not found. Build it first:")
-    print("  cd %s && c2py23 build mc_pi.c2py" % HERE)
+    print("  cd %s && make" % HERE)
     sys.exit(1)
 
 gil_disabled = sysconfig.get_config_var("Py_GIL_DISABLED")

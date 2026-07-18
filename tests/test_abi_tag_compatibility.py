@@ -154,16 +154,63 @@ def test_build_wheel(tmpdir):
         f.write('        "_mysum.c2py23-linux_x86_64.so"))\n')
         f.write("    mysum = _mod.mysum\n")
 
-    # Build the module
-    build_cmd = [sys.executable, "-m", "c2py23.cli", "build", c2py_path]
-    rc, out, err = _run(build_cmd, cwd=src_dir)
+    # Generate wrapper then build with setuptools
+    wrapper_c = os.path.join(src_dir, "_mysum_wrapper.c")
+    gen_cmd = [sys.executable, "-m", "c2py23", c2py_path, "-o", wrapper_c]
+    rc, out, err = _run(gen_cmd)
     if rc != 0:
-        print("c2py23 build failed:", err, file=sys.stderr)
-        print("Output:", out, file=sys.stderr)
-        raise AssertionError("c2py23 build failed: %s" % err)
+        print("wrapper generation failed:", err, file=sys.stderr)
+        raise AssertionError("wrapper generation failed: %s" % err)
 
-    # Rename the .so to follow the c2py_loader convention
+    import shutil
+
+    runtime_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "c2py23",
+        "runtime",
+    )
+    for rt_fn in os.listdir(runtime_dir):
+        if rt_fn.endswith((".c", ".h")):
+            shutil.copy(os.path.join(runtime_dir, rt_fn), os.path.join(src_dir, rt_fn))
+
     ext = ".pyd" if os.name == "nt" else ".so"
+    env = os.environ.copy()
+    env.setdefault("CC", "gcc")
+    cc = env["CC"]
+
+    if "cl" in os.path.basename(cc):
+        build_cmd = [
+            cc,
+            "/LD",
+            "/I",
+            src_dir,
+            "_mysum_wrapper.c",
+            "mysum.c",
+            "c2py_runtime.c",
+            "/link",
+            "/OUT:_mysum" + ext,
+        ]
+    else:
+        build_cmd = [
+            cc,
+            "-shared",
+            "-fPIC",
+            "-I",
+            src_dir,
+            "_mysum_wrapper.c",
+            "mysum.c",
+            "c2py_runtime.c",
+            "-o",
+            "_mysum" + ext,
+            "-ldl",
+            "-lm",
+        ]
+    rc, out, err = _run(build_cmd, cwd=src_dir, env=env)
+    if rc != 0:
+        print("compile failed:", err, file=sys.stderr)
+        raise AssertionError("compile failed: %s" % err)
+
+    # Find the compiled .so/.pyd
     so_files = glob.glob(os.path.join(src_dir, "_mysum*" + ext))
     if not so_files:
         so_files = glob.glob(os.path.join(src_dir, "_mysum*"))

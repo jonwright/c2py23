@@ -73,14 +73,23 @@ void kissfft_cfft_forward(const float *fin, float *fout, int n) {
 ## Build
 
 ```bash
-$ c2py23 build kissfft.c2py
+$ c2py23 kissfft.c2py -o kissfftmod_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c kissfftmod_wrapper.c kissfft_thin.c -I c2py23/runtime -o kissfftmod.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 
 ## Run
 
 ```python
 """Example: use the kissfftmod wrapper from Python.
-Build with: c2py23 build kissfft.c2py"""
+Build with: make"""
 from __future__ import print_function
 
 import ctypes

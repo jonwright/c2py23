@@ -1,6 +1,6 @@
 """Module lifecycle stress tests: re-import cycles, concurrent imports, subinterpreters.
 
-These require built .so files (from run_tests.sh or manual c2py23 build).
+These require built .so files (from python tests/runner.py or make -f tests/Makefile).
 """
 
 from __future__ import print_function

@@ -49,7 +49,16 @@ functions:
 Build and use:
 
 ```bash
-c2py23 build arraysum.c2py
+# Generate the wrapper
+c2py23 arraysum.c2py -o arraysum_wrapper.c
+
+# Compile (dlsym mode  --  portable, no libpython)
+cc -shared -fPIC -I c2py23/runtime/ arraysum_wrapper.c arraysum.c \
+   c2py23/runtime/c2py_runtime.c -ldl -lm -o arraysum.so
+
+# Or build via setuptools
+python setup.py build_ext --inplace
+
 python3 -c "
 import ctypes, sys; sys.path.insert(0, '.')
 import arraysum
@@ -64,29 +73,32 @@ print(list(r))  # [6.0, 8.0, 10.0, 12.0]
 ## Usage
 
 ```bash
-c2py23 build file.c2py                       # parse + generate + compile
-c2py23 build file.c2py --generate-only       # generate wrapper .c only
-c2py23 build wrapper.c --compile-only -s src.c -I inc/
-                                              # compile existing wrapper
-c2py23 build file.c2py --asan                # compile with address sanitizer
-c2py23 generate file.c2py -o wrapper.c       # generate without building
+c2py23 file.c2py -o wrapper.c       # generate C wrapper
+c2py23 file.c2py                     # print to stdout
+c2py23 --version                     # print version
+
+# Or via python -m:
+python -m c2py23 file.c2py -o wrapper.c
 ```
+
+See `c2py23/setuptools_helper.py` for `PythonhBuildExt` setuptools helper (pythonh mode only).
 
 ## Supported Platforms
 
-Linux (x86_64, gcc) and Windows (x64, MSVC/MinGW). 32-bit not supported.
+Linux (x86_64, aarch64, gcc/clang/tcc/zig), macOS (aarch64, clang),
+Windows (x64/i386, MSVC/MinGW). Free-threaded Python 3.13+ supported.
 
 ## Examples
 
 The [GitHub repository](https://github.com/jonwright/c2py23) includes build examples
 (not in the PyPI sdist):
 
-- `examples/kissfft_wrap/` — real + complex FFT over float buffers
-- `examples/lz4_wrap/` — compress/decompress over byte buffers
-- `examples/simd_dispatch/` — CPU feature dispatch (SSE2/AVX2/AVX-512, NEON, Altivec)
-- `examples/threading_bench/` — GIL release, free-threading, OpenMP
-- `examples/wheel_demo/` — multi-platform wheel packaging
-- `examples/cmake_demo/`, `examples/meson_demo/` — build system integration
+- `examples/kissfft_wrap/`  --  real + complex FFT over float buffers
+- `examples/lz4_wrap/`  --  compress/decompress over byte buffers
+- `examples/simd_dispatch/`  --  CPU feature dispatch (SSE2/AVX2/AVX-512, NEON, Altivec)
+- `examples/threading_bench/`  --  GIL release, free-threading, OpenMP
+- `examples/wheel_demo/`  --  multi-platform wheel packaging
+- `examples/cmake_demo/`, `examples/meson_demo/`  --  build system integration
 
 ## Documentation
 

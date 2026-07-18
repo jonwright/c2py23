@@ -14,7 +14,7 @@ categories of bugs -- leaks, use-after-free, ownership confusion -- while keepin
 the C code trivially simple.
 
 The project defines a strict subset language: Python on one side (memory
-blocks with metadata — acquired via NumPy struct-cast, DLPack, or the
+blocks with metadata  --  acquired via NumPy struct-cast, DLPack, or the
 PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
 The interface is described declaratively in YAML. The code generator
 transpiles this into a CPython C extension that acquires pointers to the
@@ -561,23 +561,23 @@ must have `default: true` (the default).
 
 The `name` field on a variant defaults to the C function name extracted
 from `sig` (e.g., `poly_f32_avx512`). If specified, `name` must match
-the C function name exactly — enforced at parse time. This ensures
+the C function name exactly  --  enforced at parse time. This ensures
 `_variants_<name>()` returns names that correspond to real .so symbols.
 
 ```yaml
 variants:
-  - sig: "void poly_f32_avx512(...)"   # name → "poly_f32_avx512"
+  - sig: "void poly_f32_avx512(...)"   # name -> "poly_f32_avx512"
     when: "c2py_amd64_avx512f"
-  - sig: "void poly_f32_scalar(...)"   # name → "poly_f32_scalar"
+  - sig: "void poly_f32_scalar(...)"   # name -> "poly_f32_scalar"
 ```
 
 #### Variant Enumeration and Rebind
 
 Every function with grouped variants gets:
 
-- `_rebind_<name>(variant_name)` — sets the active variant by name.
+- `_rebind_<name>(variant_name)`  --  sets the active variant by name.
   Call with `None` to re-run auto-resolve.
-- `_variants_<name>()` — returns a tuple of all variant names (including
+- `_variants_<name>()`  --  returns a tuple of all variant names (including
   `default: false` variants) in declaration order.
 
 ### Default Raise
@@ -1277,14 +1277,13 @@ when timing is disabled or not compiled in.
 
 ### Address Sanitizer (ASan)
 
-Pass `--asan` to `c2py23 build` or `c2py23 compile` to enable AddressSanitizer:
+Set compiler flags via environment variables when building:
 
 ```bash
-c2py23 build --asan module.c2py
-c2py23 compile --asan module_wrapper.c -s module.c -o module.so
+CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" python tests/runner.py
 ```
 
-This adds `-fsanitize=address` to the compile and link flags, enabling
+This adds `-fsanitize=address` to the compile and link flags via setuptools, enabling
 detection of buffer overflows and memory leaks during testing.
 
 ## SIMD Dispatch and Multi-Flag Compilation
@@ -1306,15 +1305,15 @@ Makefile and Python test harness).
 
 ## Future Work
 
-- **`--pythonh` mode** — `c2py23 build --pythonh file.c2py` produces a
-  standard CPython extension that includes `<Python.h>` directly.  No dlsym
+- **`--pythonh` mode**  --  Build via `python tests/setup.py build_ext --inplace --pythonh`.
+  Produces a standard CPython extension that includes `<Python.h>` directly.  No dlsym
   trick.  Required for GraalPy (Native Image `dlopen(NULL)` exports zero
   symbols).  See `docs/pythonh.md` for the full runtime support matrix.
-- **PyPy support** — `c2py23 build --target pypy` produces PyPy-compatible
-  `.so` files (tested on PyPy 2.7, 3.9, 3.11 via `ubuntu24.04_pypy.sif`
-  container).  No CI — likely to regress without maintenance.
-  See `PLAN.md` for current test matrix.
-- **Pyodide/WASM** — Pyodide is CPython compiled to WASM via Emscripten.
+- **PyPy support**  --  Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
+  PyPy-compatible `.so` files (tested on PyPy 2.7, 3.9, 3.11 via
+  `ubuntu24.04_pypy.sif` container).  No CI  --  likely to regress without
+  maintenance.  See `PLAN.md` for current test matrix.
+- **Pyodide/WASM**  --  Pyodide is CPython compiled to WASM via Emscripten.
   `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
   `--target wasm` CLI flag available (emcc, `-s SIDE_MODULE=1`, skips -ldl/-shared/-fPIC,
   32-bit rejection guarded with `#ifndef __EMSCRIPTEN__`).
@@ -1332,7 +1331,7 @@ Makefile and Python test harness).
 c2ImageD11 uses `C2PY_BEGIN` blocks embedded in C comments to define its
 c2py23 interface.  The `tools/harvester.py` script extracts these blocks
 as Python dicts (via `ast.literal_eval()`), assembles them into a YAML
-file (`lib/interface/_cImageD11.c2py`), and runs `c2py23 generate` to
+file (`lib/interface/_cImageD11.c2py`), and runs `c2py23` to
 produce the wrapper.
 
 With c2py23's native dict format support, the YAML intermediate step
@@ -1348,7 +1347,7 @@ yaml_text = yaml.dump(assembled, ...)
 with open("_cImageD11.c2py", "w") as f:
     f.write(yaml_text)
 # Shell out to c2py23:
-subprocess.check_call(["python3", "-m", "c2py23.cli", "generate",
+subprocess.check_call(["python3", "-m", "c2py23",
                         c2py_path, "-o", wrapper_path])
 ```
 

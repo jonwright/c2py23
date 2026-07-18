@@ -4,15 +4,11 @@ c2py23 manylinux build + cross-test suite.
 
 Implements a two-phase strategy to minimize combinatorial testing:
 
-Phase 1 (build verification):
-  Verify `c2py23 build` works on every Python version inside the
-  manylinux2014 container (3.9, 3.10, 3.11, 3.12, 3.13, 3.14).
-  No tests run here -- just make sure compilation succeeds.
+Phase 1 (master build):
+  Build all .so files once with Python 3.12 on manylinux2014 (glibc 2.17).
+  The dlsym .so files are portable to any glibc >= 2.17 container.
 
-Phase 2 (master build):
-  Build all .so files once with Python 3.12 on manylinux2014.
-
-Phase 3 (cross-test):
+Phase 2 (cross-test):
   Copy the pre-built .so files to every other container (ubuntu20.04,
   ubuntu24.04, ubuntu26.04, debian10) and run the full test suite
   with each Python version (2.7 through 3.15).
@@ -34,11 +30,10 @@ SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
 WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
 LOG_FILE = os.path.join(SCRIPT_DIR, "test_manylinux_results.log")
 
-# Python versions available in the manylinux2014 container
-MANYLINUX_VERSIONS = ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 MANYLINUX_SIF = "manylinux2014.sif"
+MASTER_PYTHON = "3.12"
 
-# Cross-test targets (all non-manylinux containers from the existing matrix)
+# Cross-test targets (all containers from test_all.py)
 CROSS_TEST_TARGETS = [
     ("2.7", "ubuntu20.04.sif"),
     ("3.6", "debian10.sif"),
@@ -51,6 +46,8 @@ CROSS_TEST_TARGETS = [
     ("3.13", "ubuntu24.04.sif"),
     ("3.14", "ubuntu24.04.sif"),
     ("3.14t", "ubuntu24.04.sif"),
+    ("3.15", "ubuntu26.04.sif"),
+    ("3.15t", "ubuntu26.04.sif"),
 ]
 
 _log_file = None
@@ -197,7 +194,6 @@ def prepare_workspace():
         shutil.rmtree(WORKSPACE_DIR)
     os.makedirs(WORKSPACE_DIR)
 
-    # Copy everything except .git, __pycache__, *.pyc, *.so, test_workspace
     for item in os.listdir(PROJECT_DIR):
         src = os.path.join(PROJECT_DIR, item)
         dst = os.path.join(WORKSPACE_DIR, item)
@@ -227,59 +223,21 @@ def prepare_workspace():
             if not item.endswith(".pyc") and not item.endswith(".so"):
                 shutil.copy2(src, dst)
 
-    for script in ["tests/build_all.sh", "tests/run_tests_only.sh"]:
-        sp = os.path.join(WORKSPACE_DIR, script)
-        if os.path.exists(sp):
-            os.chmod(sp, 0o755)
-
     print_success("Workspace prepared at " + WORKSPACE_DIR)
 
 
-def phase1_build_verify(python_version):
-    """Phase 1: Verify building works for one Python version on manylinux."""
-    print_header("Phase 1 [{}]: Build verification on manylinux2014".format(python_version))
+def phase1_master_build():
+    """Phase 1: Build all .so with Python 3.12 on manylinux2014 (master build)."""
+    print_header("Phase 1: Master build on manylinux2014 (glibc 2.17)")
 
-    system_py = "python" + python_version
-    build_cmd = "cd /workspace && bash tests/build_all.sh " + system_py
-
-    retcode, stdout, stderr = run_apptainer(MANYLINUX_SIF, build_cmd)
-
-    if retcode != 0:
-        if retcode == -9:
-            reason = "TIMED OUT"
-        elif retcode < 0:
-            reason = "KILLED by signal {}".format(-retcode)
-        elif retcode > 128:
-            sig = retcode - 128
-            reason = "CRASHED with signal {} ({})".format(sig, _signal_name(sig))
-        else:
-            reason = "exit code {}".format(retcode)
-        print_error("Build failed for Python {} on manylinux2014: {}".format(python_version, reason))
-        log_write("STDOUT:\n" + stdout)
-        log_write("STDERR:\n" + stderr)
-        print("--- STDOUT ---")
-        print(stdout)
-        print("--- STDERR ---")
-        print(stderr)
-        print("--- END ---")
-        return False
-
-    print_success("Build succeeded for Python {} on manylinux2014".format(python_version))
-    log_write("Build output:\n" + stdout)
-
-    # Clean .so files so the next version builds from scratch
-    _clean_so_files()
-    return True
-
-
-def phase2_master_build():
-    """Phase 2: Build all .so with Python 3.12 on manylinux (the master build)."""
-    print_header("Phase 2: Master build with Python 3.12 on manylinux2014")
-
-    # Ensure no stale .so files
     _clean_so_files()
 
-    build_cmd = "cd /workspace && bash tests/build_all.sh python3.12"
+    build_cmd = (
+        "cd /workspace && "
+        "pip install -e . --quiet && "
+        "pip install pytest PyYAML setuptools wheel --quiet && "
+        "python3.12 tests/runner.py --no-test"
+    )
     retcode, stdout, stderr = run_apptainer(MANYLINUX_SIF, build_cmd)
 
     if retcode != 0:
@@ -302,17 +260,25 @@ def phase2_master_build():
         print("--- END ---")
         return False
 
-    print_success("Master build complete")
+    print_success("Master build complete (dlsym .so files from glibc 2.17)")
     log_write("Build output:\n" + stdout)
     return True
 
 
-def phase3_cross_test(python_version, sif_file):
-    """Phase 3: Test the pre-built .so files on a different container."""
-    print_header("Phase 3: Cross-test Python {} on {}".format(python_version, sif_file))
+def phase2_cross_test(python_version, sif_file):
+    """Phase 2: Test the pre-built .so files on a different container."""
+    print_header("Phase 2: Cross-test Python {} on {}".format(python_version, sif_file))
 
     system_py = "python" + python_version
-    test_cmd = "cd /workspace && bash tests/run_tests_only.sh " + system_py
+    # ubuntu26.04 has packages pre-installed
+    if sif_file == "ubuntu26.04.sif":
+        test_cmd = "cd /workspace && " + system_py + " tests/runner.py --no-build"
+    else:
+        test_cmd = (
+            "cd /workspace && "
+            "pip install -e . --quiet && "
+            "pip install pytest PyYAML setuptools wheel --quiet && " + system_py + " tests/runner.py --no-build"
+        )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 
@@ -353,35 +319,25 @@ def main():
         print_header("c2py23 Manylinux + Cross-Test Suite")
         print("Logging to: " + LOG_FILE)
 
-        # Prep workspace once; all phases share it
         prepare_workspace()
 
         results = {}
 
-        # --- Phase 1: Build verification on all manylinux Python versions ---
-        print_header("=== Phase 1: Build Verification on manylinux2014 ===")
-        for pyver in MANYLINUX_VERSIONS:
-            ok = phase1_build_verify(pyver)
-            results["Phase1-" + pyver] = ok
-            if not ok:
-                print_error("Phase 1 failed for Python " + pyver)
-                return 1
-
-        # --- Phase 2: Master build with 3.12 on manylinux ---
-        print_header("=== Phase 2: Master Build (3.12) on manylinux2014 ===")
-        ok = phase2_master_build()
-        results["Phase2-master"] = ok
+        # --- Phase 1: Master build on manylinux2014 ---
+        print_header("=== Phase 1: Master Build on manylinux2014 ===")
+        ok = phase1_master_build()
+        results["Phase1-master"] = ok
         if not ok:
-            print_error("Phase 2 (master build) failed")
+            print_error("Phase 1 (master build) failed")
             return 1
 
-        # --- Phase 3: Cross-test on all other containers ---
-        print_header("=== Phase 3: Cross-Test on All Containers ===")
+        # --- Phase 2: Cross-test on all containers ---
+        print_header("=== Phase 2: Cross-Test on All Containers ===")
         for pyver, sif_file in CROSS_TEST_TARGETS:
-            ok = phase3_cross_test(pyver, sif_file)
-            results["Phase3-{}-{}".format(pyver, sif_file)] = ok
+            ok = phase2_cross_test(pyver, sif_file)
+            results["Phase2-{}-{}".format(pyver, sif_file)] = ok
             if not ok:
-                print_error("Phase 3 failed for Python {} on {}".format(pyver, sif_file))
+                print_error("Phase 2 failed for Python {} on {}".format(pyver, sif_file))
                 print("\nStopping to debug this target first.")
                 print("To debug, run:")
                 sif_path = os.path.join(SNAKEPIT_DIR, sif_file)

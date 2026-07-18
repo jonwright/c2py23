@@ -109,8 +109,17 @@ int mc_pi_has_omp(void) {
 ## Build
 
 ```bash
-$ c2py23 build mc_pi.c2py
+$ c2py23 mc_pi.c2py -o mcpimod_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c mcpimod_wrapper.c mc_pi.c -I c2py23/runtime -o mcpimod.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 
 ## Run
 
@@ -122,8 +131,8 @@ Compares serial, GIL release with threads, free-threading (3.14t+),
 and OpenMP parallelism for a pure-C compute workload.
 
 Usage:
-    c2py23 build mc_pi.c2py && python bench_mc_pi.py
-    EXTRA_CFLAGS=-fopenmp c2py23 build mc_pi.c2py && python bench_mc_pi.py
+    make && python bench_mc_pi.py
+    make omp && python bench_mc_pi.py
 
 Python 2.7 compatible (uses threading.Thread, not concurrent.futures).
 """
@@ -143,7 +152,7 @@ try:
     import mcpimod
 except ImportError:
     print("ERROR: mcpimod.so not found. Build it first:")
-    print("  cd {} && c2py23 build mc_pi.c2py".format(HERE))
+    print("  cd {} && make".format(HERE))
     sys.exit(1)
 
 IS_PY3 = sys.version_info[0] >= 3
@@ -287,7 +296,7 @@ def main():
         print("  threads overlap natively without requiring gil_release.")
     elif not HAS_OMP:
         print("Tip: rebuild with OpenMP for mode 3:")
-        print("  EXTRA_CFLAGS=-fopenmp c2py23 build mc_pi.c2py")
+        print("  make omp")
 
 
 if __name__ == '__main__':

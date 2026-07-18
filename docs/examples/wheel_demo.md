@@ -14,7 +14,7 @@ wraps it in a `py3-none-any` wheel using setuptools.
 ## How It Works
 
 `build.sh`:
-1. runs `c2py23 generate` to produce the wrapper C file
+1. runs `c2py23` to produce the wrapper C file
 2. Compiles the `.so` with `gcc -shared` (platform-tagged filename)
 3. Copies it into the `arraysum/` package directory
 4. Builds the wheel with `python3 -m build`

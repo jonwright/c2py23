@@ -1,7 +1,7 @@
 # `--pythonh`: Direct CPython Extension Mode
 
-`c2py23 build --pythonh file.c2py` produces a standard CPython C extension
-that includes `<Python.h>` directly.  No `dlopen(NULL)` + `dlsym()` trick.
+`c2py23 file.c2py -o wrapper.c` generates the wrapper.  Then compile with
+setuptools and `-DC2PY_USE_PYTHON_H`:
 No cross-version `.so` portability.  No C2PY function pointer table
 indirection (when combined with LTO).
 
@@ -52,24 +52,29 @@ to load on Python 2.7 through 3.15 without recompilation.
 ## Usage
 
 ```bash
-# CPython — picks up running interpreter's headers
-python3.12 -m c2py23 build --pythonh mymodule.c2py
+# 1. Generate the wrapper (same as dlsym mode)
+# CPython / PyPy / GraalPy
+python3 -m c2py23 mymodule.c2py -o mymodule_wrapper.c
 
-# PyPy — builds against PyPy's Python.h
-pypy3.9 -m c2py23 build --pythonh mymodule.c2py
-
-# GraalPy — builds against GraalPy's Python.h
-graalpy -m c2py23 build --pythonh mymodule.c2py
+# 2. Build with setuptools (pythonh mode)
+python -c "
+from setuptools import setup, Extension
+from c2py23.setuptools_helper import PythonhCmdclass
+setup(name='mymodule',
+    ext_modules=[Extension('mymodule',
+        ['mymodule_wrapper.c', 'mymodule.c', 'c2py23/runtime/c2py_runtime.c'],
+        include_dirs=['c2py23/runtime', '.'])],
+    cmdclass=PythonhCmdclass,
+    script_args=['build_ext', '--inplace'])
+"
 ```
 
-The running Python interpreter IS the target.  The CLI auto-detects
-include paths (`sysconfig.get_config_var("INCLUDEPY")`), the correct
-`.so` suffix (`EXT_SUFFIX`), and linker flags (`-lpythonX.Y` on CPython
-only).
+The running Python interpreter IS the target.  Setuptools auto-detects
+include paths, the correct `.so` suffix, and linker flags.
 
-`--pythonh` is incompatible with `--target wasm` (WASM does not use
-Python.h).  It can be combined with `--target pypy` — the PyPy binary
-provides its own `<Python.h>` via cpyext.
+`--pythonh` mode uses `-DC2PY_USE_PYTHON_H`.  It is incompatible with
+WASM/Pyodide (which resolves symbols dynamically).  It can be combined
+with `--target pypy` when building against PyPy's headers.
 
 ## Runtime support matrix
 
@@ -97,7 +102,7 @@ See `docs/benchmarks.md` for current numbers.  Summary:
   the only option.
 
 For buffer computations (vnorm, N=3 vectors), the delta is ~3 ns per
-call — noise relative to the buffer acquisition and computation costs.
+call  --  noise relative to the buffer acquisition and computation costs.
 
 ## LTO and devirtualization
 

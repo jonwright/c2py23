@@ -1,7 +1,7 @@
 #!/bin/bash
 # tests/test_lto_devirt.sh -- Prove LTO devirtualizes C2PY function pointers
 # See tests/test_lto_devirt.md for documentation and benchmark results.
-# Local-only — not in CI (depends on GCC -flto semantics + objdump).
+# Local-only  --  not in CI (depends on GCC -flto semantics + objdump).
 set -e
 
 cd "$(dirname "$0")/.."
@@ -54,7 +54,7 @@ objdump -d "$WASM_DIR/fill_ph_lto.so" > "$WASM_DIR/fill_ph_lto.s" 2>/dev/null
 # Count indirect calls but exclude glibc stubs (__gmon_start__, PLT)
 PH_LTO_INDIRECT=$(grep -c "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" || true)
 PH_LTO_INDIRECT_REAL=$(grep -c "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" || true)
-# Exclude glibc _init stub — it calls __gmon_start__@Base via *%rax
+# Exclude glibc _init stub  --  it calls __gmon_start__@Base via *%rax
 GLIBC_STUB=$(grep -B3 "call.*\*%r" "$WASM_DIR/fill_ph_lto.s" | grep -c "__gmon_start__" || true)
 PH_LTO_INDIRECT_REAL=$((PH_LTO_INDIRECT - GLIBC_STUB))
 PH_LTO_DIRECT=$(grep -c "call.*<Py[A-Z]" "$WASM_DIR/fill_ph_lto.s" || true)
@@ -73,7 +73,7 @@ if [ "$NIMPY_INDIRECT" -gt 0 ]; then
     echo "PASS: Nimpy has $NIMPY_INDIRECT indirect calls (dlsym function pointers)"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: Nimpy has ZERO indirect calls — expected >0"
+    echo "FAIL: Nimpy has ZERO indirect calls  --  expected >0"
     FAIL=$((FAIL + 1))
 fi
 
@@ -91,7 +91,7 @@ if [ "$PH_LTO_INDIRECT_REAL" -eq 0 ]; then
     echo "PASS: Pythonh+LTO has 0 C2PY indirect calls (all devirtualized)"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: Pythonh+LTO has $PH_LTO_INDIRECT_REAL C2PY indirect calls — expected 0"
+    echo "FAIL: Pythonh+LTO has $PH_LTO_INDIRECT_REAL C2PY indirect calls  --  expected 0"
     FAIL=$((FAIL + 1))
 fi
 
@@ -100,7 +100,7 @@ if [ "$PH_LTO_DIRECT" -gt 2 ]; then
     echo "PASS: Pythonh+LTO has $PH_LTO_DIRECT direct CPython calls"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: Pythonh+LTO has only $PH_LTO_DIRECT direct CPython calls — expected >=3"
+    echo "FAIL: Pythonh+LTO has only $PH_LTO_DIRECT direct CPython calls  --  expected >=3"
     FAIL=$((FAIL + 1))
 fi
 

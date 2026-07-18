@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Dlsym: compile once per Python, test
   test-windows:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -84,14 +85,17 @@ jobs:
         if: matrix.python-version != '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short
 
       - name: Run tests (2.7)
         if: matrix.python-version == '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
 
+  # i386: dlsym + pythonh (end members for 32-bit coverage)
   test-windows-i386:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -153,12 +157,14 @@ jobs:
         if: matrix.python-version != '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short
 
       - name: Run tests (2.7, dlsym)
         if: matrix.python-version == '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
 
       - name: Build and test (pythonh, 3.12)
@@ -166,32 +172,17 @@ jobs:
         env:
           CC: cl
         run: |
-          python -m c2py23.cli build --pythonh tests/cases/fill/fill.c2py -o fill_ph.pyd
-          @"
-          import sys, ctypes, importlib.util, importlib.machinery
-          l = importlib.machinery.ExtensionFileLoader('fillmod', 'fill_ph.pyd')
-          s = importlib.util.spec_from_file_location('fillmod', 'fill_ph.pyd', loader=l)
-          m = importlib.util.module_from_spec(s)
-          l.exec_module(m)
-          arr = (ctypes.c_float * 4)(0, 0, 0, 0)
-          m.fill(arr, 42.0)
-          assert list(arr) == [42.0, 42.0, 42.0, 42.0], str(list(arr))
-          print('Python 3.12 i386 --pythonh: PASS')
-          "@ | Out-File -Encoding ASCII -FilePath test_ph_i386.py
-          python test_ph_i386.py
+          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          python -c "from setuptools import setup, Extension; from c2py23.setuptools_helper import PythonhCmdclass; setup(name='fill_ph', ext_modules=[Extension('fillmod', ['fillmod_wrapper.c', 'tests/cases/fill/fill.c', 'c2py23/runtime/c2py_runtime.c'], include_dirs=['c2py23/runtime', 'tests/cases/fill'])], cmdclass=PythonhCmdclass, script_args=['build_ext', '--inplace'])"
+          python -c "import sys, ctypes, importlib.util, importlib.machinery, sysconfig; ext = sysconfig.get_config_var('EXT_SUFFIX') or '.pyd'; l = importlib.machinery.ExtensionFileLoader('fillmod', 'fillmod' + ext); s = importlib.util.spec_from_file_location('fillmod', 'fillmod' + ext, loader=l); m = importlib.util.module_from_spec(s); l.exec_module(m); arr = (ctypes.c_float * 4)(0,0,0,0); m.fill(arr, 42.0); assert list(arr) == [42.0, 42.0, 42.0, 42.0]; print('Python 3.12 i386 --pythonh: PASS')"
 
       - name: Build and test (pythonh, 2.7)
         if: matrix.python-version == '2.7'
         env:
           CC: cl
+          DISTUTILS_USE_SDK: "1"
+          MSSdk: "1"
         run: |
-          python -m c2py23.cli build --pythonh tests/cases/fill/fill.c2py -o fill_ph.pyd
-          @"
-          import sys, ctypes, imp
-          m = imp.load_dynamic('fillmod', 'fill_ph.pyd')
-          arr = (ctypes.c_float * 4)(0, 0, 0, 0)
-          m.fill(arr, 42.0)
-          assert list(arr) == [42.0, 42.0, 42.0, 42.0], str(list(arr))
-          print('Python 2.7 i386 --pythonh: PASS')
-          "@ | Out-File -Encoding ASCII -FilePath test_ph_i386_27.py
-          python test_ph_i386_27.py
+          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          python -c "from setuptools import setup, Extension; from c2py23.setuptools_helper import PythonhCmdclass; setup(name='fill_ph', ext_modules=[Extension('fillmod', ['fillmod_wrapper.c', 'tests/cases/fill/fill.c', 'c2py23/runtime/c2py_runtime.c'], include_dirs=['c2py23/runtime', 'tests/cases/fill'])], cmdclass=PythonhCmdclass, script_args=['build_ext', '--inplace'])"
+          python -c "import sys, ctypes, sysconfig, imp; ext = sysconfig.get_config_var('EXT_SUFFIX') or '.pyd'; m = imp.load_dynamic('fillmod', 'fillmod' + ext); arr = (ctypes.c_float * 4)(0,0,0,0); m.fill(arr, 42.0); assert list(arr) == [42.0, 42.0, 42.0, 42.0]; print('Python 2.7 i386 --pythonh: PASS')"
