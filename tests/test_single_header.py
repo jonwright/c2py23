@@ -111,6 +111,9 @@ def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None):
 
 def test_single_header_transform():
     """Generate and build a transform module using only c2py.h."""
+    if hasattr(sys, "pypy_version_info"):
+        print("SKIP: PyPy needs -DC2PY_TARGET_PYPY; tested separately via Makefile")
+        return
     if not os.path.exists(C2PY_H):
         print("SKIP: c2py.h not found -- run 'python3 -m c2py23 --regenerate-header'")
         return
