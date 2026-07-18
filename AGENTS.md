@@ -139,10 +139,11 @@ CC=gcc CFLAGS="-fsanitize=address -g -O1" LDFLAGS="-fsanitize=address" \
   python tests/runner.py
 ```
 
-Build for PyPy (experimental, no CI  --  see issue #81):
+Build for PyPy (experimental -- smoke test in CI, see issue #81):
 ```bash
-# dlsym mode uses --target pypy at compile time via CFLAGS:
-CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace
+CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" make -f tests/Makefile all
+# import on PyPy requires ExtensionFileLoader (plain 'import' does not
+# find .so files -- PyPy only recognizes ABI-tagged suffixes).
 ```
 
 Build for Pyodide/WASM (experimental, no CI):
@@ -242,11 +243,13 @@ c2py23 installed -- see the README for the gcc command.
 - **ubuntu26.04.sif**: Python 3.14, 3.15
 - **manylinux2014.sif**: Python 3.9, 3.10, 3.11, 3.12, 3.13, 3.14
 
-### Experimental: PyPy (no CI, not tested regularly)
+### Experimental: PyPy (smoke test in CI)
 
-- **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11
-- Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace`
-- Experimental, use at your own risk. No CI -- likely to regress if not maintained.
+- **ubuntu24.04_pypy.sif**: PyPy 2.7, 3.9, 3.11 (local testing)
+- CI: pypy3.9 + pypy3.10 via `actions/setup-python@v5`
+- Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" make -f tests/Makefile all`
+- `import modulename` does not work on PyPy (only ABI-tagged suffixes).  Use
+  `importlib.machinery.ExtensionFileLoader` instead.  See `docs/building.md`.
 
 ### `--pythonh`: Direct CPython extension (GraalPy, debugging, max perf)
 

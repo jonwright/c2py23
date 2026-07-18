@@ -2,27 +2,22 @@
 
 ## In Progress
 
-### PyPy support via `--target pypy`
+### PyPy support via `-DC2PY_TARGET_PYPY`
 
-**Status: functional, not in CI.  Separate .so per target.**
+**Status: dlsym smoke test in CI.  Not battle-tested.**
 
-Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" python tests/setup.py build_ext --inplace` produces a PyPy-compatible
-`.so` that resolves `PyPy_*`-prefixed cpyext symbols from `libpypy3.X-c.so`.
-Test matrix:
+Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1" make -f tests/Makefile all`.
+Produces PyPy-compatible `.so` files that resolve `PyPy_*`-prefixed cpyext
+symbols at runtime.  CI runs a smoke test (build fill, import via
+`ExtensionFileLoader`, verify) on pypy3.9 and pypy3.10.
 
-| | PyPy 2.7 | PyPy 3.9 | PyPy 3.11 |
-|---|---|---|---|
-| Uniform (18) | 18 | 18 | 18 |
-| Peer review (10) | 9 | 10 | 10 |
-| Regression (31) | 25 | 31 | 31 |
+`import fillmod` does not work on PyPy because its `_imp.extension_suffixes`
+only lists ABI-tagged suffixes (`.pypy311-pp73-x86_64-linux-gnu.so`), never
+plain `.so`.  CPython includes plain `.so`.  Workaround: preload via
+`importlib.machinery.ExtensionFileLoader`.  Documented in `docs/building.md`.
 
 One `.so` for CPython+PyPy is structurally impossible: PyPy's `PyObject`
-is 24 bytes (includes `ob_pypy_link`) vs CPython's 16, and `sizeof`
-differences are baked into the compiled binary.  HPy was the path to
-single-binary cross-implementation support but is not in released PyPy.
-
-Container exists (`ubuntu24.04_pypy.sif`) but no CI workflow exercises it.
-Will regress without maintenance.
+is 24 bytes (includes `ob_pypy_link`) vs CPython's 16.
 
 ## Deferred
 
@@ -117,17 +112,12 @@ Gohlke's numpy binaries cover Windows 32-bit (i386)  --  but for c2py23,
 Lowest priority.  Users needing 32-bit can use `--pythonh` on their
 target Python (bypasses all dlsym layout detection).
 
-### MSVC detection only searches PATH (P5)
+### MSVC / Windows build
 
-`_find_msvc` in `cli.py` (line 250) iterates `PATH` entries for `cl.exe`.
-Standard Visual Studio installs place `cl.exe` outside PATH until
-`vcvarsall.bat` is sourced.  Enhancement: use `vswhere.exe` (ships with
-VS 2017+) to locate all installed VS toolchains, then select the
-newest/MSVC version.
-
-Workaround: user runs c2py23 from a Developer Command Prompt, or sets
-`CC=cl` explicitly.  Low priority  --  MinGW/gcc works on Windows without
-this issue.
+`_find_msvc` removed from cli.py (build removal).  Windows builds use the
+Makefile with `ifdef MSVC` (gated on CC=cl).  Setuptools path via
+`setuptools_helper.py` also works for pythonh mode.  No discoverability
+issue: `CC=cl` is set in CI and `make` auto-detects it.
 
 ---
 
@@ -135,12 +125,11 @@ this issue.
 
 - **`--pythonh` mode (2026-07)**  --  direct `#include <Python.h>` build, no dlsym
   trick.  Works on all runtimes (CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12).
-  CI covers end members (2.7 + 3.14t) in `linux_pythonh.yml`.  13/13 snakepit
-  containers pass both dlsym and pythonh builds.  Full docs in `docs/pythonh.md`.
-  LTO devirtualization proof in `tests/test_lto_devirt.sh`.
+  CI covers 3.14t end member (inline in `linux.yml`), i386 2.7 + 3.12 (in
+  `windows.yml`).  Full docs in `docs/pythonh.md`.
 
-- **Pyodide/WASM support (2026-07)**  --  `--target wasm` CLI flag.  23 WASM modules,
-  80/80 tests pass inside Pyodide via Node.js.  CI in `wasm.yml`.
+- **Pyodide/WASM support (2026-07)**  --  build with `emcc -s SIDE_MODULE=1`.
+  23 WASM modules, 80/80 tests pass inside Pyodide via Node.js.  CI in `wasm.yml`.
 
 - **Buffers on disk: brainstorm/ removed (2026-07)**  --  useful cross-platform
   scripts moved to `tests/cross_platform/`, Pyodide npm package to
