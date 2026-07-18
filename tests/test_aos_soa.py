@@ -143,9 +143,32 @@ def test_f_contiguous_dispatch(n=4):
     print("  PASS: F-contiguous correctly rejected\n")
 
 
+def test_zero_size_array():
+    """Zero-size arrays must be accepted (vacuously contiguous)."""
+    arr = np.empty((0, 3), dtype=np.float64)
+    out = np.empty((0, 3), dtype=np.float64)
+    xfrm.transform(arr, out)
+    print("PASS: zero-size (0,3) array accepted")
+    # Also test that strides=(0,0) doesn't trip contiguity check
+    arr2 = np.empty((3, 0), dtype=np.float64)
+    out2 = np.empty((3, 0), dtype=np.float64)
+    xfrm.transform(arr2, out2)
+    print("PASS: zero-size (3,0) array accepted")
+
+
+def test_zero_size_sliced():
+    """Zero-size arrays from slicing (non-zero strides) must be accepted."""
+    arr = np.empty((1, 3), dtype=np.float64)[:0]
+    out = np.empty((1, 3), dtype=np.float64)[:0]
+    xfrm.transform(arr, out)
+    print("PASS: zero-size sliced array accepted")
+
+
 if __name__ == "__main__":
     test_aos()
     test_soa()
     test_layout_conversion()
     test_f_contiguous_dispatch()
+    test_zero_size_array()
+    test_zero_size_sliced()
     print("All AoS vs SoA demos passed.")
