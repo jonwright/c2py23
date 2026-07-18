@@ -87,7 +87,35 @@ $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $
 
 BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 else
-BENCH_TARGETS :=
+$(BENCH_DIR)/c2py_vnorm$(EXT): benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_vnorm_bare$(EXT): benchmarks/src/c2py_vnorm_bare_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_vnorm_bare_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_vnorm_ndarray$(EXT): benchmarks/src/c2py_vnorm_ndarray_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_vnorm_ndarray_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_vnorm_buffer$(EXT): benchmarks/src/c2py_vnorm_buffer_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_vnorm_buffer_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_vnorm_dlpack$(EXT): benchmarks/src/c2py_vnorm_dlpack_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_vnorm_dlpack_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_getitem$(EXT): benchmarks/src/c2py_getitem_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_getitem_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+$(BENCH_DIR)/c2py_noargs$(EXT): benchmarks/src/c2py_noargs_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		benchmarks/src/c2py_noargs_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
+
+BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 endif
 
 # ---- aggregate targets ----
