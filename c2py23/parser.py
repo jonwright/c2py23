@@ -229,7 +229,7 @@ class FuncDef(
     """A wrapped Python function definition.
 
     params is an optional dict mapping parameter names to human-readable
-    descriptions, parsed from the YAML block. Keys are validated against
+    descriptions, parsed from the interface definition. Keys are validated against
     py_sig parameter names.
     """
 
@@ -285,12 +285,12 @@ class ModuleDef(
 
 
 # ---------------------------------------------------------------------------
-# Loading (Python dict or YAML)
+# Loading interface definitions
 # ---------------------------------------------------------------------------
 
 
 def from_c2py_dict(raw_dict, path="<dict>"):
-    """Parse a Python dict (from Python dict format or YAML) into a ModuleDef.
+    """Parse a Python dict (from dict format) into a ModuleDef.
 
     Args:
         raw_dict: A dict with keys: module, source, headers, functions,
@@ -1005,9 +1005,9 @@ def _expand_func_template(raw_func, path):
 
 
 def _coerce_expr_value(val, context, path):
-    """Coerce a non-string YAML value to string for expression parsing.
+    """Coerce a non-string value to string for expression parsing.
 
-    YAML parses bare integers/floats as their native types, but the expression
+    Dicts may contain bare integers/floats as their native types, but the expression
     parser expects strings. Map values like `verbose: 0` would crash otherwise.
     """
     if isinstance(val, _STRING_TYPES):
@@ -1226,7 +1226,7 @@ def _parse_func(raw, path):
 
 
 def _parse_check_value(val, path):
-    """Parse a check expression, coercing non-string values from YAML."""
+    """Parse a check expression, coercing non-string values from dicts."""
     val = _coerce_expr_value(val, "checks", path)
     return parse_expr(val)
 

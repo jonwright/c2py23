@@ -1,2 +1,1 @@
-PyYAML>=5.1 ; python_version >= "3"
-PyYAML>=3.10,<6 ; python_version < "3"
+# Test dependencies -- install via: pip install -e '.[test]'

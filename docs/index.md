@@ -38,7 +38,7 @@ See [--pythonh mode](pythonh.md).
 
 ## Quick Example
 
-```yaml
+```python
 # arraysum.c2py
 module: arraysum
 source: [arraysum.c]

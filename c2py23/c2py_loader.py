@@ -66,7 +66,7 @@ def load_native(package_dir, module_name="_native", tag="c2py23"):
     package_dir: Absolute path to the package directory containing
                  the .so files.
     module_name: Base module name (default '_native').
-                 Must match the c2py23 YAML 'module:' field.
+                 Must match the c2py23 'module:' field.
                  Use a unique name per package (e.g. '_mymodule')
                  to avoid collisions in sys.modules.
         tag:         Tag string inserted in the filename (default 'c2py23').

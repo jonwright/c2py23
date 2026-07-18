@@ -1,8 +1,8 @@
 ---
 name: c2py23
-description: Generate zero-copy C99 Python extensions from declarative YAML interface files. Use when wrapping C functions for Python, creating high-performance numerical extensions, binding SIMD-optimized C code, or when the user mentions c2py23, C extensions, or buffer-protocol wrapping. Supports Python 2.7-3.15, GIL release, free-threading, and automatic buffer shape/type dispatch.
+description: Generate zero-copy C99 Python extensions from declarative Python dict interface files (.c2py). Use when wrapping C functions for Python, creating high-performance numerical extensions, binding SIMD-optimized C code, or when the user mentions c2py23, C extensions, or buffer-protocol wrapping. Supports Python 2.7-3.15, GIL release, free-threading, and automatic buffer shape/type dispatch.
 license: MIT
-compatibility: Requires Python 2.7+, PyYAML (for .c2py YAML files), and gcc (or compatible C99 compiler). No numpy required.
+compatibility: Requires Python 2.7+ and a C99 compiler (gcc, clang, or MSVC). No numpy required. No external Python dependencies.
 ---
 
 # c2py23 Skill
@@ -41,7 +41,7 @@ Key capabilities:
 
 ### 1. Write a .c2py interface file
 
-```yaml
+```python
 module: mymod
 source: [kernel.c]
 
@@ -92,7 +92,7 @@ mymod.add_arrays(a, b, out)
 
 Without size checks, a caller can pass a too-small output buffer, causing a segfault. This is the most important rule:
 
-```yaml
+```python
 checks:
   - "out.format == 'd'"       # element type
   - "out.n >= a.n"             # output large enough (prevents segfaults!)
@@ -113,9 +113,9 @@ Never use `'l'` or `'L'` for fixed-width dispatch. They are platform-sized (`siz
 | `'d'` | `double` | 8 bytes |
 | `'f'` | `float` | 4 bytes |
 
-### 4. Python dict format preferred over YAML
+### 4. Interface files use Python dict format
 
-The Python dict format requires no PyYAML dependency and auto-detects:
+.2cpy files contain Python dict literals (parsed via `ast.literal_eval`):
 
 ```python
 {

@@ -190,7 +190,7 @@ def run_python_version(python_version, sif_file):
         test_cmd = (
             "cd /workspace && "
             "pip install -e . --quiet && "
-            "pip install pytest PyYAML setuptools wheel --quiet && " + system_py + " tests/runner.py"
+            "pip install pytest setuptools wheel --quiet && " + system_py + " tests/runner.py"
         )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)

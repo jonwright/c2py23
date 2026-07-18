@@ -532,10 +532,9 @@ assert abs(r2 - 32.0) < 0.001, str(r2)
 async function main() {
     console.log('Loading Pyodide...');
     py = await loadPyodide();
-    console.log('Loading numpy + pyyaml...');
+    console.log('Loading numpy...');
     await py.loadPackage('numpy');
-    await py.loadPackage('pyyaml');
-    await py.runPythonAsync('import numpy, yaml; print("numpy", numpy.__version__, "pyyaml OK")');
+    console.log('numpy OK');
     console.log('');
 
     const tests = [

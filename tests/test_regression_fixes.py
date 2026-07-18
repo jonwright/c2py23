@@ -871,7 +871,7 @@ def test_array_dims_variant_sigs():
     from c2py23.generator import generate
 
     # Build a module with variant sigs using array dims, going through
-    # the full parse pipeline via a yaml string.
+    # the full parse pipeline via an inline dict.
     import ast
 
     raw = ast.literal_eval("""{
@@ -1169,7 +1169,7 @@ def test_return_types_allowed():
 
 
 def test_python_dict_format():
-    """Test parsing a Python dict instead of YAML."""
+    """Test parsing a Python dict."""
     from c2py23.parser import from_c2py_dict
 
     # A complete interface as a Python dict

@@ -140,7 +140,7 @@ def generate_readme(example_dir, example_name, build_output, c2py_file, c_file, 
 
     lines.append("## Interface\n")
     c2py_path = os.path.join(example_dir, c2py_file)
-    lines.append(_source_block(c2py_path, "yaml", c2py_file))
+    lines.append(_source_block(c2py_path, "python", c2py_file))
 
     if c_file:
         lines.append("## C Source\n")
@@ -184,7 +184,7 @@ def generate_static_readme(example_dir, example_name):
     lines.append("## Interface\n")
     if c2py_file:
         c2py_path = os.path.join(example_dir, c2py_file)
-        lines.append(_source_block(c2py_path, "yaml", c2py_file))
+        lines.append(_source_block(c2py_path, "python", c2py_file))
 
     if c_file:
         lines.append("## C Source\n")

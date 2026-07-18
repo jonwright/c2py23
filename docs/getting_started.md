@@ -23,7 +23,7 @@ void add_d(const double *a, const double *b, int n, double *out) {
 
 **`myadd.c2py`**
 
-```yaml
+```python
 module: myadd
 source: [myadd.c]
 

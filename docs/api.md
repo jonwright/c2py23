@@ -49,7 +49,7 @@
 
 ::: tools.convert_c2py_to_dict
 
-Converts `.c2py` YAML files to Python dict format.  Run with:
+Converts `.c2py` files from legacy YAML to Python dict format.  YAML is no longer supported by c2py23 with default dependencies.  This script is only needed for migration.  Run with:
 
 ```bash
 python3 -m tools.convert_c2py_to_dict path/to/file.c2py

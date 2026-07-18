@@ -2,44 +2,58 @@
 
 ## Interface
 
-```yaml
-module: lz4mod
-source:
-  - ../lz4/lib/lz4.c
-  - lz4_thin.c
-headers:
-  - ../lz4/lib/lz4.h
-
-functions:
-  - py_sig: "compress(src: buffer, dst: buffer) -> int"
-    doc: "LZ4 compress. Returns size of compressed data written to dst."
-    checks:
-      - "src.format == 'B'"
-      - "dst.format == 'B'"
-      - "src.ndim == 1"
-      - "dst.ndim == 1"
-    c_overloads:
-      - sig: "int lz4_compress(const uint8_t *src, uint8_t *dst, int srcSize, int dstCapacity)"
-        map:
-          src: "src.ptr"
-          dst: "dst.ptr"
-          srcSize: "src.len"
-          dstCapacity: "dst.len"
-
-  - py_sig: "decompress(src: buffer, dst: buffer) -> int"
-    doc: "LZ4 decompress. Returns number of decompressed bytes written to dst."
-    checks:
-      - "src.format == 'B'"
-      - "dst.format == 'B'"
-      - "src.ndim == 1"
-      - "dst.ndim == 1"
-    c_overloads:
-      - sig: "int lz4_decompress(const uint8_t *src, uint8_t *dst, int compressedSize, int dstCapacity)"
-        map:
-          src: "src.ptr"
-          dst: "dst.ptr"
-          compressedSize: "src.len"
-          dstCapacity: "dst.len"
+```python
+# Python dict format equivalent of lz4.c2py
+{
+    "module": "lz4mod",
+    "source": [
+        "../lz4/lib/lz4.c",
+        "lz4_thin.c",
+    ],
+    "headers": ["../lz4/lib/lz4.h"],
+    "functions": [
+        {
+            "py_sig": "compress(src: buffer, dst: buffer) -> int",
+            "checks": [
+                "src.format == 'B'",
+                "dst.format == 'B'",
+                "src.ndim == 1",
+                "dst.ndim == 1",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "int lz4_compress(const uint8_t *src, uint8_t *dst, int srcSize, int dstCapacity)",
+                    "map": {
+                        "src": "src.ptr",
+                        "dst": "dst.ptr",
+                        "srcSize": "src.len",
+                        "dstCapacity": "dst.len",
+                    },
+                },
+            ],
+        },
+        {
+            "py_sig": "decompress(src: buffer, dst: buffer) -> int",
+            "checks": [
+                "src.format == 'B'",
+                "dst.format == 'B'",
+                "src.ndim == 1",
+                "dst.ndim == 1",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "int lz4_decompress(const uint8_t *src, uint8_t *dst, int compressedSize, int dstCapacity)",
+                    "map": {
+                        "src": "src.ptr",
+                        "dst": "dst.ptr",
+                        "compressedSize": "src.len",
+                        "dstCapacity": "dst.len",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 ## C Source
@@ -77,6 +91,7 @@ See [docs/building](building) for cmake, meson, and setuptools options.
 ```python
 """Example: use the lz4mod wrapper from Python.
 Build with: make"""
+
 from __future__ import print_function
 
 import ctypes

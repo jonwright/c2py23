@@ -267,7 +267,7 @@ The snakepit container images must be present at `../snakepit/` relative to this
 ## Architecture
 
 ### Core Files
-- `c2py23/parser.py` -- Parses `.c2py` YAML interface files into a ModuleDef AST
+- `c2py23/parser.py` -- Parses `.c2py` interface files into a ModuleDef AST
 - `c2py23/generator.py` -- Transpiles ModuleDef AST into compilable C wrapper source
 - `c2py23/cli.py` -- Command-line interface (`c2py23 file.c2py -o wrapper.c`)
 - `c2py23/perf.py` -- ctypes-free performance data decoder (uses generated C accessors)
@@ -278,14 +278,14 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`
 
 ### How It Works
-1. The user writes a `.c2py` YAML file declaring Python function signatures, C overloads, and dispatch conditions
+1. The user writes a `.c2py` interface file declaring Python function signatures, C overloads, and dispatch conditions
 2. `c2py23 file.c2py -o wrapper.c` generates a C wrapper, then compiled with any C99 compiler
 3. The `.so` uses the nimpy trick -- no `-lpython` link, all CPython API resolved at init via `dlopen(NULL)`/`dlsym()`. This technique originates from [yglukhov/nimpy](https://github.com/yglukhov/nimpy); c2py23 adopts it for C with a minimal API surface.
 4. One `.so` works on Python 2.7 through 3.15 (build on oldest target OS)
 5. Buffers are acquired via `c2py_acquire_buffer()` which falls back from PEP 3118 to old buffer API on Python 2.7
 
 ### Interface File Format
-YAML-based `.c2py` files define:
+`.c2py` files define (Python dict format):
 - `module:` -- Python module name
 - `source:` -- C source file(s)
 - `headers:` -- C header file(s) to include (optional)
@@ -431,7 +431,7 @@ The human uses a classic `repo`-scoped token for admin tasks.
    literals.  Variant names use ASCII bytes (`PyBytes_FromStringAndSize`).
    No `PyArg_ParseTupleAndKeywords` (c2py23 is positional-only).
 6. Test across all supported Python versions before committing
-7. Keep the `.c2py` YAML grammar minimal -- new features must be expressible in C without runtime overhead
+7. Keep the `.c2py` interface grammar minimal -- new features must be expressible in C without runtime overhead
 8. Generated C code should compile with `gcc -Wall -Werror`
 9. Run the full test suite before committing: `python tests/runner.py`
 10. Run `python3 tests/test_all.py` for multi-version container validation
@@ -465,7 +465,7 @@ to write past the end and produce a segfault or silent memory corruption.
 
 ### Example: safe output buffer sizing
 
-```yaml
+```python
 # Correct: validates output is large enough
 checks:
   - "a.format == 'f'"
