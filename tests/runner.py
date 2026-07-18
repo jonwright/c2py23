@@ -122,19 +122,10 @@ def _needs_regen(c2py_path, wrapper_c):
 
 
 def build_all():
-    """Build all .so files via setuptools in dlsym mode."""
-    setup_py = os.path.join(HERE, "setup.py")
-    env = os.environ.copy()
-    env.setdefault("CC", "gcc")
-    env.setdefault("LIBS", "-ldl -lm")
-    env.setdefault("LDSHARED", env.get("CC", "gcc") + " -shared")
-
-    print("[runner] Building dlsym extensions...")
-    subprocess.check_call(
-        [sys.executable, setup_py, "build_ext"],
-        cwd=PROJECT,
-        env=env,
-    )
+    """Build all dlsym .so files via vanilla C compilation (make)."""
+    makefile = os.path.join(HERE, "Makefile")
+    print("[runner] Building dlsym extensions (make)...")
+    subprocess.check_call(["make", "-f", makefile, "all"], cwd=PROJECT)
     print("[runner] Build complete")
 
 

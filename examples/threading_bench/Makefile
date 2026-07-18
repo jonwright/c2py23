@@ -1,36 +1,25 @@
-CC       = gcc
-CFLAGS   = -O3 -Wall -Werror
-OMPFLAGS = -fopenmp
+CC       ?= gcc
+CFLAGS   ?= -O3 -Wall -Werror
+OMPFLAGS ?= -fopenmp
+LIBS     ?= -ldl -lm
 
-.PHONY: all clean
+RUNTIME_SRC := ../../c2py23/runtime/c2py_runtime.c
+RUNTIME_INC := ../../c2py23/runtime
 
-all:
-	c2py23 mc_pi.c2py -o mcpimod_wrapper.c
-	CC=$(CC) LIBS="-ldl -lm" python -c "
-from setuptools import setup, Extension
-from c2py23.build import DlsymCmdclass
-setup(name='mcpimod',
-    ext_modules=[Extension('mcpimod',
-        ['mcpimod_wrapper.c', 'mc_pi.c',
-         'c2py23/runtime/c2py_runtime.c'],
-        include_dirs=['.', 'c2py23/runtime'])],
-    cmdclass=DlsymCmdclass,
-    script_args=['build_ext'])
-"
+.PHONY: all omp clean
 
-omp:
-	c2py23 mc_pi.c2py -o mcpimod_wrapper.c
-	CC=$(CC) CFLAGS="$(CFLAGS) $(OMPFLAGS)" LIBS="-ldl -lm" python -c "
-from setuptools import setup, Extension
-from c2py23.build import DlsymCmdclass
-setup(name='mcpimod',
-    ext_modules=[Extension('mcpimod',
-        ['mcpimod_wrapper.c', 'mc_pi.c',
-         'c2py23/runtime/c2py_runtime.c'],
-        include_dirs=['.', 'c2py23/runtime'])],
-    cmdclass=DlsymCmdclass,
-    script_args=['build_ext'])
-"
+mcpimod_wrapper.c: mc_pi.c2py $(wildcard $(RUNTIME_INC)/*.h)
+	python3 -m c2py23 mc_pi.c2py -o $@
+
+mcpimod.so: mcpimod_wrapper.c mc_pi.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -I. \
+		$(filter %.c,$^) \
+		-o $@ $(LDFLAGS) $(LIBS)
+
+all: mcpimod.so
+
+omp: CFLAGS += $(OMPFLAGS)
+omp: mcpimod.so
 
 clean:
 	rm -f mcpimod.so mcpimod_wrapper.c

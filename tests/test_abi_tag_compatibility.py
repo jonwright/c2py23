@@ -173,30 +173,29 @@ def test_build_wheel(tmpdir):
         if rt_fn.endswith((".c", ".h")):
             shutil.copy(os.path.join(runtime_dir, rt_fn), os.path.join(src_dir, rt_fn))
 
-    build_cmd = [
-        sys.executable,
-        "-c",
-        """
-from setuptools import setup, Extension
-from c2py23.build import DlsymCmdclass
-setup(name='_mysum',
-      ext_modules=[Extension('_mysum',
-          ['_mysum_wrapper.c', 'mysum.c', 'c2py_runtime.c'])],
-      cmdclass=DlsymCmdclass,
-      script_args=['build_ext'])
-""",
-    ]
+    ext = ".pyd" if os.name == "nt" else ".so"
     env = os.environ.copy()
     env.setdefault("CC", "gcc")
-    env.setdefault("LIBS", "-ldl -lm")
-    env.setdefault("LDSHARED", "gcc -shared")
+    build_cmd = [
+        env["CC"],
+        "-shared",
+        "-fPIC",
+        "-I",
+        src_dir,
+        "_mysum_wrapper.c",
+        "mysum.c",
+        "c2py_runtime.c",
+        "-o",
+        "_mysum" + ext,
+        "-ldl",
+        "-lm",
+    ]
     rc, out, err = _run(build_cmd, cwd=src_dir, env=env)
     if rc != 0:
-        print("setuptools build failed:", err, file=sys.stderr)
-        raise AssertionError("setuptools build failed: %s" % err)
+        print("compile failed:", err, file=sys.stderr)
+        raise AssertionError("compile failed: %s" % err)
 
-    # Rename the .so to follow the c2py_loader convention
-    ext = ".pyd" if os.name == "nt" else ".so"
+    # Find the compiled .so/.pyd
     so_files = glob.glob(os.path.join(src_dir, "_mysum*" + ext))
     if not so_files:
         so_files = glob.glob(os.path.join(src_dir, "_mysum*"))

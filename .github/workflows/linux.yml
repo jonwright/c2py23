@@ -104,7 +104,7 @@ jobs:
           python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
           CC=gcc LIBS="-ldl -lm" python -c "
           from setuptools import setup, Extension
-          from c2py23.build import PythonhCmdclass
+          from c2py23.setuptools_helper import PythonhCmdclass
           setup(name='fill_ph',
               ext_modules=[Extension('fillmod',
               ['fillmod_wrapper.c', 'tests/cases/fill/fill.c',

@@ -31,29 +31,35 @@ def _generate():
 
 
 def _build_dlsym():
-    """Build in dlsym mode via shared setup.py."""
+    """Build in dlsym mode via vanilla C compilation."""
     env = os.environ.copy()
     env.setdefault("CC", "gcc")
-    env.setdefault("LIBS", "-ldl -lm")
-    env.setdefault("LDSHARED", "gcc -shared")
-    # Only build fillmod (not all modules)
     subprocess.check_call(
         [
             sys.executable,
-            "-c",
-            "\n".join(
-                [
-                    "from setuptools import setup, Extension",
-                    "from c2py23.build import DlsymCmdclass",
-                    "setup(name='fill_test',",
-                    "      ext_modules=[Extension('fillmod',",
-                    "          ['fill_wrapper.c', 'tests/cases/fill/fill.c',",
-                    "           'c2py23/runtime/c2py_runtime.c'],",
-                    "          include_dirs=['c2py23/runtime', 'tests/cases/fill'])],",
-                    "      cmdclass=DlsymCmdclass,",
-                    "      script_args=['build_ext'])",
-                ]
-            ),
+            "-m",
+            "c2py23",
+            os.path.join(HERE, "cases", "fill", "fill.c2py"),
+            "-o",
+            "fill_wrapper.c",
+        ]
+    )
+    subprocess.check_call(
+        [
+            env.get("CC", "gcc"),
+            "-shared",
+            "-fPIC",
+            "-I",
+            "c2py23/runtime",
+            "-I",
+            os.path.join(HERE, "cases", "fill"),
+            "c2py23/runtime/c2py_runtime.c",
+            "fill_wrapper.c",
+            os.path.join(HERE, "cases", "fill", "fill.c"),
+            "-o",
+            "fillmod.dlsym_test.so",
+            "-ldl",
+            "-lm",
         ],
         env=env,
     )
@@ -68,7 +74,7 @@ def _build_pythonh():
             "\n".join(
                 [
                     "from setuptools import setup, Extension",
-                    "from c2py23.build import PythonhCmdclass",
+                    "from c2py23.setuptools_helper import PythonhCmdclass",
                     "setup(name='fill_ph_test',",
                     "      ext_modules=[Extension('fillmod',",
                     "          ['fill_wrapper.c', 'tests/cases/fill/fill.c',",

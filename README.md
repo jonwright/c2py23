@@ -81,7 +81,7 @@ c2py23 --version                     # print version
 python -m c2py23 file.c2py -o wrapper.c
 ```
 
-See `c2py23/build.py` for `DlsymBuildExt` / `PythonhBuildExt` setuptools helpers.
+See `c2py23/setuptools_helper.py` for `PythonhBuildExt` setuptools helper (pythonh mode only).
 
 ## Supported Platforms
 
