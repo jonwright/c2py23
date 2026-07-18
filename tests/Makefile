@@ -87,37 +87,67 @@ $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $
 
 BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 else
-$(BENCH_DIR)/c2py_vnorm$(EXT): benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+_WRAPS := benchmarks/src/c2py_vnorm_wrapper.c \
+         benchmarks/src/c2py_vnorm_bare_wrapper.c \
+         benchmarks/src/c2py_vnorm_ndarray_wrapper.c \
+         benchmarks/src/c2py_vnorm_buffer_wrapper.c \
+         benchmarks/src/c2py_vnorm_dlpack_wrapper.c \
+         benchmarks/src/c2py_getitem_wrapper.c \
+         benchmarks/src/c2py_noargs_wrapper.c
+
+# Generate wrappers (targeted, not pattern rules -- more reliable on MSVC)
+benchmarks/src/c2py_vnorm_wrapper.c: benchmarks/src/c2py_vnorm.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_vnorm_bare_wrapper.c: benchmarks/src/c2py_vnorm_bare.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_vnorm_ndarray_wrapper.c: benchmarks/src/c2py_vnorm_ndarray.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_vnorm_buffer_wrapper.c: benchmarks/src/c2py_vnorm_buffer.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_vnorm_dlpack_wrapper.c: benchmarks/src/c2py_vnorm_dlpack.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_getitem_wrapper.c: benchmarks/src/c2py_getitem.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+benchmarks/src/c2py_noargs_wrapper.c: benchmarks/src/c2py_noargs.c2py $(RUNTIME_HDRS)
+	python -m c2py23 $< -o $@
+
+$(BENCH_DIR)/c2py_vnorm$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_vnorm_bare$(EXT): benchmarks/src/c2py_vnorm_bare_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_vnorm_bare$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_bare_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_vnorm_ndarray$(EXT): benchmarks/src/c2py_vnorm_ndarray_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_vnorm_ndarray$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_ndarray_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_vnorm_buffer$(EXT): benchmarks/src/c2py_vnorm_buffer_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_vnorm_buffer$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_buffer_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_vnorm_dlpack$(EXT): benchmarks/src/c2py_vnorm_dlpack_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_vnorm_dlpack$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_dlpack_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_getitem$(EXT): benchmarks/src/c2py_getitem_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_getitem$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_getitem_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
-$(BENCH_DIR)/c2py_noargs$(EXT): benchmarks/src/c2py_noargs_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC)
+$(BENCH_DIR)/c2py_noargs$(EXT): $(_WRAPS) $(BENCH_SRC) $(RUNTIME_SRC)
 	-mkdir -p $(BENCH_DIR)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_noargs_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
