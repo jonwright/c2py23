@@ -22,6 +22,34 @@ RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
 # ---- generated per-module rules ----
 include tests/test_makefile_deps.mk
 
+# ---- examples with non-standard source structures ----
+examples/kissfft_wrap/kissfftmod$(EXT): examples/kissfft_wrap/kissfftmod_wrapper.c \
+		examples/kissfft_wrap/kissfft_thin.c $(RUNTIME_SRC) \
+		examples/kissfft/kiss_fft.c examples/kissfft/kiss_fftr.c
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/kissfft_wrap -Iexamples/kissfft \
+		examples/kissfft_wrap/kissfftmod_wrapper.c \
+		examples/kissfft_wrap/kissfft_thin.c \
+		examples/kissfft/kiss_fft.c \
+		examples/kissfft/kiss_fftr.c \
+		$(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS) -lm
+
+examples/kissfft_wrap/kissfftmod_wrapper.c: examples/kissfft_wrap/kissfft.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 examples/kissfft_wrap/kissfft.c2py -o $@
+
+examples/lz4_wrap/lz4mod$(EXT): examples/lz4_wrap/lz4mod_wrapper.c \
+		examples/lz4_wrap/lz4_thin.c $(RUNTIME_SRC) \
+		examples/lz4/lib/lz4.c
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/lz4_wrap -Iexamples/lz4/lib \
+		examples/lz4_wrap/lz4mod_wrapper.c \
+		examples/lz4_wrap/lz4_thin.c \
+		examples/lz4/lib/lz4.c \
+		$(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+
+examples/lz4_wrap/lz4mod_wrapper.c: examples/lz4_wrap/lz4.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 examples/lz4_wrap/lz4.c2py -o $@
+
 # ---- aggregate targets ----
 MODULES := \
 	tests/cases/fill/fillmod$(EXT) \
@@ -40,7 +68,9 @@ MODULES := \
 	tests/cases/dot/dotmod$(EXT) \
 	tests/cases/array_sig/arraymod$(EXT) \
 	tests/cases/freethreading/freethreadmod$(EXT) \
-	tests/cases/simd_dispatch/simd_fillmod$(EXT)
+	tests/cases/simd_dispatch/simd_fillmod$(EXT) \
+	examples/kissfft_wrap/kissfftmod$(EXT) \
+	examples/lz4_wrap/lz4mod$(EXT)
 
 .PHONY: all clean
 
