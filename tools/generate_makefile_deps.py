@@ -78,7 +78,7 @@ def main():
                 dir=dir_rel, mod=mod, c_fn=c_fn
             )
         )
-        print("\t$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -I{dir} \\".format(dir=dir_rel))
+        print("\t$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -I{dir} \\".format(dir=dir_rel))
         print("\t\t{dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC) \\".format(dir=dir_rel, mod=mod, c_fn=c_fn))
         print("\t\t-o $@ $(LDFLAGS) $(LIBS)")
         print("endif")
