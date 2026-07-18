@@ -88,6 +88,7 @@ $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $
 BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 else
 $(BENCH_DIR)/c2py_vnorm$(EXT): benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	@echo CC=$(CC) CFLAGS=$(CFLAGS) OUT=$@
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
 		benchmarks/src/c2py_vnorm_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) /link /OUT:$@ $(LDFLAGS)
 
