@@ -164,9 +164,17 @@ def test_single_header_transform():
         mod.transform(arr0, out0)
         # No error = success
 
-        # Clean up sys.path
+        # Clean up -- release DLL handle before tempdir removal (Windows locks loaded .pyd)
         sys.path.pop(0)
-        del sys.modules["xfrm"]
+        if "xfrm" in sys.modules:
+            del sys.modules["xfrm"]
+        mod = None
+        loader = None
+        spec = None
+        try:
+            os.unlink(so_path)
+        except Exception:
+            pass
 
 
 def test_single_header_cli_flags():
