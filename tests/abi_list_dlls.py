@@ -1,13 +1,15 @@
 """List loaded shared libraries / DLLs in the current Python process.
 
-Works on Linux (via /proc/self/maps) and Windows (via EnumProcessModules).
-Used by CI ABI diagnostic to confirm which CPython runtime is active.
+Works on Linux (via /proc/self/maps), macOS (via vmmap), and Windows
+(via EnumProcessModules).  Used by CI ABI diagnostic to confirm which
+CPython runtime is active.
 """
 
 from __future__ import print_function
 
 import os
 import sys
+import subprocess
 
 
 def _linux_list_libs():
@@ -25,8 +27,6 @@ def _linux_list_libs():
                 if (".so" in path or "libpython" in path.lower()) and path not in seen:
                     seen.add(path)
                     libs.append(path)
-    # Also try ldd on the python binary
-    import subprocess
 
     try:
         out = subprocess.check_output(["ldd", sys.executable], stderr=subprocess.STDOUT).decode(
@@ -40,6 +40,39 @@ def _linux_list_libs():
     except Exception:
         pass
     return sorted(libs)
+
+
+def _mac_list_libs():
+    """Use vmmap or otool to list loaded libraries on macOS."""
+    seen = set()
+    libs = []
+
+    pid = os.getpid()
+    try:
+        out = subprocess.check_output(["vmmap", "--no-header", str(pid)], stderr=subprocess.STDOUT).decode(
+            "utf-8", errors="replace"
+        )
+        for line in out.split("\n"):
+            line = line.strip()
+            if "Python" in line or "python" in line.lower() or line.startswith("/"):
+                path = line.split()[-1] if line else ""
+                if path.startswith("/") and path not in seen:
+                    seen.add(path)
+                    libs.append(path)
+    except Exception:
+        try:
+            out = subprocess.check_output(["otool", "-L", sys.executable], stderr=subprocess.STDOUT).decode(
+                "utf-8", errors="replace"
+            )
+            for line in out.split("\n"):
+                path = line.strip().split("(")[0].strip() if "(" in line else line.strip()
+                if path and path not in seen and ("python" in path.lower() or ".dylib" in path):
+                    seen.add(path)
+                    libs.append(path)
+        except Exception:
+            libs.append("ERROR: vmmap and otool both failed")
+
+    return libs
 
 
 def _windows_list_dlls():
@@ -92,6 +125,8 @@ def main():
 
     if sys.platform == "win32":
         libs = _windows_list_dlls()
+    elif sys.platform == "darwin":
+        libs = _mac_list_libs()
     else:
         libs = _linux_list_libs()
 

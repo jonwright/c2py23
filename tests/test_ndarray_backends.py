@@ -11,6 +11,19 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
+IS_FREE_THREADED = False
+try:
+    import sysconfig
+
+    IS_FREE_THREADED = sysconfig.get_config_var("Py_GIL_DISABLED") == 1
+except Exception:
+    pass
+# c2py23 deliberately skips ndarray struct-cast on FT builds because
+# the PyObject header layout differs (extra atomic refcounting fields).
+_ft_skip_ndarray_only = pytest.mark.skipif(
+    IS_FREE_THREADED, reason="ndarray struct-cast disabled on free-threaded Python (PyObject layout differs)"
+)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks", "build"))
 
 # These are built by the benchmark Makefile (called from run_tests.sh)
@@ -101,6 +114,7 @@ class TestNdarrayFastPath:
 
 
 @needs_modules
+@pytest.mark.skipif(IS_FREE_THREADED, reason="ndarray struct-cast disabled on free-threaded Python")
 class TestBackendSpecific:
     """Verify each acquisition backend works in isolation."""
 
@@ -119,6 +133,7 @@ class TestBackendSpecific:
         # Just verify import works.
         assert c2py_vnorm_buffer is not None
 
+    @pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
     def test_dlpack(self):
         """DLPACK backend: verify basic import and function signature.
 

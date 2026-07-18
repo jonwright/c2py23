@@ -65,12 +65,16 @@ jobs:
 
       - name: Install numpy (stable 3.x)
         if: matrix.python-version == '3.6' || matrix.python-version == '3.12' || matrix.python-version == '3.14'
-        run: python -m pip install numpy --quiet
+        run: "python -m pip install --only-binary=:all: numpy --quiet"
 
       - name: Install numpy (3.14t FT)
         if: matrix.python-version == '3.14t'
-        run: python -m pip install numpy --quiet 2>$null
+        run: "python -m pip install --only-binary=:all: numpy --quiet 2>$null"
         continue-on-error: true
+
+      - name: Install numpy (2.7)
+        if: matrix.python-version == '2.7'
+        run: "python -m pip install --only-binary=:all: 'numpy<1.17' --quiet"
 
       - name: Install numpy (3.15 pre-release / 3.15t via cgohlke MKL wheels)
         if: matrix.python-version == '3.15' || matrix.python-version == '3.15t'
@@ -151,7 +155,11 @@ jobs:
 
       - name: Install numpy (3.12)
         if: matrix.python-version != '2.7'
-        run: python -m pip install numpy --quiet
+        run: "python -m pip install --only-binary=:all: numpy --quiet"
+
+      - name: Install numpy (2.7)
+        if: matrix.python-version == '2.7'
+        run: "python -m pip install --only-binary=:all: 'numpy<1.17' --quiet"
 
       - name: Run tests (3.12, dlsym)
         if: matrix.python-version != '2.7'

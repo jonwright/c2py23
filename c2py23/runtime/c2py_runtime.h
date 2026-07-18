@@ -692,7 +692,12 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     if (t->shape && t->ndim > 0) {
         info->shape   = (Py_ssize_t*)t->shape;
         if (t->strides) {
-            info->strides = (Py_ssize_t*)t->strides;
+            /* DLPack strides are in elements; convert to bytes. */
+            int d;
+            for (d = 0; d < t->ndim; d++) {
+                pin->stride_buf[d] = (Py_ssize_t)t->strides[d] * info->itemsize;
+            }
+            info->strides = pin->stride_buf;
         } else if (t->ndim <= C2PY_MAX_NDIM) {
             /* Implied C-contiguous strides: last dim = itemsize,
              * each preceding dim = product of later dims * itemsize */
