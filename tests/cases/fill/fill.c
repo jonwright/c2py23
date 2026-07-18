@@ -3,36 +3,34 @@
 
 /* C2PY_BEGIN
 {
+    "module": "fillmod",
+    "source": ["fill.c"],
     "functions": [
         {
+            "py_sig": "fill(arr: buffer, value: float) -> void",
             "c_overloads": [
                 {
+                    "sig": "fill_f(float *arr, intptr_t n, float value)",
                     "map": {
                         "arr": "arr.ptr",
                         "n": "arr.n",
-                        "value": "value"
+                        "value": "value",
                     },
-                    "sig": "fill_f(float *arr, intptr_t n, float value)",
-                    "when": "arr.format == 'f'"
+                    "when": "arr.format == 'f'",
                 },
                 {
+                    "sig": "fill_d(double *arr, intptr_t n, double value)",
                     "map": {
                         "arr": "arr.ptr",
                         "n": "arr.n",
-                        "value": "value"
+                        "value": "value",
                     },
-                    "sig": "fill_d(double *arr, intptr_t n, double value)",
-                    "when": "arr.format == 'd'"
-                }
+                    "when": "arr.format == 'd'",
+                },
             ],
             "default_raise": "TypeError: expected float or double buffer",
-            "py_sig": "fill(arr: buffer, value: float) -> void"
-        }
+        },
     ],
-    "module": "fillmod",
-    "source": [
-        "fill.c"
-    ]
 }
 C2PY_END */
 

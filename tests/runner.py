@@ -67,18 +67,6 @@ def _module_name(c2py_path):
     except Exception:
         pass
 
-    # YAML format
-    try:
-        import yaml as _yaml
-
-        data = _yaml.safe_load(text)
-        if isinstance(data, dict):
-            name = data.get("module")
-            if name:
-                return name
-    except Exception:
-        pass
-
     # c2py parser (robust, handles all formats)
     try:
         from c2py23.parser import load_c2py

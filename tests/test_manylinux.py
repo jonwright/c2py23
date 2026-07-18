@@ -235,7 +235,7 @@ def phase1_master_build():
     build_cmd = (
         "cd /workspace && "
         "pip install -e . --quiet && "
-        "pip install pytest PyYAML setuptools wheel --quiet && "
+        "pip install pytest setuptools wheel --quiet && "
         "python3.12 tests/runner.py --no-test"
     )
     retcode, stdout, stderr = run_apptainer(MANYLINUX_SIF, build_cmd)
@@ -277,7 +277,7 @@ def phase2_cross_test(python_version, sif_file):
         test_cmd = (
             "cd /workspace && "
             "pip install -e . --quiet && "
-            "pip install pytest PyYAML setuptools wheel --quiet && " + system_py + " tests/runner.py --no-build"
+            "pip install pytest setuptools wheel --quiet && " + system_py + " tests/runner.py --no-build"
         )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)

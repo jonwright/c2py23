@@ -1,21 +1,22 @@
+# Python dict format equivalent of c2py_vnorm_bare.c2py
 {
-  "module": "c2py_vnorm_bare",
-  "source": ["tiny_kernel.c"],
-  "headers": ["tiny_kernel.h"],
-  "timing": false,
-  "functions": [
-    {
-      "py_sig": "vnorm(vec: buffer, mods: buffer) -> void",
-      "c_overloads": [
+    "module": "c2py_vnorm_bare",
+    "source": ["tiny_kernel.c"],
+    "headers": ["tiny_kernel.h"],
+    "timing": False,
+    "functions": [
         {
-          "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",
-          "map": {
-            "vec": "vec.ptr",
-            "mods": "mods.ptr",
-            "n": "vec.shape[0]"
-          }
-        }
-      ]
-    }
-  ]
+            "py_sig": "vnorm(vec: buffer, mods: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",
+                    "map": {
+                        "vec": "vec.ptr",
+                        "mods": "mods.ptr",
+                        "n": "vec.shape[0]",
+                    },
+                },
+            ],
+        },
+    ],
 }

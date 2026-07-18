@@ -32,7 +32,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           pip install -e . --quiet
-          pip install pytest PyYAML setuptools wheel --quiet
+          pip install pytest setuptools wheel --quiet
 
       - name: ABI diagnostic
         run: python tests/abi_list_dlls.py
@@ -68,7 +68,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML --quiet
+          python -m pip install pytest --quiet
 
       - name: Install numpy
         run: python -m pip install 'numpy<1.17' --quiet
@@ -95,13 +95,13 @@ jobs:
           allow-prereleases: true
 
       - name: Install c2py23
-        run: pip install -e ".[yaml]" setuptools wheel --quiet
+        run: pip install -e . setuptools wheel --quiet
 
       - name: Build and test pythonh
         env:
           CC: gcc
         run: |
-          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          python -m c2py23 tests/cases/fill/fill.c -o fillmod_wrapper.c
           CC=gcc LIBS="-ldl -lm" python -c "
           from setuptools import setup, Extension
           from c2py23.setuptools_helper import PythonhCmdclass

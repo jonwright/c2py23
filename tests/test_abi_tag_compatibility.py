@@ -117,16 +117,14 @@ def test_build_wheel(tmpdir):
     # .c2py interface
     c2py_path = os.path.join(src_dir, "mysum.c2py")
     with open(c2py_path, "w") as f:
-        f.write("module: _mysum\n")
-        f.write("source: [mysum.c]\n")
-        f.write("functions:\n")
-        f.write("  - py_sig: 'mysum(a: buffer, out: buffer) -> int'\n")
-        f.write("    checks:\n")
-        f.write("      - \"a.format == 'd'\"\n")
-        f.write("      - \"out.format == 'd'\"\n")
-        f.write("    c_overloads:\n")
-        f.write("      - sig: 'mysum(const double *a, intptr_t n, double *out) -> int'\n")
-        f.write("        map: {a: 'a.ptr', n: 'a.n', out: 'out.ptr'}\n")
+        f.write('{"module": "_mysum",\n')
+        f.write(' "source": ["mysum.c"],\n')
+        f.write(' "functions": [\n')
+        f.write('  {"py_sig": "mysum(a: buffer, out: buffer) -> int",\n')
+        f.write('   "checks": ["a.format == \'d\'", "out.format == \'d\'"],\n')
+        f.write('   "c_overloads": [\n')
+        f.write('    {"sig": "mysum(const double *a, intptr_t n, double *out) -> int",\n')
+        f.write('     "map": {"a": "a.ptr", "n": "a.n", "out": "out.ptr"}}]}]}' + "\n")
 
     # __init__.py with loader
     init_py = os.path.join(src_dir, "__init__.py")

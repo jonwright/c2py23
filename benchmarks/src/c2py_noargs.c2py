@@ -1,29 +1,30 @@
+# Python dict format equivalent of c2py_noargs.c2py
 {
-  "module": "c2py_noargs",
-  "source": ["tiny_kernel.c"],
-  "headers": ["tiny_kernel.h"],
-  "timing": true,
-  "functions": [
-    {
-      "py_sig": "noargs() -> void",
-      "c_overloads": [
+    "module": "c2py_noargs",
+    "source": ["tiny_kernel.c"],
+    "headers": ["tiny_kernel.h"],
+    "timing": True,
+    "functions": [
         {
-          "sig": "noop()",
-          "name": "noop",
-          "map": {}
-        }
-      ]
-    },
-    {
-      "py_sig": "varargs() -> void",
-      "c_overloads": [
+            "py_sig": "noargs() -> void",
+            "c_overloads": [
+                {
+                    "sig": "noop()",
+                    "name": "noop",
+                    "map": {},
+                },
+            ],
+        },
         {
-          "sig": "noop()",
-          "name": "noop_varargs",
-          "map": {}
-        }
-      ],
-      "checks": []
-    }
-  ]
+            "py_sig": "varargs() -> void",
+            "c_overloads": [
+                {
+                    "sig": "noop()",
+                    "name": "noop_varargs",
+                    "map": {},
+                },
+            ],
+            "checks": [],
+        },
+    ],
 }

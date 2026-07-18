@@ -1,15 +1,15 @@
-"""Parser for .c2py interface definition files.
+"""Parser for c2py23 interface definitions.
 
 Handles:
   - Python dict format (native, no dependency)
-  - YAML loading (via PyYAML)
+  - C2PY_BEGIN blocks embedded in C source files
   - C function signature parsing
   - Expression parsing (for 'when' conditions and 'map' substitutions)
   - Building the ModuleDef data model
 
-The entry point is `load_c2py(path)` which auto-detects the input format
-(Python dict or YAML).  For programmatic use, `from_c2py_dict(raw_dict, path)`
-accepts a Python dict directly.
+The entry point is `load_c2py(path)` which auto-detects the input format.
+For programmatic use, `from_c2py_dict(raw_dict, path)` accepts a Python dict
+directly.
 """
 
 from __future__ import print_function
@@ -20,13 +20,6 @@ import re
 import sys
 import warnings
 from collections import namedtuple
-
-try:
-    import yaml as _yaml
-
-    _HAS_YAML = True
-except ImportError:
-    _HAS_YAML = False
 
 # Python 2/3 compat: str covers bytes+unicode on 2.x, text on 3.x
 if sys.version_info[0] >= 3:
@@ -336,19 +329,18 @@ def from_c2py_dict(raw_dict, path="<dict>"):
 def load_c2py(path):
     """Load and parse an interface definition, returning a ModuleDef.
 
-    Supports three formats, auto-detected:
+    Supports two formats, auto-detected:
       1. C source (.c, .h): C2PY_BEGIN..C2PY_END blocks embedded in
-         comments (parsed via c2py23.harvester, no dependencies).
-      2. Python dict (.c2py or .c2py.py): a file containing a Python
-         dict literal (parsed via ast.literal_eval, no PyYAML needed).
+         comments (parsed via c2py23.harvester).
+      2. Python dict (.c2py, .c2py.py): a file containing a Python
+         dict literal (parsed via ast.literal_eval).
          Lines starting with '#' are stripped as comments.
-      3. YAML (.c2py): standard YAML format (requires PyYAML).
 
     For .c and .h files, interface definitions are embedded as:
         /* C2PY_BEGIN
-        module: mymod
-        source: [mymod.c]
-        functions: ...
+        "module": "mymod",
+        "source": ["mymod.c"],
+        "functions": ...
         C2PY_END */
     """
     # C source files -- extract C2PY_BEGIN blocks via harvester
@@ -371,27 +363,16 @@ def load_c2py(path):
     try:
         stripped = re.sub(r"(?m)^\s*#.*$", "", text)
         raw = ast.literal_eval(stripped)
-        if isinstance(raw, dict):
-            mod = from_c2py_dict(raw, path)
-            base_dir = os.path.dirname(os.path.abspath(path))
-            _validate_module(mod, base_dir)
-            return mod
     except (ValueError, SyntaxError):
-        pass
+        raw = None
 
-    # Fall back to YAML
-    if not _HAS_YAML:
-        raise ImportError(
-            "Could not parse '{}' as a Python dict and PyYAML is not installed.\n"
-            "Install PyYAML with: pip install PyYAML\n"
-            "Or use the Python dict format (see docs/specification.md).".format(path)
-        )
+    if isinstance(raw, dict):
+        mod = from_c2py_dict(raw, path)
+        base_dir = os.path.dirname(os.path.abspath(path))
+        _validate_module(mod, base_dir)
+        return mod
 
-    raw = _yaml.safe_load(text)
-    mod = from_c2py_dict(raw, path)
-    base_dir = os.path.dirname(os.path.abspath(path))
-    _validate_module(mod, base_dir)
-    return mod
+    raise ValueError("Could not parse '{}': not a valid Python dict".format(path))
 
 
 def _get_required(d, key, path):

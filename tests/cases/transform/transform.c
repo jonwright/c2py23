@@ -1,50 +1,6 @@
 #include <stdint.h>
 /* transform.c - in-place 2D transform: AoS vs SoA dispatch */
 
-/* C2PY_BEGIN
-{
-    "free_threading": true,
-    "functions": [
-        {
-            "c_overloads": [
-                {
-                    "map": {
-                        "n": "points.shape[0]",
-                        "out": "out.ptr",
-                        "points": "points.ptr"
-                    },
-                    "sig": "transform_aos(double *points, intptr_t n, double *out)",
-                    "when": "points.shape[1] == 3"
-                },
-                {
-                    "map": {
-                        "n": "points.shape[1]",
-                        "out": "out.ptr",
-                        "points": "points.ptr"
-                    },
-                    "sig": "transform_soa(double *points, intptr_t n, double *out)",
-                    "when": "points.shape[0] == 3"
-                }
-            ],
-            "checks": [
-                "points.format == 'd'",
-                "out.format == 'd'",
-                "out.n == points.n",
-                "points.ndim == 2",
-                "points.slow_axis == 0"
-            ],
-            "default_raise": "ValueError: expected [N,3] or [3,N] buffer",
-            "py_sig": "transform(points: buffer, out: buffer) -> void"
-        }
-    ],
-    "module": "xfrm",
-    "source": [
-        "transform.c"
-    ],
-    "timing": true
-}
-C2PY_END */
-
 void transform_aos(double *points, intptr_t n, double *out) {
     /* points: [n, 3] layout (array of structs) */
     int i;

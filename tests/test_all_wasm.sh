@@ -154,23 +154,23 @@ FAILED_BUILDS=0
 
 # 17 uniform test modules (order matches test runner)
 for pair in \
-    "fill|$CASES/fill/fill.c2py" \
-    "arraysum|$CASES/arraysum/arraysum.c2py" \
-    "dot|$CASES/dot/dot.c2py" \
-    "types|$CASES/types/types.c2py" \
-    "optional|$CASES/optional/optional.c2py" \
-    "scalar_output|$CASES/scalar_output/stats.c2py" \
-    "template|$CASES/template/sum.c2py" \
-    "constants|$CASES/constants/constants.c2py" \
-    "docstring|$CASES/docstring/docstring.c2py" \
-    "timing|$CASES/timing/timing.c2py" \
-    "typedispatch|$CASES/typedispatch/typedispatch.c2py" \
-    "address|$CASES/address/address.c2py" \
-    "array_sig|$CASES/array_sig/array_sig.c2py" \
-    "simd_dispatch|$CASES/simd_dispatch/simd_fill.c2py" \
-    "freethreading|$CASES/freethreading/freethread.c2py" \
-    "transform|$CASES/transform/transform.c2py" \
-    "gil_release|$CASES/gil_release/sleep_fill.c2py" \
+    "fill|$CASES/fill/fill.c" \
+    "arraysum|$CASES/arraysum/arraysum.c" \
+    "dot|$CASES/dot/dot.c" \
+    "types|$CASES/types/types.c" \
+    "optional|$CASES/optional/optional.c" \
+    "scalar_output|$CASES/scalar_output/stats.c" \
+    "template|$CASES/template/template.c" \
+    "constants|$CASES/constants/constants.c" \
+    "docstring|$CASES/docstring/docstring.c" \
+    "timing|$CASES/timing/timing.c" \
+    "typedispatch|$CASES/typedispatch/typedispatch.c" \
+    "address|$CASES/address/address.c" \
+    "array_sig|$CASES/array_sig/array_sig.c" \
+    "simd_dispatch|$CASES/simd_dispatch/simd_fill.c" \
+    "freethreading|$CASES/freethreading/freethread.c" \
+    "transform|$CASES/transform/transform.c" \
+    "gil_release|$CASES/gil_release/sleep_fill.c" \
 ; do
     label="${pair%%|*}"
     c2py="${pair##*|}"

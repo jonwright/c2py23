@@ -1,31 +1,5 @@
 #include <stdint.h>
 
-/* C2PY_BEGIN
-{
-    "free_threading": true,
-    "functions": [
-        {
-            "c_overloads": [
-                {
-                    "map": {
-                        "n": "n",
-                        "seed": "seed"
-                    },
-                    "sig": "mc_pi_serial(int n, int seed) -> int"
-                }
-            ],
-            "doc": "Monte Carlo Pi estimation (serial, GIL released).",
-            "gil_release": true,
-            "py_sig": "mc_pi(n: int, seed: int = 0) -> int"
-        }
-    ],
-    "module": "mcpimod",
-    "source": [
-        "mc_pi.c"
-    ]
-}
-C2PY_END */
-
 typedef struct { uint64_t s; } xrs128_t;
 
 static inline uint64_t xrs128_next(xrs128_t *st) {

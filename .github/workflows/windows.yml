@@ -61,7 +61,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML setuptools wheel --quiet
+          python -m pip install pytest setuptools wheel --quiet
 
       - name: Install numpy (stable 3.x)
         if: matrix.python-version == '3.6' || matrix.python-version == '3.12' || matrix.python-version == '3.14'
@@ -147,7 +147,7 @@ jobs:
       - name: Install c2py23 and test deps
         run: |
           python -m pip install -e . --quiet
-          python -m pip install pytest PyYAML setuptools wheel --quiet
+          python -m pip install pytest setuptools wheel --quiet
 
       - name: Install numpy (3.12)
         if: matrix.python-version != '2.7'
@@ -172,7 +172,7 @@ jobs:
         env:
           CC: cl
         run: |
-          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          python -m c2py23 tests/cases/fill/fill.c -o fillmod_wrapper.c
           python -c "from setuptools import setup, Extension; from c2py23.setuptools_helper import PythonhCmdclass; setup(name='fill_ph', ext_modules=[Extension('fillmod', ['fillmod_wrapper.c', 'tests/cases/fill/fill.c', 'c2py23/runtime/c2py_runtime.c'], include_dirs=['c2py23/runtime', 'tests/cases/fill'])], cmdclass=PythonhCmdclass, script_args=['build_ext', '--inplace'])"
           python -c "import sys, ctypes, importlib.util, importlib.machinery, sysconfig; ext = sysconfig.get_config_var('EXT_SUFFIX') or '.pyd'; l = importlib.machinery.ExtensionFileLoader('fillmod', 'fillmod' + ext); s = importlib.util.spec_from_file_location('fillmod', 'fillmod' + ext, loader=l); m = importlib.util.module_from_spec(s); l.exec_module(m); arr = (ctypes.c_float * 4)(0,0,0,0); m.fill(arr, 42.0); assert list(arr) == [42.0, 42.0, 42.0, 42.0]; print('Python 3.12 i386 --pythonh: PASS')"
 
@@ -183,6 +183,6 @@ jobs:
           DISTUTILS_USE_SDK: "1"
           MSSdk: "1"
         run: |
-          python -m c2py23 tests/cases/fill/fill.c2py -o fillmod_wrapper.c
+          python -m c2py23 tests/cases/fill/fill.c -o fillmod_wrapper.c
           python -c "from setuptools import setup, Extension; from c2py23.setuptools_helper import PythonhCmdclass; setup(name='fill_ph', ext_modules=[Extension('fillmod', ['fillmod_wrapper.c', 'tests/cases/fill/fill.c', 'c2py23/runtime/c2py_runtime.c'], include_dirs=['c2py23/runtime', 'tests/cases/fill'])], cmdclass=PythonhCmdclass, script_args=['build_ext', '--inplace'])"
           python -c "import sys, ctypes, sysconfig, imp; ext = sysconfig.get_config_var('EXT_SUFFIX') or '.pyd'; m = imp.load_dynamic('fillmod', 'fillmod' + ext); arr = (ctypes.c_float * 4)(0,0,0,0); m.fill(arr, 42.0); assert list(arr) == [42.0, 42.0, 42.0, 42.0]; print('Python 2.7 i386 --pythonh: PASS')"

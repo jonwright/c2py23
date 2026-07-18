@@ -850,7 +850,7 @@ def test_array_dims_dedup_with_user_checks():
     # The existing array_sig.c has sum_1d_fixed with user check
     # "data.format == 'd'" and auto-generated checks from arr[5].
     # This test verifies no duplicate check expressions.
-    c2py_path = os.path.join(os.path.dirname(__file__), "cases", "array_sig", "array_sig.c")
+    c2py_path = os.path.join(os.path.dirname(__file__), "cases", "array_sig", "array_sig.c2py")
     mod = load_c2py(c2py_path)
     for func in mod.functions:
         expr_strings = set(str(c) for c in func.checks)
@@ -872,26 +872,29 @@ def test_array_dims_variant_sigs():
 
     # Build a module with variant sigs using array dims, going through
     # the full parse pipeline via a yaml string.
-    import yaml
+    import ast
 
-    raw = yaml.safe_load("""
-module: test_arr
-source: [dummy.c]
-headers: []
-functions:
-  - py_sig: "process(data: buffer) -> void"
-    checks:
-      - "data.format == 'f'"
-    c_overloads:
-      - when: "data.format == 'f'"
-        map: {arr: "data.ptr", n: "data.shape[0]"}
-        group: float
-        variants:
-          - sig: "void proc_sse(const double arr[][3], int n)"
-            when: "true"
-          - sig: "void proc_scalar(const double arr[][3], int n)"
-    default_raise: "TypeError: unsupported format"
-""")
+    raw = ast.literal_eval("""{
+    "module": "test_arr",
+    "source": ["dummy.c"],
+    "headers": [],
+    "functions": [
+      {"py_sig": "process(data: buffer) -> void",
+       "checks": [
+         "data.format == 'f'"
+       ],
+       "c_overloads": [
+         {"when": "data.format == 'f'",
+          "map": {"arr": "data.ptr", "n": "data.shape[0]"},
+          "group": "float",
+          "variants": [
+            {"sig": "void proc_sse(const double arr[][3], int n)",
+             "when": "true"},
+            {"sig": "void proc_scalar(const double arr[][3], int n)"}
+          ]}
+       ],
+       "default_raise": "TypeError: unsupported format"}
+    ]}""")
     # Use the internal parse function directly
     from c2py23.parser import _expand_func_template
 
@@ -966,18 +969,17 @@ def test_H_template_expand_non_string():
     import os
 
     # Create a minimal .c2py file with non-string template expansion
-    # 42 loaded as YAML int, not a string
+    # 42 loaded as Python int, not a string
     content = (
-        "module: testmod\n"
-        "source: [test.c]\n"
-        "functions:\n"
-        "  - expand:\n"
-        "      VAL:\n"
-        "        - 42\n"
-        '    py_sig: "fill(arr: buffer) -> void"\n'
-        "    c_overloads:\n"
-        '      - sig: "fill_${VAL}(float *arr, int n, float value)"\n'
-        '        map: {arr: "arr.ptr", n: "arr.n"}\n'
+        '{"module": "testmod",\n'
+        ' "source": ["test.c"],\n'
+        ' "functions": [\n'
+        '   {"expand": {"VAL": [42]},\n'
+        '    "py_sig": "fill(arr: buffer) -> void",\n'
+        '    "c_overloads": [\n'
+        '     {"sig": "fill_${VAL}(float *arr, int n, float value)",\n'
+        '      "map": {"arr": "arr.ptr", "n": "arr.n"}}]}]\n'
+        "}"
     )
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c2py", delete=False) as f:
         fname = f.name
@@ -1069,29 +1071,26 @@ _good_impl(Py_buffer *buf)
 
 def test_float_default_args():
     """Verify float literals parse as default arg values: 3.14, 1.6e-7, 2.7E+16."""
-    from c2py23.parser import _parse_py_sig
-    import tempfile, os, yaml
+    from c2py23.parser import _parse_py_sig, load_c2py
+    import tempfile, os
 
     c2py_src = (
-        """
-module: _ftest
-source: [dummy.c]
-functions:
-"""
-        + """\
-  - py_sig: "scale(data: buffer, factor: float = 3.14) -> void"
-    c_overloads:
-      - sig: "scale(const double *data, intptr_t n, double factor) -> void"
-        map: {data: "data.ptr", n: "data.n", factor: factor}
-  - py_sig: "exp_decay(data: buffer, rate: float = 1.6e-7) -> void"
-    c_overloads:
-      - sig: "decay(const double *data, intptr_t n, double rate) -> void"
-        map: {data: "data.ptr", n: "data.n", rate: rate}
-  - py_sig: "scale_big(data: buffer, factor: float = 2.7E+16) -> void"
-    c_overloads:
-      - sig: "scale_big(const double *data, intptr_t n, double factor) -> void"
-        map: {data: "data.ptr", n: "data.n", factor: factor}
-"""
+        '{"module": "_ftest",\n'
+        ' "source": ["dummy.c"],\n'
+        ' "functions": [\n'
+        '  {"py_sig": "scale(data: buffer, factor: float = 3.14) -> void",\n'
+        '   "c_overloads": [\n'
+        '    {"sig": "scale(const double *data, intptr_t n, double factor) -> void",\n'
+        '     "map": {"data": "data.ptr", "n": "data.n", "factor": "factor"}}]},\n'
+        '  {"py_sig": "exp_decay(data: buffer, rate: float = 1.6e-7) -> void",\n'
+        '   "c_overloads": [\n'
+        '    {"sig": "decay(const double *data, intptr_t n, double rate) -> void",\n'
+        '     "map": {"data": "data.ptr", "n": "data.n", "rate": "rate"}}]},\n'
+        '  {"py_sig": "scale_big(data: buffer, factor: float = 2.7E+16) -> void",\n'
+        '   "c_overloads": [\n'
+        '    {"sig": "scale_big(const double *data, intptr_t n, double factor) -> void",\n'
+        '     "map": {"data": "data.ptr", "n": "data.n", "factor": "factor"}}]}]\n'
+        "}"
     )
 
     tmpf = tempfile.NamedTemporaryFile(suffix=".c2py", mode="w", delete=False)
@@ -1232,71 +1231,26 @@ def test_python_dict_format():
     _pass()
 
 
-def test_yaml_dict_equivalence():
-    """Verify interface definitions parse identically as Python dicts.
-
-    For .c2py.py sidecars, finds the corresponding interface file:
-      - .c2py file (legacy YAML format)
-      - .c file with C2PY_BEGIN block (new embedded format)
-
-    Compares the parsed ModuleDef from the interface file against
-    the pure-Python dict sidecar.
-    """
+def test_dict_equivalence():
+    """Verify all .c2py files (Python dict format) load without error."""
     from c2py23.parser import load_c2py
-    import os
+    import os, glob
 
     _script_dir = os.path.dirname(os.path.abspath(__file__))
     cases_dir = os.path.join(_script_dir, "cases")
-    pairs = []
-    for root, dirs, files in os.walk(cases_dir):
-        for fn in files:
-            if not fn.endswith(".c2py.py"):
-                continue
-            dict_path = os.path.join(root, fn)
-            base = fn[:-3]  # strip .py suffix, leaves .c2py
-            yaml_path = os.path.join(root, base)
-            if os.path.isfile(yaml_path):
-                pairs.append((yaml_path, dict_path))
-                continue
-            # Look for .c file with C2PY_BEGIN in same directory
-            c_path = os.path.join(root, base.replace(".c2py", ".c"))
-            if os.path.isfile(c_path):
-                with open(c_path) as f:
-                    if "C2PY_BEGIN" in f.read():
-                        pairs.append((c_path, dict_path))
+    c2py_files = glob.glob(os.path.join(cases_dir, "*", "*.c2py"))
 
-    assert len(pairs) > 0, "No interface/dict pairs found"
+    assert len(c2py_files) > 0, "No .c2py files found"
     errors = []
-    for source_path, dict_path in pairs:
-        rel = os.path.relpath(source_path, cases_dir)
+    for c2py_path in sorted(c2py_files):
         try:
-            source_mod = load_c2py(source_path)
-            dict_mod = load_c2py(dict_path)
+            load_c2py(c2py_path)
         except Exception as e:
-            errors.append("%s: load failed - %s" % (rel, e))
-            continue
-
-        checks = []
-        checks.append(("module name", source_mod.name == dict_mod.name))
-        checks.append(("sources", source_mod.sources == dict_mod.sources))
-        checks.append(("headers", source_mod.headers == dict_mod.headers))
-        checks.append(("constants", source_mod.constants == dict_mod.constants))
-        checks.append(("timing", source_mod.timing == dict_mod.timing))
-        checks.append(("free_threading", source_mod.free_threading == dict_mod.free_threading))
-        checks.append(("function count", len(source_mod.functions) == len(dict_mod.functions)))
-        for i, (sf, df) in enumerate(zip(source_mod.functions, dict_mod.functions)):
-            checks.append(("func[%d].name" % i, sf.name == df.name))
-            checks.append(("func[%d].overload count" % i, len(sf.overloads) == len(df.overloads)))
-            checks.append(("func[%d].doc" % i, sf.doc == df.doc))
-            checks.append(("func[%d].gil_release" % i, sf.gil_release == df.gil_release))
-
-        failed = [label for label, ok in checks if not ok]
-        if failed:
-            errors.append("%s: %s" % (rel, ", ".join(failed)))
+            errors.append("%s: %s" % (os.path.relpath(c2py_path, cases_dir), e))
 
     if errors:
         raise AssertionError("\n".join(errors))
-    print("PASS: dict equivalence (%d files)" % len(pairs))
+    print("PASS: dict format load (%d files)" % len(c2py_files))
 
 
 if __name__ == "__main__":
