@@ -133,6 +133,7 @@ class TestBackendSpecific:
         # Just verify import works.
         assert c2py_vnorm_buffer is not None
 
+    @pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
     def test_dlpack(self):
         """DLPACK backend: verify basic import and function signature.
 
