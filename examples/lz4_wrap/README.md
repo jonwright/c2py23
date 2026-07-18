@@ -60,14 +60,23 @@ int lz4_decompress(const uint8_t *src, uint8_t *dst, int compressedSize, int dst
 ## Build
 
 ```bash
-$ c2py23 build lz4.c2py
+$ c2py23 lz4.c2py -o lz4mod_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c lz4mod_wrapper.c lz4_thin.c -I c2py23/runtime -o lz4mod.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 
 ## Run
 
 ```python
 """Example: use the lz4mod wrapper from Python.
-Build with: c2py23 build lz4.c2py"""
+Build with: make"""
 from __future__ import print_function
 
 import ctypes

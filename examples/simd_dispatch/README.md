@@ -84,8 +84,17 @@ void KERNEL_FN(const float *a, const float *b, float *out, int n)
 ## Build
 
 ```bash
-$ c2py23 build polysimd.c2py
+$ c2py23 polysimd.c2py -o _polysimd_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c _polysimd_wrapper.c poly_kernel.c -I c2py23/runtime -o _polysimd.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 
 ## Run
 

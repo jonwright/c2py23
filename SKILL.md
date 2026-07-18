@@ -65,10 +65,13 @@ functions:
 ### 2. Build the module
 
 ```bash
-c2py23 build mymod.c2py
+c2py23 mymod.c2py -o mymod_wrapper.c
+cc -shared -fPIC -I c2py23/runtime \
+    c2py23/runtime/c2py_runtime.c mymod_wrapper.c mymod.c \
+    -o mymod.so -ldl -lm
 ```
 
-This produces `mymod.so` (or `.pyd` on Windows).
+See `docs/building.md` for alternative build systems (CMake, Meson, setuptools).
 
 ### 3. Use from Python
 
@@ -167,10 +170,9 @@ c2py23 dispatches to the correct C function based on buffer properties at call t
 
 ```bash
 pip install -e .                       # install c2py23 in dev mode
-c2py23 build mymod.c2py                # build a module
-c2py23 build --asan mymod.c2py        # build with Address Sanitizer
-python -m pytest tests/                # run all tests
-bash tests/run_tests.sh python3.12     # build + test for one Python version
+c2py23 mymod.c2py -o mymod_wrapper.c    # generate wrapper (see docs/building.md)
+python tests/runner.py                  # build + test all modules
+python tests/runner.py --no-build       # test only (use existing .so files)
 python3 tests/test_all.py              # cross-version container validation
 ```
 

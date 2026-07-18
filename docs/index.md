@@ -13,8 +13,9 @@ See [--pythonh mode](pythonh.md).
 
 1. Write a `.c2py` interface file describing your C function signatures, buffer
    formats, and dispatch conditions
-2. Run `c2py23 mymod.c2py -o mymod_wrapper.c` -- generates a C wrapper (compile with any C99 compiler)
-3. Import the resulting `.so` from Python and call your C functions with
+2. Run `c2py23 mymod.c2py -o mymod_wrapper.c` to generate the wrapper
+3. Compile with any C99 compiler: `cc -shared ... mymod_wrapper.c ... -o mymod.so`
+4. Import the resulting `.so` from Python and call your C functions with
    ctypes arrays, memoryviews, or any buffer-protocol object
 
 ## Key Features
@@ -68,6 +69,7 @@ arraysum.add_arrays(a, b, out)
 ## Where to Go Next
 
 - [Getting Started](getting_started.md) -- install and build your first module
+- [Building Extensions](building.md) -- cmake, meson, setuptools, wheel packaging
 - [User Guide](user_guide.md) -- thread safety, timing, packaging
 - [Specification](specification.md) -- full grammar and architecture
 - [Examples](examples/simd_dispatch.md) -- worked examples with live test output

@@ -1,5 +1,6 @@
 """Example: use the kissfftmod wrapper from Python.
-Build with: c2py23 build kissfft.c2py"""
+Build with: make"""
+
 from __future__ import print_function
 
 import ctypes

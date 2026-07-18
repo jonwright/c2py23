@@ -284,7 +284,7 @@ See [Getting Started](getting_started.md) for installation and first build.
 c2py23 mymod.c2py -o mymod_wrapper.c
 
 # Test single Python version
-bash tests/run_tests.sh python3.12
+python tests/runner.py
 
 # Test all versions via snakepit containers
 python3 tests/test_all.py
@@ -354,7 +354,7 @@ Build the .so inside a manylinux2014 container (glibc 2.17) for
 maximum portability:
 
 ```bash
-c2py23 generate mymodule.c2py -o wrapper.c
+c2py23 mymodule.c2py -o wrapper.c
 gcc -shared -fPIC -I c2py23/runtime wrapper.c mymodule.c c2py_runtime.c \
     -o mymodule/_mymodule.c2py23-linux_x86_64.so
 python3 -m build

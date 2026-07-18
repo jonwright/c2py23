@@ -19,11 +19,11 @@ Packages a c2py23 module as a `py3-none-any` wheel using the Meson build system.
 ## How It Works
 
 `build.sh`:
-1. Generates the wrapper C file with `c2py23 generate`
+1. Generates the wrapper C file with `c2py23`
 2. Configures and builds with Meson
 3. Copies the `.so` into the `arraysum/` package directory
 4. Builds the wheel with `python3 -m build`
 
-The `meson.build` file invokes `c2py23 generate` via `run_command()`,
+The `meson.build` file invokes `c2py23` via `run_command()`,
 then builds the `.so` with `shared_library()` using the generated wrapper,
 runtime, and user source files.

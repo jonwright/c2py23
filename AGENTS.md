@@ -222,7 +222,7 @@ gcc -std=c99 -Wall tests/check_dlpack_abi.c -o /tmp/check_dlpack_abi
 
 Regenerate the committed example wrapper (pre-commit hook runs automatically):
 ```bash
-python3 -m c2py23.cli generate tests/cases/transform/transform.c2py \
+python3 -m c2py23 tests/cases/transform/transform.c2py \
     -o tests/cases/transform/xfrm_wrapper.c
 ```
 

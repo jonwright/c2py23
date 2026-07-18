@@ -38,6 +38,15 @@ int array_sum(const double *a, const double *b, double *result, int n) {
 ## Build
 
 ```bash
-$ c2py23 build arraysum.c2py
+$ c2py23 arraysum.c2py -o _arraysum_wrapper.c
 ```
+
+
+Compile:
+
+```bash
+$ cc -shared -fPIC c2py23/runtime/c2py_runtime.c _arraysum_wrapper.c arraysum.c -I c2py23/runtime -o _arraysum.so -ldl -lm
+```
+
+See [docs/building](building) for cmake, meson, and setuptools options.
 

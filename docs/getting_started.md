@@ -40,13 +40,16 @@ functions:
         map: {a: "a.ptr", b: "b.ptr", n: "a.n", out: "out.ptr"}
 ```
 
-Build it:
+Generate and compile it:
 
 ```bash
+# Generate the C wrapper
 c2py23 myadd.c2py -o myadd_wrapper.c
-```
 
-This produces `myadd.c2py23-linux_x86_64.so` (name varies by platform).
+# Compile (see docs/building.md for all options)
+cc -shared -fPIC c2py23/runtime/c2py_runtime.c myadd_wrapper.c myadd.c \
+    -I c2py23/runtime -o myadd.so -ldl -lm
+```
 
 Use it from Python:
 
@@ -63,5 +66,6 @@ myadd.add_arrays(a, b, out)
 ## Next Steps
 
 - Learn the [.c2py grammar](specification.md) in full
-- Read the [User Guide](user_guide.md) for thread safety, timing, and packaging
+- Read the [Building Extensions](building.md) guide for cmake, meson, setuptools, and wheel packaging
+- See the [User Guide](user_guide.md) for thread safety, timing, and packaging
 - Study [the examples](examples/simd_dispatch.md)

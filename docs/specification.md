@@ -1331,7 +1331,7 @@ Makefile and Python test harness).
 c2ImageD11 uses `C2PY_BEGIN` blocks embedded in C comments to define its
 c2py23 interface.  The `tools/harvester.py` script extracts these blocks
 as Python dicts (via `ast.literal_eval()`), assembles them into a YAML
-file (`lib/interface/_cImageD11.c2py`), and runs `c2py23 generate` to
+file (`lib/interface/_cImageD11.c2py`), and runs `c2py23` to
 produce the wrapper.
 
 With c2py23's native dict format support, the YAML intermediate step
@@ -1347,7 +1347,7 @@ yaml_text = yaml.dump(assembled, ...)
 with open("_cImageD11.c2py", "w") as f:
     f.write(yaml_text)
 # Shell out to c2py23:
-subprocess.check_call(["python3", "-m", "c2py23.cli", "generate",
+subprocess.check_call(["python3", "-m", "c2py23",
                         c2py_path, "-o", wrapper_path])
 ```
 

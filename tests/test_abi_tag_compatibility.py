@@ -159,8 +159,8 @@ def test_build_wheel(tmpdir):
     gen_cmd = [sys.executable, "-m", "c2py23", c2py_path, "-o", wrapper_c]
     rc, out, err = _run(gen_cmd)
     if rc != 0:
-        print("c2py23 generate failed:", err, file=sys.stderr)
-        raise AssertionError("c2py23 generate failed: %s" % err)
+        print("wrapper generation failed:", err, file=sys.stderr)
+        raise AssertionError("wrapper generation failed: %s" % err)
 
     import shutil
 
