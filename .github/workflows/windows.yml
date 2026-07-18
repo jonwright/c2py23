@@ -85,14 +85,14 @@ jobs:
         if: matrix.python-version != '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short
 
       - name: Run tests (2.7)
         if: matrix.python-version == '2.7'
         env:
           CC: cl
-          DISTUTILS_USE_SDK: "1"
-          MSSdk: "1"
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
 
   # i386: dlsym + pythonh (end members for 32-bit coverage)
@@ -157,14 +157,14 @@ jobs:
         if: matrix.python-version != '2.7'
         env:
           CC: cl
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short
 
       - name: Run tests (2.7, dlsym)
         if: matrix.python-version == '2.7'
         env:
           CC: cl
-          DISTUTILS_USE_SDK: "1"
-          MSSdk: "1"
+          MSVC: "1"
         run: python -m pytest tests/ -v --durations=10 --tb=short --ignore=tests/test_peer_review.py --ignore=tests/test_aos_soa.py
 
       - name: Build and test (pythonh, 3.12)

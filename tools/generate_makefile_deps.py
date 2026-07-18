@@ -66,36 +66,35 @@ def main():
     print()
 
     for dir_rel, mod, c2py_fn, c_fn in modules:
-        print(
-            "{dir}/{mod}_wrapper.c: {dir}/{c2py} $(RUNTIME_HDRS)".format(
-                dir=dir_rel,
-                mod=mod,
-                c2py=c2py_fn,
-            )
-        )
-        print(
-            "\tpython3 -m c2py23 {dir}/{c2py} -o $@".format(
-                dir=dir_rel,
-                c2py=c2py_fn,
-            )
-        )
+        # Wrapper generation (shared)
+        print("{dir}/{mod}_wrapper.c: {dir}/{c2py} $(RUNTIME_HDRS)".format(dir=dir_rel, mod=mod, c2py=c2py_fn))
+        print("\tpython3 -m c2py23 {dir}/{c2py} -o $@".format(dir=dir_rel, c2py=c2py_fn))
         print()
+
+        # Compile rule -- Unix (gcc/clang)
+        print("ifndef MSVC")
         print(
             "{dir}/{mod}$(EXT): {dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC)".format(
-                dir=dir_rel,
-                mod=mod,
-                c_fn=c_fn,
+                dir=dir_rel, mod=mod, c_fn=c_fn
             )
         )
         print("\t$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -I{dir} \\".format(dir=dir_rel))
+        print("\t\t{dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC) \\".format(dir=dir_rel, mod=mod, c_fn=c_fn))
+        print("\t\t-o $@ $(LDFLAGS) $(LIBS)")
+        print("endif")
+        print()
+
+        # Compile rule -- Windows MSVC (cl)
+        print("ifdef MSVC")
         print(
-            "\t\t{dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC) \\".format(
-                dir=dir_rel,
-                mod=mod,
-                c_fn=c_fn,
+            "{dir}/{mod}$(EXT): {dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC)".format(
+                dir=dir_rel, mod=mod, c_fn=c_fn
             )
         )
-        print("\t\t-o $@ $(LDFLAGS) $(LIBS)")
+        print("\t$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /I{dir} \\".format(dir=dir_rel))
+        print("\t\t{dir}/{mod}_wrapper.c {dir}/{c_fn} $(RUNTIME_SRC) \\".format(dir=dir_rel, mod=mod, c_fn=c_fn))
+        print("\t\t/link /OUT:$@ $(LDFLAGS)")
+        print("endif")
         print()
 
 

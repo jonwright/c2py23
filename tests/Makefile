@@ -10,8 +10,6 @@
 CC       ?= gcc
 CFLAGS   ?= -O2 -Wall -fPIC
 LDFLAGS  ?=
-LIBS     ?= -ldl -lm
-EXT      ?= .so
 
 RUNTIME_SRC  := c2py23/runtime/c2py_runtime.c
 RUNTIME_INC  := c2py23/runtime
@@ -19,36 +17,54 @@ RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
                 c2py23/runtime/c2py_dlsym.h \
                 c2py23/runtime/c2py_pythonh.h
 
+ifdef MSVC
+  EXT      ?= .pyd
+  LIBS     ?=
+else
+  EXT      ?= .so
+  LIBS     ?= -ldl -lm
+endif
+
 # ---- generated per-module rules ----
 include tests/test_makefile_deps.mk
 
 # ---- examples with non-standard source structures ----
-examples/kissfft_wrap/kissfftmod$(EXT): examples/kissfft_wrap/kissfftmod_wrapper.c \
-		examples/kissfft_wrap/kissfft_thin.c $(RUNTIME_SRC) \
-		examples/kissfft/kiss_fft.c examples/kissfft/kiss_fftr.c
-	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/kissfft_wrap -Iexamples/kissfft \
-		examples/kissfft_wrap/kissfftmod_wrapper.c \
-		examples/kissfft_wrap/kissfft_thin.c \
-		examples/kissfft/kiss_fft.c \
-		examples/kissfft/kiss_fftr.c \
-		$(RUNTIME_SRC) \
-		-o $@ $(LDFLAGS) $(LIBS) -lm
-
 examples/kissfft_wrap/kissfftmod_wrapper.c: examples/kissfft_wrap/kissfft.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 examples/kissfft_wrap/kissfft.c2py -o $@
 
-examples/lz4_wrap/lz4mod$(EXT): examples/lz4_wrap/lz4mod_wrapper.c \
-		examples/lz4_wrap/lz4_thin.c $(RUNTIME_SRC) \
-		examples/lz4/lib/lz4.c
-	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/lz4_wrap -Iexamples/lz4/lib \
-		examples/lz4_wrap/lz4mod_wrapper.c \
-		examples/lz4_wrap/lz4_thin.c \
-		examples/lz4/lib/lz4.c \
-		$(RUNTIME_SRC) \
-		-o $@ $(LDFLAGS) $(LIBS)
-
 examples/lz4_wrap/lz4mod_wrapper.c: examples/lz4_wrap/lz4.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 examples/lz4_wrap/lz4.c2py -o $@
+
+KISSFFT_SRC := examples/kissfft_wrap/kissfftmod_wrapper.c \
+              examples/kissfft_wrap/kissfft_thin.c \
+              examples/kissfft/kiss_fft.c \
+              examples/kissfft/kiss_fftr.c \
+              $(RUNTIME_SRC)
+
+LZ4_SRC := examples/lz4_wrap/lz4mod_wrapper.c \
+          examples/lz4_wrap/lz4_thin.c \
+          examples/lz4/lib/lz4.c \
+          $(RUNTIME_SRC)
+
+ifndef MSVC
+examples/kissfft_wrap/kissfftmod$(EXT): $(KISSFFT_SRC)
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/kissfft_wrap -Iexamples/kissfft \
+		$(KISSFFT_SRC) -o $@ $(LDFLAGS) $(LIBS) -lm
+
+examples/lz4_wrap/lz4mod$(EXT): $(LZ4_SRC)
+	$(CC) $(CFLAGS) -shared -I$(RUNTIME_INC) -Iexamples/lz4_wrap -Iexamples/lz4/lib \
+		$(LZ4_SRC) -o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+examples/kissfft_wrap/kissfftmod$(EXT): $(KISSFFT_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Iexamples/kissfft_wrap /Iexamples/kissfft \
+		$(KISSFFT_SRC) /link /OUT:$@ $(LDFLAGS)
+
+examples/lz4_wrap/lz4mod$(EXT): $(LZ4_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Iexamples/lz4_wrap /Iexamples/lz4/lib \
+		$(LZ4_SRC) /link /OUT:$@ $(LDFLAGS)
+endif
 
 # ---- aggregate targets ----
 MODULES := \
