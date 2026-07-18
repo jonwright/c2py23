@@ -122,3 +122,29 @@ mv mymodule.c2py.py mymodule.c2py
 
 `tools/convert_c2py_to_dict.py` requires PyYAML (for reading the old format
 only).  Once converted, PyYAML is no longer needed anywhere.
+
+## PyPy and .so imports
+
+PyPy's import machinery only recognizes ABI-tagged extension suffixes
+(e.g. `.pypy311-pp73-x86_64-linux-gnu.so`).  Our dlsym mode produces
+plain `.so` files for cross-version portability.  On PyPy, `import
+fillmod` fails because the file finder never looks for `fillmod.so`.
+
+**Workaround for test suites (pytest):** `tests/conftest.py` preloads
+modules via `importlib.machinery.ExtensionFileLoader` into `sys.modules`
+before test collection.  Plain `import` then succeeds because the module
+is found in `sys.modules`.
+
+**Workaround for scripts:** use `importlib` directly:
+
+```python
+import importlib.util, importlib.machinery
+
+loader = importlib.machinery.ExtensionFileLoader(
+    "mymod", "mymod.so")
+spec = importlib.util.spec_from_file_location(
+    "mymod", "mymod.so", loader=loader)
+mod = importlib.util.module_from_spec(spec)
+loader.exec_module(mod)
+# mod.my_function() works now
+```
