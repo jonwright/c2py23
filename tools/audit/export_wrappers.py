@@ -31,7 +31,7 @@ import os
 import sys
 import datetime
 import subprocess
-import yaml
+from c2py23.parser import load_c2py
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
@@ -120,11 +120,11 @@ def _find_modules():
                 continue
             c2py_rel = os.path.join(mod_dir, c2py_files[0])
 
-            # Read module name from YAML
+            # Read module name from interface file
             try:
-                with open(os.path.join(REPO_DIR, c2py_rel), "r") as f:
-                    data = yaml.safe_load(f)
-                name = data.get("module", entry)
+                c2py_path = os.path.join(REPO_DIR, c2py_rel)
+                mod = load_c2py(c2py_path)
+                name = mod.name
             except Exception:
                 name = entry
 
@@ -302,7 +302,7 @@ def _lang_tag(path):
         ".h": "c",
         ".toml": "toml",
         ".yaml": "yaml",
-        ".c2py": "yaml",
+        ".c2py": "python",
         ".md": "markdown",
         ".sh": "bash",
         ".cfg": "ini",
@@ -373,7 +373,7 @@ def _export_combined(modules, output_dir):
         "**Modules**: {}".format(len(modules)),
         "",
         "This file contains every c2py23-generated CPython C extension module.",
-        "For each: YAML interface, C implementation, and generated wrapper.",
+        "For each: interface definition, C implementation, and generated wrapper.",
         "The runtime support code appears once at the top.",
         "",
         "---",
