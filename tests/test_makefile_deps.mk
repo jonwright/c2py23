@@ -4,7 +4,7 @@
 #   python tools/generate_makefile_deps.py > tests/test_makefile_deps.mk
 
 tests/cases/address/addressmod_wrapper.c: tests/cases/address/address.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/address/address.c2py -o $@
+	python3 -m c2py23 tests/cases/address/address.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/address/addressmod$(EXT): tests/cases/address/addressmod_wrapper.c tests/cases/address/address.c $(RUNTIME_SRC)
@@ -21,7 +21,7 @@ tests/cases/address/addressmod$(EXT): tests/cases/address/addressmod_wrapper.c t
 endif
 
 tests/cases/array_sig/arraymod_wrapper.c: tests/cases/array_sig/array_sig.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/array_sig/array_sig.c2py -o $@
+	python3 -m c2py23 tests/cases/array_sig/array_sig.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/array_sig/arraymod$(EXT): tests/cases/array_sig/arraymod_wrapper.c tests/cases/array_sig/array_sig.c $(RUNTIME_SRC)
@@ -38,7 +38,7 @@ tests/cases/array_sig/arraymod$(EXT): tests/cases/array_sig/arraymod_wrapper.c t
 endif
 
 tests/cases/arraysum/arraysum_wrapper.c: tests/cases/arraysum/arraysum.c $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/arraysum/arraysum.c -o $@
+	python3 -m c2py23 tests/cases/arraysum/arraysum.c -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/arraysum/arraysum$(EXT): tests/cases/arraysum/arraysum_wrapper.c tests/cases/arraysum/arraysum.c $(RUNTIME_SRC)
@@ -55,7 +55,7 @@ tests/cases/arraysum/arraysum$(EXT): tests/cases/arraysum/arraysum_wrapper.c tes
 endif
 
 tests/cases/constants/constmod_wrapper.c: tests/cases/constants/constants.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/constants/constants.c2py -o $@
+	python3 -m c2py23 tests/cases/constants/constants.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/constants/constmod$(EXT): tests/cases/constants/constmod_wrapper.c tests/cases/constants/constants.c $(RUNTIME_SRC)
@@ -72,7 +72,7 @@ tests/cases/constants/constmod$(EXT): tests/cases/constants/constmod_wrapper.c t
 endif
 
 tests/cases/docstring/docmod_wrapper.c: tests/cases/docstring/docstring.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/docstring/docstring.c2py -o $@
+	python3 -m c2py23 tests/cases/docstring/docstring.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/docstring/docmod$(EXT): tests/cases/docstring/docmod_wrapper.c tests/cases/docstring/docstring.c $(RUNTIME_SRC)
@@ -89,7 +89,7 @@ tests/cases/docstring/docmod$(EXT): tests/cases/docstring/docmod_wrapper.c tests
 endif
 
 tests/cases/dot/dotmod_wrapper.c: tests/cases/dot/dot.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/dot/dot.c2py -o $@
+	python3 -m c2py23 tests/cases/dot/dot.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/dot/dotmod$(EXT): tests/cases/dot/dotmod_wrapper.c tests/cases/dot/dot.c $(RUNTIME_SRC)
@@ -106,7 +106,7 @@ tests/cases/dot/dotmod$(EXT): tests/cases/dot/dotmod_wrapper.c tests/cases/dot/d
 endif
 
 tests/cases/fill/fillmod_wrapper.c: tests/cases/fill/fill.c $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/fill/fill.c -o $@
+	python3 -m c2py23 tests/cases/fill/fill.c -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/fill/fillmod$(EXT): tests/cases/fill/fillmod_wrapper.c tests/cases/fill/fill.c $(RUNTIME_SRC)
@@ -123,7 +123,7 @@ tests/cases/fill/fillmod$(EXT): tests/cases/fill/fillmod_wrapper.c tests/cases/f
 endif
 
 tests/cases/freethreading/freethreadmod_wrapper.c: tests/cases/freethreading/freethread.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/freethreading/freethread.c2py -o $@
+	python3 -m c2py23 tests/cases/freethreading/freethread.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/freethreading/freethreadmod$(EXT): tests/cases/freethreading/freethreadmod_wrapper.c tests/cases/freethreading/freethread.c $(RUNTIME_SRC)
@@ -140,7 +140,7 @@ tests/cases/freethreading/freethreadmod$(EXT): tests/cases/freethreading/freethr
 endif
 
 tests/cases/gil_release/gilmod_wrapper.c: tests/cases/gil_release/sleep_fill.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/gil_release/sleep_fill.c2py -o $@
+	python3 -m c2py23 tests/cases/gil_release/sleep_fill.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/gil_release/gilmod$(EXT): tests/cases/gil_release/gilmod_wrapper.c tests/cases/gil_release/sleep_fill.c $(RUNTIME_SRC)
@@ -157,7 +157,7 @@ tests/cases/gil_release/gilmod$(EXT): tests/cases/gil_release/gilmod_wrapper.c t
 endif
 
 tests/cases/optional/optmod_wrapper.c: tests/cases/optional/optional.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/optional/optional.c2py -o $@
+	python3 -m c2py23 tests/cases/optional/optional.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/optional/optmod$(EXT): tests/cases/optional/optmod_wrapper.c tests/cases/optional/optional.c $(RUNTIME_SRC)
@@ -174,7 +174,7 @@ tests/cases/optional/optmod$(EXT): tests/cases/optional/optmod_wrapper.c tests/c
 endif
 
 tests/cases/scalar_output/statmod_wrapper.c: tests/cases/scalar_output/stats.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/scalar_output/stats.c2py -o $@
+	python3 -m c2py23 tests/cases/scalar_output/stats.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/scalar_output/statmod$(EXT): tests/cases/scalar_output/statmod_wrapper.c tests/cases/scalar_output/stats.c $(RUNTIME_SRC)
@@ -191,7 +191,7 @@ tests/cases/scalar_output/statmod$(EXT): tests/cases/scalar_output/statmod_wrapp
 endif
 
 tests/cases/simd_dispatch/simd_fillmod_wrapper.c: tests/cases/simd_dispatch/simd_fill.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/simd_dispatch/simd_fill.c2py -o $@
+	python3 -m c2py23 tests/cases/simd_dispatch/simd_fill.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/simd_dispatch/simd_fillmod$(EXT): tests/cases/simd_dispatch/simd_fillmod_wrapper.c tests/cases/simd_dispatch/simd_fill.c $(RUNTIME_SRC)
@@ -208,7 +208,7 @@ tests/cases/simd_dispatch/simd_fillmod$(EXT): tests/cases/simd_dispatch/simd_fil
 endif
 
 tests/cases/template/summod_wrapper.c: tests/cases/template/sum.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/template/sum.c2py -o $@
+	python3 -m c2py23 tests/cases/template/sum.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/template/summod$(EXT): tests/cases/template/summod_wrapper.c tests/cases/template/template.c $(RUNTIME_SRC)
@@ -225,7 +225,7 @@ tests/cases/template/summod$(EXT): tests/cases/template/summod_wrapper.c tests/c
 endif
 
 tests/cases/timing/timedmod_wrapper.c: tests/cases/timing/timing.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/timing/timing.c2py -o $@
+	python3 -m c2py23 tests/cases/timing/timing.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/timing/timedmod$(EXT): tests/cases/timing/timedmod_wrapper.c tests/cases/timing/timing.c $(RUNTIME_SRC)
@@ -242,7 +242,7 @@ tests/cases/timing/timedmod$(EXT): tests/cases/timing/timedmod_wrapper.c tests/c
 endif
 
 tests/cases/transform/xfrm_wrapper.c: tests/cases/transform/transform.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/transform/transform.c2py -o $@
+	python3 -m c2py23 tests/cases/transform/transform.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/transform/xfrm$(EXT): tests/cases/transform/xfrm_wrapper.c tests/cases/transform/transform.c $(RUNTIME_SRC)
@@ -259,7 +259,7 @@ tests/cases/transform/xfrm$(EXT): tests/cases/transform/xfrm_wrapper.c tests/cas
 endif
 
 tests/cases/typedispatch/dispatchmod_wrapper.c: tests/cases/typedispatch/typedispatch.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/typedispatch/typedispatch.c2py -o $@
+	python3 -m c2py23 tests/cases/typedispatch/typedispatch.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/typedispatch/dispatchmod$(EXT): tests/cases/typedispatch/dispatchmod_wrapper.c tests/cases/typedispatch/typedispatch.c $(RUNTIME_SRC)
@@ -276,7 +276,7 @@ tests/cases/typedispatch/dispatchmod$(EXT): tests/cases/typedispatch/dispatchmod
 endif
 
 tests/cases/types/typesmod_wrapper.c: tests/cases/types/types.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 tests/cases/types/types.c2py -o $@
+	python3 -m c2py23 tests/cases/types/types.c2py -o $@ $(C2PY_FLAGS)
 
 ifndef MSVC
 tests/cases/types/typesmod$(EXT): tests/cases/types/typesmod_wrapper.c tests/cases/types/types.c $(RUNTIME_SRC)

@@ -11,11 +11,21 @@ CC       ?= gcc
 CFLAGS   ?= -O2 -Wall
 LDFLAGS  ?=
 
+# Single-header mode: USE_SINGLE_HEADER=1 uses c2py.h (stb-style blob)
+# instead of c2py_runtime.c.  Wrappers are generated with --emit-header.
+# No -I flag or runtime .c to compile.
+ifdef USE_SINGLE_HEADER
+RUNTIME_SRC  :=
+RUNTIME_INC  :=
+RUNTIME_HDRS := c2py23/runtime/c2py.h
+C2PY_FLAGS   := --emit-header
+else
 RUNTIME_SRC  := c2py23/runtime/c2py_runtime.c
 RUNTIME_INC  := c2py23/runtime
 RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
                 c2py23/runtime/c2py_dlsym.h \
                 c2py23/runtime/c2py_pythonh.h
+endif
 
 # Auto-detect MSVC from CC or env var
 ifneq ($(or $(MSVC),$(findstring cl,$(CC))),)
