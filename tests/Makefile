@@ -68,6 +68,7 @@ examples/lz4_wrap/lz4mod$(EXT): $(LZ4_SRC)
 endif
 
 # ---- benchmark modules (share tiny_kernel.c, output to benchmarks/build/) ----
+# Only built on Unix (pattern rules; skipped on MSVC for simplicity)
 BENCH_SRC := benchmarks/src/tiny_kernel.c
 BENCH_DIR := benchmarks/build
 BENCH_MODS := c2py_vnorm c2py_vnorm_bare c2py_vnorm_ndarray \
@@ -76,26 +77,18 @@ BENCH_MODS := c2py_vnorm c2py_vnorm_bare c2py_vnorm_ndarray \
 $(BENCH_DIR):
 	mkdir -p $(BENCH_DIR)
 
-# Generate wrapper: depends on .c2py + runtime headers
 benchmarks/src/%_wrapper.c: benchmarks/src/%.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 $< -o $@
 
-# Compile (Unix)
 ifndef MSVC
 $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
 	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Ibenchmarks/src \
 		$^ -o $@ $(LDFLAGS) $(LIBS) -lm
-endif
 
-# Compile (MSVC)
-ifdef MSVC
-$(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
-	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
-		$^ /link /OUT:$@ $(LDFLAGS)
-endif
-
-# Add benchmark .so paths to aggregate targets
 BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
+else
+BENCH_TARGETS :=
+endif
 
 # ---- aggregate targets ----
 MODULES := \

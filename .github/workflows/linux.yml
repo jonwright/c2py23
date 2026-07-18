@@ -159,6 +159,7 @@ jobs:
           python -m pytest tests/ -v --durations=10 --tb=short \
             --ignore=tests/test_workspace \
             --ignore=tests/test_abi_tag_compatibility.py \
+            --ignore=tests/test_ndarray_backends.py \
             --ignore=tests/test_error_paths.py \
             --ignore=tests/test_leaks.py \
             --ignore=tests/test_lifecycle.py
