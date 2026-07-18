@@ -176,20 +176,35 @@ def test_build_wheel(tmpdir):
     ext = ".pyd" if os.name == "nt" else ".so"
     env = os.environ.copy()
     env.setdefault("CC", "gcc")
-    build_cmd = [
-        env["CC"],
-        "-shared",
-        "-fPIC",
-        "-I",
-        src_dir,
-        "_mysum_wrapper.c",
-        "mysum.c",
-        "c2py_runtime.c",
-        "-o",
-        "_mysum" + ext,
-        "-ldl",
-        "-lm",
-    ]
+    cc = env["CC"]
+
+    if "cl" in os.path.basename(cc):
+        build_cmd = [
+            cc,
+            "/LD",
+            "/I",
+            src_dir,
+            "_mysum_wrapper.c",
+            "mysum.c",
+            "c2py_runtime.c",
+            "/link",
+            "/OUT:_mysum" + ext,
+        ]
+    else:
+        build_cmd = [
+            cc,
+            "-shared",
+            "-fPIC",
+            "-I",
+            src_dir,
+            "_mysum_wrapper.c",
+            "mysum.c",
+            "c2py_runtime.c",
+            "-o",
+            "_mysum" + ext,
+            "-ldl",
+            "-lm",
+        ]
     rc, out, err = _run(build_cmd, cwd=src_dir, env=env)
     if rc != 0:
         print("compile failed:", err, file=sys.stderr)

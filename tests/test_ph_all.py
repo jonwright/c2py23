@@ -34,6 +34,7 @@ def _build_dlsym():
     """Build in dlsym mode via vanilla C compilation."""
     env = os.environ.copy()
     env.setdefault("CC", "gcc")
+    cc = env.get("CC", "gcc")
     subprocess.check_call(
         [
             sys.executable,
@@ -44,25 +45,43 @@ def _build_dlsym():
             "fill_wrapper.c",
         ]
     )
-    subprocess.check_call(
-        [
-            env.get("CC", "gcc"),
-            "-shared",
-            "-fPIC",
-            "-I",
-            "c2py23/runtime",
-            "-I",
-            os.path.join(HERE, "cases", "fill"),
-            "c2py23/runtime/c2py_runtime.c",
-            "fill_wrapper.c",
-            os.path.join(HERE, "cases", "fill", "fill.c"),
-            "-o",
-            "fillmod.dlsym_test.so",
-            "-ldl",
-            "-lm",
-        ],
-        env=env,
-    )
+    if "cl" in os.path.basename(cc):
+        subprocess.check_call(
+            [
+                cc,
+                "/LD",
+                "/I",
+                "c2py23/runtime",
+                "/I",
+                os.path.join(HERE, "cases", "fill"),
+                "c2py23/runtime/c2py_runtime.c",
+                "fill_wrapper.c",
+                os.path.join(HERE, "cases", "fill", "fill.c"),
+                "/link",
+                "/OUT:fillmod.dlsym_test.pyd",
+            ],
+            env=env,
+        )
+    else:
+        subprocess.check_call(
+            [
+                cc,
+                "-shared",
+                "-fPIC",
+                "-I",
+                "c2py23/runtime",
+                "-I",
+                os.path.join(HERE, "cases", "fill"),
+                "c2py23/runtime/c2py_runtime.c",
+                "fill_wrapper.c",
+                os.path.join(HERE, "cases", "fill", "fill.c"),
+                "-o",
+                "fillmod.dlsym_test.so",
+                "-ldl",
+                "-lm",
+            ],
+            env=env,
+        )
 
 
 def _build_pythonh():
