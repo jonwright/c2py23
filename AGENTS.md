@@ -279,6 +279,8 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/__init__.py` -- Package init and version string
 - `c2py23/runtime/c2py_runtime.h` -- Nimpy-style CPython type definitions and API macros
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`
+- `c2py23/runtime/c2py.h` -- Single-header blob (stb-style), merged from all runtime files
+- `c2py23/runtime/merge_single_header.py` -- Script that generates `c2py.h` from runtime sources
 
 ### How It Works
 1. The user writes a `.c2py` interface file declaring Python function signatures, C overloads, and dispatch conditions
