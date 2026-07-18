@@ -92,9 +92,10 @@ Low priority.  If strict atomicity is ever needed: change globals to
 
 ### 32-bit CI
 
-No 32-bit CI target (i386/ARM32).  Runtime rejects 32-bit at module import
-(`sizeof(void*) != 8` check in `c2py_runtime.c:501`).  Only LP64 (64-bit)
-targets are tested.
+No 32-bit CI target (i386/ARM32).  Windows i386 CI runner exists and
+tests pythonh mode (2.7, 3.12).  Dlsym mode 32-bit is untested --
+Py_buffer layout differs (48-byte vs 68+ on LP64), and FT does not
+exist on ILP32.
 
 Windows 64-bit uses LLP64 (`sizeof(long)=4`) which we handle correctly
 (format-dispatch, length type).  Windows 32-bit i386 would be the same
@@ -206,7 +207,7 @@ issue: `CC=cl` is set in CI and `make` auto-detects it.
 - Output scalar convention -- `outputs:` key, auto-alloc, tuple return
 - Template expansion -- `expand:` key with `${VAR}` substitution
 - Comprehensive dispatch-over-all-types example -- typedispatch test case, Example 4 in spec
-- Valgrind/ASan validation -- stress test, cleanup audit, `--asan` flag
+- Valgrind/ASan validation -- stress test, cleanup audit
 - Test coverage -- 13 versions x 18 uniform tests, 10 peer review tests
 - GIL release design rationale -- documented in specification.md
 - ABI matrix populated across all 10 Python versions
@@ -230,7 +231,7 @@ issue: `CC=cl` is set in CI and `make` auto-detects it.
 - Contiguity check: rejects strided arrays, negative strides, accepts C/F-contiguous
 - Alias detection: rejects buffer aliasing between writable buffers (5 patterns)
 - Shared-refcount fix: PyExc_* always dereferenced once (handles pre-3.12 heap-type pointers and 3.12+ static shared-refcount)
-- Debug build support: `--asan` flag, `CC`/`CFLAGS`/`LDFLAGS` env vars, `gcc -shared -g -O0`
+- Debug build support: `CC`/`CFLAGS`/`LDFLAGS` env vars passthrough, `gcc -shared -g -O0`
 
 - **Referee audit (2026-06-20):** 22 tasks from 2 new referee reports:
   - A: fix `int64_t` multi-output tuple bug (missing NULL check + PyTuple_SetItem)

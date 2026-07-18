@@ -42,7 +42,7 @@ EOF
 
 All Python files MUST be compatible with Python 2.7 through 3.15.
 Note: Windows CI is tested on 2.7, 3.13, 3.14.  Python 3.16+
-is guarded at runtime (`version_minor > 15` in c2py_runtime.c).
+is guarded at runtime (`version_minor > 15` in c2py_dlsym.c).
 
 ### Required
 - `from __future__ import print_function` as the first import in every `.py` file

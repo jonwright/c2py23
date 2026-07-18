@@ -32,18 +32,31 @@ Write the interface file:
 
 ```python
 # arraysum.c2py
-module: arraysum
-source: [arraysum.c]
-
-functions:
-  - py_sig: "array_sum(a: buffer, b: buffer, out: buffer) -> int"
-    checks:
-      - "a.format == 'd'"
-      - "b.format == 'd'"
-      - "out.format == 'd'"
-    c_overloads:
-      - sig: "array_sum(const double *a, const double *b, double *out, intptr_t n) -> int"
-        map: {a: "a.ptr", b: "b.ptr", out: "out.ptr", n: "a.n"}
+{
+    "module": "arraysum",
+    "source": ["arraysum.c"],
+    "functions": [
+        {
+            "py_sig": "array_sum(a: buffer, b: buffer, out: buffer) -> int",
+            "checks": [
+                "a.format == 'd'",
+                "b.format == 'd'",
+                "out.format == 'd'",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "array_sum(const double *a, const double *b, double *out, intptr_t n) -> int",
+                    "map": {
+                        "a": "a.ptr",
+                        "b": "b.ptr",
+                        "out": "out.ptr",
+                        "n": "a.n",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 Build and use:

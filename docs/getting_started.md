@@ -24,20 +24,33 @@ void add_d(const double *a, const double *b, int n, double *out) {
 **`myadd.c2py`**
 
 ```python
-module: myadd
-source: [myadd.c]
-
-functions:
-  - py_sig: "add_arrays(a: buffer, b: buffer, out: buffer) -> void"
-    checks:
-      - "a.format == 'd'"
-      - "b.format == 'd'"
-      - "out.format == 'd'"
-      - "a.n == b.n"
-      - "b.n == out.n"
-    c_overloads:
-      - sig: "add_d(const double *a, const double *b, int n, double *out)"
-        map: {a: "a.ptr", b: "b.ptr", n: "a.n", out: "out.ptr"}
+{
+    "module": "myadd",
+    "source": ["myadd.c"],
+    "functions": [
+        {
+            "py_sig": "add_arrays(a: buffer, b: buffer, out: buffer) -> void",
+            "checks": [
+                "a.format == 'd'",
+                "b.format == 'd'",
+                "out.format == 'd'",
+                "a.n == b.n",
+                "b.n == out.n",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "add_d(const double *a, const double *b, int n, double *out)",
+                    "map": {
+                        "a": "a.ptr",
+                        "b": "b.ptr",
+                        "n": "a.n",
+                        "out": "out.ptr",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 Generate and compile it:

@@ -46,8 +46,8 @@ format is used because it parses safely via `ast.literal_eval` with
 no external dependencies.  An early version of c2py23 used YAML as the
 interface format but this was removed in v0.4.0 -- YAML's indentation
 rules and C-extension dependency (PyYAML) proved too fragile for the
-cross-platform, backwards-compatible mission.  Use `tools/convert_c2py_to_dict.py`
-to migrate legacy YAML files.
+cross-platform, backwards-compatible mission.  The `tools/convert_c2py_to_dict.py`
+script in the source repository can migrate legacy YAML files.
 
 The `load_c2py()` function auto-detects the format:
 
@@ -64,9 +64,9 @@ The `load_c2py()` function auto-detects the format:
             "py_sig": "name(arg: type, ...) -> return_type",
             "doc": "Custom docstring",                 # optional
             "params": {"param_name": "description"},   # optional
-    "gil_release": True,                       # optional
-    "acquire": ["ndarray", "buffer"],          # optional: backend order
-    "checks": ["expression"],                  # optional
+            "gil_release": True,                       # optional
+            "acquire": ["ndarray", "buffer"],          # optional: backend order
+            "checks": ["expression"],                  # optional
             "c_overloads": [
                 {
                     "sig": "void foo(int n, double *out)",
@@ -85,7 +85,7 @@ The key names and values are shown in the schema below.
 Differences from YAML (legacy, no longer supported):
 
 - Dict keys use Python strings (e.g. "c_overloads", "py_sig", "when")
-- **Boolean values**: `True`/`False` (or `true`/`false` in Python)
+- **Boolean values**: `True`/`False`
 - **None** (optional keys omitted or set to `None`)
 - **Strings** use Python quoting (single or double)
 - **No indentation sensitivity** -- dict boundaries are `{`/`}`
@@ -143,7 +143,7 @@ from c2py23.parser import from_c2py_dict
 mod = from_c2py_dict(interface, "mymod")
 print("OK:", mod.name)
 
-# Export to .c2py dict format:
+# Export to .c2py dict format (requires source checkout: tools/convert_c2py_to_dict.py):
 from tools.convert_c2py_to_dict import py_repr
 with open("mymod.c2py", "w") as f:
     f.write("# This file defines the c2py23 interface for mymod\n")
@@ -168,58 +168,63 @@ Python literals (no functions, imports, or expressions).
 ### .c2py File Format (Python dict)
 
 The `.c2py` file is a Python dict literal (parsed via `ast.literal_eval`).
-The structure (schema shown below -- actual .c2py files use JSON-like quoting):
+The canonical example above shows all available keys.
 
-source: [file1.c, file2.c, ...]       # required: C source files
-headers: [header1.h, header2.h, ...]  # optional: C headers to #include
-constants:                            # optional: module-level integer constants
-  NAME1: 42
-  NAME2: 7
-timing: true                          # optional: enable perf timing
-free_threading: true                  # optional: declare Py_MOD_GIL_NOT_USED
+**Dict ordering guarantee:** c2py23 never relies on Python dict insertion
+order for correct behavior.  All ordering-dependent data (`"c_overloads"`,
+`"variants"`, `"functions"`, `"checks"`, Python and C signature parameter
+lists) is stored in Python lists, which always preserve declaration order
+on every Python version (2.7 through 3.15).  Dicts (`"map"`, `"outputs"`,
+`"constants"`, `"params"`) are accessed exclusively via key lookup.  No
+`OrderedDict` is required.
 
-functions:                            # required: list of wrapped functions
-  - py_sig: "name(arg: type, ...) -> return_type"
-    doc: "Custom docstring"           # optional: override auto-generated doc
-    params:                           # optional: per-parameter descriptions
-      param_name: "Description text"  #   keys must match py_sig parameter names
-    gil_release: true                 # optional: release the GIL during C calls
-    acquire: [ndarray, buffer]       # optional: acquisition backend order
-                                     #   values: ndarray, buffer, dlpack
-                                     #   default: [ndarray, buffer]
-    expand:                           # optional: template expansion
-      VAR1: [val_a, val_b, ...]       #   variable name -> list of values
-      VAR2: [val_a, val_b, ...]       #   all lists must have same length
-    checks:                           # optional: pre-conditions
-      - "expression"
+Additional per-key details:
 
-```
+**Module-level keys:**
 
-      - ...
-    c_overloads:                      # required: ordered list of alternatives
-      # flat overload:
-      - sig: "c_function(c_params...) -> c_return"
-        name: "label"                 # optional: for timing/reference
-        doc: "Overload description"   # optional: per-overload notes in docstring
-        map: {c_param: expression, ...}
-        when: "condition"             # optional: dispatch condition
-        outputs:                      # optional: return-by-pointer scalars
-          c_param_name: ctype         #   ctype: int, float, double, int32_t, etc.
-      # grouped dispatch (SIMD / CPU feature variants):
-      - map: {c_param: expression, ...}
-        when: "condition"             # optional: per-call group condition
-        group: "label"                # optional: group name
-        doc: "Group description"      # optional: group-level docstring notes
-        variants:                     # required for grouped: list of variants
-          - sig: "c_variant(c_params...) -> c_ret"
-            name: "label"             # optional: defaults to c function name
-            doc: "Variant description" # optional: per-variant docstring notes
-            when: "cpu_feature_check" # optional: static (init-time) dispatch
-            default: true|false       # optional: true (auto-select) or false (manual only)
-            outputs: {c_param: ctype}
-      - ...
-    default_raise: "TypeError: msg"   # optional: error when no overload matches
-```
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `"module"` | `str` | yes | Python module name |
+| `"source"` | `list[str]` | yes | C source files |
+| `"headers"` | `list[str]` | no | C headers to `#include` |
+| `"constants"` | `dict[str, int]` | no | module-level integer constants |
+| `"timing"` | `bool` | no | enable perf timing |
+| `"free_threading"` | `bool` | no | declare `Py_MOD_GIL_NOT_USED` |
+
+**Per-function keys:**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `"py_sig"` | `str` | yes | Python signature `"name(arg: type, ...) -> ret"` |
+| `"doc"` | `str` | no | custom docstring |
+| `"params"` | `dict[str, str]` | no | per-parameter descriptions |
+| `"gil_release"` | `bool` | no | release the GIL during C calls |
+| `"acquire"` | `list[str]` | no | acquisition backend order (default: `["ndarray", "buffer"]`) |
+| `"expand"` | `dict[str, list[str]]` | no | template expansion variables |
+| `"checks"` | `list[str]` | no | pre-condition expressions |
+| `"c_overloads"` | `list[dict]` | yes | ordered list of C overloads |
+| `"default_raise"` | `str` | no | error when no overload matches |
+
+**Per-overload keys (flat):**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `"sig"` | `str` | yes | C function signature |
+| `"map"` | `dict[str, str]` | yes | C param name to expression |
+| `"when"` | `str` | no | dispatch condition |
+| `"name"` | `str` | no | label for timing/reference |
+| `"doc"` | `str` | no | per-overload notes in docstring |
+| `"outputs"` | `dict[str, str]` | no | return-by-pointer scalar params |
+
+**Grouped dispatch (instead of flat `"sig"`):**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `"map"` | `dict[str, str]` | yes | shared argument map for all variants |
+| `"when"` | `str` | no | per-call group dispatch condition |
+| `"group"` | `str` | no | group name for rebind/docstrings |
+| `"doc"` | `str` | no | group-level docstring notes |
+| `"variants"` | `list[dict]` | yes | variant list, each with `"sig"`, optional `"when"`, `"name"`, `"outputs"`, `"default"`
 
 ### Template Expansion (expand:)
 
@@ -229,14 +234,26 @@ same length N. For each index i, a copy of the function definition is generated
 with `${VAR}` replaced by `values[i]` in all string fields.
 
 ```python
-functions:
-  - expand:
-      TYPE: [uint8_t, uint16_t, int32_t]
-      SUFFIX: [u8, u16, i32]
-    py_sig: "sum_${SUFFIX}(data: buffer) -> int"
-    c_overloads:
-      - sig: "int sum_${SUFFIX}(const ${TYPE} *data, int n)"
-        map: {data: "data.ptr", n: "data.n"}
+{
+    "functions": [
+        {
+            "expand": {
+                "TYPE": ["uint8_t", "uint16_t", "int32_t"],
+                "SUFFIX": ["u8", "u16", "i32"],
+            },
+            "py_sig": "sum_${SUFFIX}(data: buffer) -> int",
+            "c_overloads": [
+                {
+                    "sig": "int sum_${SUFFIX}(const ${TYPE} *data, int n)",
+                    "map": {
+                        "data": "data.ptr",
+                        "n": "data.n",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 Expands to three functions: `sum_u8`, `sum_u16`, `sum_i32`.
@@ -249,12 +266,21 @@ C function rather than passed by the Python caller. c2py23 auto-allocates a
 resulting value as part of the Python return tuple.
 
 ```python
-c_overloads:
-  - sig: "stats(const double *data, int n, double *minval, double *maxval)"
-    map: {data: "data.ptr", n: "data.n"}
-    outputs:
-      minval: double
-      maxval: double
+{
+    "c_overloads": [
+        {
+            "sig": "stats(const double *data, int n, double *minval, double *maxval)",
+            "map": {
+                "data": "data.ptr",
+                "n": "data.n",
+            },
+            "outputs": {
+                "minval": "double",
+                "maxval": "double",
+            },
+        },
+    ],
+}
 ```
 
 Python call returns a tuple:
@@ -265,7 +291,7 @@ minval, maxval = statmod.stats(data)
 If there is also a C return value, it comes first in the tuple.
 
 **Tuple order**: The order of values in the returned tuple always follows the C
-function parameter order (left to right in the C signature), not the YAML
+function parameter order (left to right in the C signature), not the
 dictionary insertion order. If the function also has a C return value, it
 appears first, followed by output parameters in C signature order.
 
@@ -545,7 +571,7 @@ these characters MUST be quoted:
 
 ```python
 map: {ng: "gv.shape[0]"}     # quoted -- . and [ are Python syntax
-map: {ptr: "buf.ptr"}        # quoted -- . is YAML special
+map: {ptr: "buf.ptr"}        # quoted -- . is Python syntax
 map: {tol: tol}               # no quotes -- bare scalar
 ```
 
@@ -555,12 +581,12 @@ containing `.`, `[`, `(`, or whitespace must be quoted.
 #### Variant Ordering
 
 Variant dispatch respects declaration order. The first variant whose
-`when:` condition matches wins auto-dispatch. Both Python 3.7+ dicts and
-The dict preserves key order.
+`when:` condition matches wins auto-dispatch. Variants are stored in
+lists, so declaration order is always preserved across all Python versions.
 
-Variants with `default: false` are skipped during auto-resolve and are
+Variants with `default: False` are skipped during auto-resolve and are
 reachable only via `_rebind_<name>()`. At least one variant per group
-must have `default: true` (the default).
+must have `default: True` (the default).
 
 #### Variant Naming
 
@@ -583,7 +609,7 @@ Every function with grouped variants gets:
 - `_rebind_<name>(variant_name)`  --  sets the active variant by name.
   Call with `None` to re-run auto-resolve.
 - `_variants_<name>()`  --  returns a tuple of all variant names (including
-  `default: false` variants) in declaration order.
+  `default: False` variants) in declaration order.
 
 ### Default Raise
 
@@ -615,20 +641,33 @@ int array_sum(const double *a, const double *b, double *result, int n) {
 
 **Interface** (`arraysum.c2py`):
 ```python
-module: arraysum
-source: [arraysum.c]
-
-functions:
-  - py_sig: "array_sum(a: buffer, b: buffer, result: buffer) -> int"
-    checks:
-      - "a.format == 'd'"
-      - "b.format == 'd'"
-      - "result.format == 'd'"
-      - "a.n == b.n"
-      - "a.n == result.n"
-    c_overloads:
-      - sig: "array_sum(const double *a, const double *b, double *result, int n) -> int"
-        map: {a: "a.ptr", b: "b.ptr", result: "result.ptr", n: "a.n"}
+{
+    "module": "arraysum",
+    "source": ["arraysum.c"],
+    "functions": [
+        {
+            "py_sig": "array_sum(a: buffer, b: buffer, result: buffer) -> int",
+            "checks": [
+                "a.format == 'd'",
+                "b.format == 'd'",
+                "result.format == 'd'",
+                "a.n == b.n",
+                "a.n == result.n",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "array_sum(const double *a, const double *b, double *result, int n) -> int",
+                    "map": {
+                        "a": "a.ptr",
+                        "b": "b.ptr",
+                        "result": "result.ptr",
+                        "n": "a.n",
+                    },
+                },
+            ],
+        },
+    ],
+}
 ```
 
 **Python call**:
@@ -675,19 +714,36 @@ void fill_d(double *arr, int n, double value) {
 
 **Interface** (`fill.c2py`):
 ```python
-module: fillmod
-source: [fill.c]
-
-functions:
-  - py_sig: "fill(arr: buffer, value: float) -> void"
-    c_overloads:
-      - sig: "fill_f(float *arr, int n, float value)"
-        map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'f'"
-      - sig: "fill_d(double *arr, int n, double value)"
-        map: {arr: "arr.ptr", n: "arr.n", value: value}
-        when: "arr.format == 'd'"
-    default_raise: "TypeError: expected float or double buffer"
+{
+    "module": "fillmod",
+    "source": ["fill.c"],
+    "functions": [
+        {
+            "py_sig": "fill(arr: buffer, value: float) -> void",
+            "c_overloads": [
+                {
+                    "sig": "fill_f(float *arr, int n, float value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'f'",
+                },
+                {
+                    "sig": "fill_d(double *arr, int n, double value)",
+                    "map": {
+                        "arr": "arr.ptr",
+                        "n": "arr.n",
+                        "value": "value",
+                    },
+                    "when": "arr.format == 'd'",
+                },
+            ],
+            "default_raise": "TypeError: expected float or double buffer",
+        },
+    ],
+}
 ```
 
 **Python call**:
@@ -749,26 +805,44 @@ void transform_soa(double *points, intptr_t n, double *out) {
 
 **Interface** (`transform.c2py`):
 ```python
-module: xfrm
-source: [transform.c]
-timing: true
-
-functions:
-  - py_sig: "transform(points: buffer, out: buffer) -> void"
-    checks:
-      - "points.format == 'd'"
-      - "out.format == 'd'"
-      - "out.n == points.n"
-      - "points.ndim == 2"
-      - "points.slow_axis == 0"
-    c_overloads:
-      - sig: "transform_aos(double *points, intptr_t n, double *out)"
-        map: {points: "points.ptr", n: "points.shape[0]", out: "out.ptr"}
-        when: "points.shape[1] == 3"
-      - sig: "transform_soa(double *points, intptr_t n, double *out)"
-        map: {points: "points.ptr", n: "points.shape[1]", out: "out.ptr"}
-        when: "points.shape[0] == 3"
-    default_raise: "ValueError: expected [N,3] or [3,N] buffer"
+{
+    "module": "xfrm",
+    "source": ["transform.c"],
+    "timing": True,
+    "functions": [
+        {
+            "py_sig": "transform(points: buffer, out: buffer) -> void",
+            "checks": [
+                "points.format == 'd'",
+                "out.format == 'd'",
+                "out.n == points.n",
+                "points.ndim == 2",
+                "points.slow_axis == 0",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "transform_aos(double *points, intptr_t n, double *out)",
+                    "map": {
+                        "points": "points.ptr",
+                        "n": "points.shape[0]",
+                        "out": "out.ptr",
+                    },
+                    "when": "points.shape[1] == 3",
+                },
+                {
+                    "sig": "transform_soa(double *points, intptr_t n, double *out)",
+                    "map": {
+                        "points": "points.ptr",
+                        "n": "points.shape[1]",
+                        "out": "out.ptr",
+                    },
+                    "when": "points.shape[0] == 3",
+                },
+            ],
+            "default_raise": "ValueError: expected [N,3] or [3,N] buffer",
+        },
+    ],
+}
 ```
 
 **Python call**:
@@ -852,34 +926,59 @@ void fill_f64(double *arr, int n, double value) {
 
 **Interface** (`typedispatch.c2py`):
 ```python
-module: dispatchmod
-source: [typedispatch.c]
-headers: [stdint.h]
-
-functions:
-  - py_sig: "fill(arr: buffer, value: float) -> void"
-    c_overloads:
-      - sig: "fill_u8(uint8_t *arr, int n, uint8_t value)"
-        when: "arr.format == 'B'"
-      - sig: "fill_i8(int8_t *arr, int n, int8_t value)"
-        when: "arr.format == 'b'"
-      - sig: "fill_u16(uint16_t *arr, int n, uint16_t value)"
-        when: "arr.format == 'H'"
-      - sig: "fill_i16(int16_t *arr, int n, int16_t value)"
-        when: "arr.format == 'h'"
-      - sig: "fill_u32(uint32_t *arr, int n, uint32_t value)"
-        when: "arr.format == 'I'"
-      - sig: "fill_i32(int32_t *arr, int n, int32_t value)"
-        when: "arr.format == 'i'"
-      - sig: "fill_u64(uint64_t *arr, int n, uint64_t value)"
-        when: "arr.format == 'Q'"
-      - sig: "fill_i64(int64_t *arr, int n, int64_t value)"
-        when: "arr.format == 'q'"
-      - sig: "fill_f32(float *arr, int n, float value)"
-        when: "arr.format == 'f'"
-      - sig: "fill_f64(double *arr, int n, double value)"
-        when: "arr.format == 'd'"
-    default_raise: "TypeError: expected buffer of type B,b,H,h,I,i,Q,q,f,d"
+{
+    "module": "dispatchmod",
+    "source": ["typedispatch.c"],
+    "headers": ["stdint.h"],
+    "functions": [
+        {
+            "py_sig": "fill(arr: buffer, value: float) -> void",
+            "c_overloads": [
+                {
+                    "sig": "fill_u8(uint8_t *arr, int n, uint8_t value)",
+                    "when": "arr.format == 'B'",
+                },
+                {
+                    "sig": "fill_i8(int8_t *arr, int n, int8_t value)",
+                    "when": "arr.format == 'b'",
+                },
+                {
+                    "sig": "fill_u16(uint16_t *arr, int n, uint16_t value)",
+                    "when": "arr.format == 'H'",
+                },
+                {
+                    "sig": "fill_i16(int16_t *arr, int n, int16_t value)",
+                    "when": "arr.format == 'h'",
+                },
+                {
+                    "sig": "fill_u32(uint32_t *arr, int n, uint32_t value)",
+                    "when": "arr.format == 'I'",
+                },
+                {
+                    "sig": "fill_i32(int32_t *arr, int n, int32_t value)",
+                    "when": "arr.format == 'i'",
+                },
+                {
+                    "sig": "fill_u64(uint64_t *arr, int n, uint64_t value)",
+                    "when": "arr.format == 'Q'",
+                },
+                {
+                    "sig": "fill_i64(int64_t *arr, int n, int64_t value)",
+                    "when": "arr.format == 'q'",
+                },
+                {
+                    "sig": "fill_f32(float *arr, int n, float value)",
+                    "when": "arr.format == 'f'",
+                },
+                {
+                    "sig": "fill_f64(double *arr, int n, double value)",
+                    "when": "arr.format == 'd'",
+                },
+            ],
+            "default_raise": "TypeError: expected buffer of type B,b,H,h,I,i,Q,q,f,d",
+        },
+    ],
+}
 ```
 
 **Complete Format-to-C-Type Mapping**:
@@ -1006,12 +1105,20 @@ followed by a `\n--\n\n` separator), which allows `inspect.signature()` and
 With `doc:` set:
 
 ```python
-functions:
-  - py_sig: "inc(x: int) -> int"
-    doc: "Increment x by 1 and return the result"
-    c_overloads:
-      - sig: "add_one(int x) -> int"
-        map: {x: x}
+{
+    "functions": [
+        {
+            "py_sig": "inc(x: int) -> int",
+            "doc": "Increment x by 1 and return the result",
+            "c_overloads": [
+                {
+                    "sig": "add_one(int x) -> int",
+                    "map": {"x": "x"},
+                },
+            ],
+        },
+    ],
+}
 ```
 
 `help(inc)` in Python produces:
@@ -1175,26 +1282,40 @@ for any glibc-linked binary.
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
 - The GIL is held during all C function calls by default (see [GIL Release](#gil-release-and-thread-safety))
-- `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`
+- `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`.
 
-## GIL Release and Thread Safety
-
-The wrapper holds the GIL by default. Set `gil_release: true` to release
-it during pure-C computation:
+  In C99, `restrict` is a promise from the programmer to the compiler that
+  two pointers will never alias (point to overlapping memory).  c2py23 provides
+  this same guarantee at runtime: before calling your C function, the wrapper
+  checks that no writable output buffer overlaps with any other buffer.
+  If aliasing is detected, `ValueError` is raised before the C call.
+  This lets you write C code that looks like FORTRAN -- flat arrays, no
+  pointer provenance complications, just numerical loops over disjoint memory.
+  As Ed Post wrote in 1983: "Real Programmers can write FORTRAN programs in
+  any language."
 
 ```python
-functions:
-  - py_sig: "compute(data: buffer) -> void"
-    gil_release: true
+{
+    "functions": [
+        {
+            "py_sig": "compute(data: buffer) -> void",
+            "gil_release": True,
+        },
+    ],
+}
 ```
+
+## GIL Release and Thread Safety
 
 On Python 3.14t (free-threading), the GIL is disabled by default but
 c2py23 modules re-enable it unless `free_threading: true` is declared at
 module level:
 
 ```python
-module: mymod
-free_threading: true
+{
+    "module": "mymod",
+    "free_threading": True,
+}
 ```
 
 See the [User Guide](user_guide.md) for full thread safety guidance
@@ -1308,33 +1429,37 @@ See `examples/simd_dispatch/` for a complete worked example (SAXPY kernel
 compiled as avx512/avx2/scalar variants, wrapped with grouped dispatch, with
 Makefile and Python test harness).
 
-## Future Work
+## Build Modes
 
-- **`--pythonh` mode**  --  Build via `python tests/setup.py build_ext --inplace --pythonh`.
-  Produces a standard CPython extension that includes `<Python.h>` directly.  No dlsym
-  trick.  Required for GraalPy (Native Image `dlopen(NULL)` exports zero
-  symbols).  See `docs/pythonh.md` for the full runtime support matrix.
-- **PyPy support**  --  Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
-  PyPy-compatible `.so` files (tested on PyPy 2.7, 3.9, 3.11 via
-  `ubuntu24.04_pypy.sif` container).  No CI  --  likely to regress without
-  maintenance.  See `PLAN.md` for current test matrix.
-- **Pyodide/WASM**  --  Pyodide is CPython compiled to WASM via Emscripten.
-  `dlopen(NULL)` + `dlsym()` work; gold benchmarks run on Pyodide.
-  `--target wasm` CLI flag available (emcc, `-s SIDE_MODULE=1`, skips -ldl/-shared/-fPIC,
-  32-bit rejection guarded with `#ifndef __EMSCRIPTEN__`).
-  DLPack works on Pyodide (numpy exports `__dlpack__`).
-- **aarch64 CI** -- native ARM64 GitHub runner (ubuntu-24.04-arm) added;
-  CPU feature flags, SIMD dispatch, and cycle counter timer tested on
-  x86_64 and validated on aarch64 hardware.
-- **ppc64le CI** -- CPU detection already implemented (getauxval/mftb);
-  needs QEMU user-mode or cloud-native runner.
-- **Windows free-threading** -- no x64 FT Python builds available on CI yet
-- **Binary wheel distribution** -- c2pypi packer for multi-arch PyPI publishing
+c2py23 supports multiple build modes for different runtimes:
+
+- **dlsym mode** (default)  --  Uses `dlopen(NULL)`/`dlsym()` (the nimpy trick).
+  No `#include <Python.h>`, no `-lpython`.  One `.so` works on Python 2.7 through
+  3.15.  The most portable option.
+
+- **`--pythonh` mode**  --  Standard CPython extension with `#include <Python.h>`.
+  Build with `python tests/setup.py build_ext --inplace --pythonh`.  Required for
+  GraalPy (Native Image `dlopen(NULL)` exports zero symbols).  Useful for debugging
+  dlsym issues, static builds, and LTO devirtualization.  See `docs/pythonh.md`.
+
+- **PyPy**  --  Build with `CC=gcc CFLAGS="-DC2PY_TARGET_PYPY -O1"`.  Produces
+  PyPy-compatible `.so` files that resolve `PyPy_*`-prefixed cpyext symbols at
+  runtime.  `import` on PyPy requires `ExtensionFileLoader` (PyPy only recognizes
+  ABI-tagged suffixes).  CI runs full test suite on PyPy 3.9/3.10.
+
+- **Pyodide/WASM**  --  Build with `emcc -s SIDE_MODULE=1`.  23 WASM modules,
+  80/80 tests pass inside Pyodide via Node.js.  Uses `dlopen(NULL)`/`dlsym()`;
+  DLPack works (numpy exports `__dlpack__`).  See `docs/building.md` for emcc flags.
+
+## Ongoing Work
+
+- **ppc64le CI** -- CPU detection implemented (getauxval/mftb); needs QEMU or cloud runner.
+- **Windows free-threading** -- no x64 FT Python builds available on CI yet.
 
 ## Migration Guide: c2ImageD11
 
 c2ImageD11 uses `C2PY_BEGIN` blocks embedded in C comments to define its
-c2py23 interface.  The `tools/harvester.py` script extracts these blocks
+c2py23 interface.  The `c2py23.harvester` module extracts these blocks
 as Python dicts (via `ast.literal_eval()`), assembles them into a YAML
 file (`lib/interface/_cImageD11.c2py`), and runs `c2py23` to
 produce the wrapper.

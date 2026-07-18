@@ -242,3 +242,55 @@ print()
 print("Done.")
 ```
 
+## Example Output
+
+Running on Linux x86_64, Python 3.12, GCC 13.3.0:
+
+```text
+=== Poly SIMD dispatch ===
+Array size: 100000
+Docstring:
+poly(a: buffer, b: buffer, out: buffer) -> void
+
+Polynomial computation with CPU-feature dispatch (AVX-512/AVX2/scalar).
+
+Parameters
+----------
+a : buffer
+    Type: float32 (format 'f')
+    Size must equal b
+    Size must equal out
+b : buffer
+    Type: float32 (format 'f')
+out : buffer
+    Type: float32 (format 'f')
+    Writable
+
+Overloads
+---------
+  Group float (When: ((a.format == 'f' and b.format == 'f') and out.format == 'f'))
+    Map: a = a.ptr (const float *)
+         b = b.ptr (const float *)
+         out = out.ptr (float *)
+         n = a.n (int)
+    poly_f32_avx512 (when: c2py_amd64_avx512f)
+    poly_f32_avx2 (when: c2py_amd64_avx2)
+    poly_f32_scalar
+
+poly_f32_scalar      out[:3] = [0.0, 0.010102051310241222, 0.020416846498847008]
+poly_f32_avx2        out[:3] = [0.0, 0.010102051310241222, 0.020416846498847008]
+poly_f32_avx512      out[:3] = [0.0, 0.010102051310241222, 0.020416846498847008]
+poly_f32_avx2        matches poly_f32_scalar
+poly_f32_avx512      matches poly_f32_scalar
+
+=== Wall-clock timing (100 iterations, 100000 elements) ===
+  poly_f32_scalar     163.5 us/call  (+/- 1.0 us, cv=0.6%)
+  poly_f32_avx2      83.0 us/call  (+/- 1.2 us, cv=1.5%)
+  poly_f32_avx512      29.3 us/call  (+/- 0.1 us, cv=0.5%)
+
+=== c2py23 built-in perf (ns, 100 iterations) ===
+  poly_f32_scalar    163177 ns/call
+  poly_f32_avx2     82383 ns/call
+  poly_f32_avx512     28825 ns/call
+```
+

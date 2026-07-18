@@ -45,10 +45,10 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting_started.md
-  - User Guide: user_guide.md
-  - Building Extensions: building.md
   - Specification: specification.md
+  - User Guide: user_guide.md
+  - Getting Started: getting_started.md
+  - Building Extensions: building.md
   - Design Decisions: design.md
   - Developer Guide: developer_guide.md
   - Benchmark Results: benchmarks.md
