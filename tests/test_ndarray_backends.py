@@ -114,10 +114,10 @@ class TestNdarrayFastPath:
 
 
 @needs_modules
+@pytest.mark.skipif(IS_FREE_THREADED, reason="ndarray struct-cast disabled on free-threaded Python")
 class TestBackendSpecific:
     """Verify each acquisition backend works in isolation."""
 
-    @_ft_skip_ndarray_only
     def test_ndarray_only(self):
         """ndarray-only backend handles numpy arrays."""
         c2py_vnorm_ndarray.vnorm(make_vec(), make_mods())
