@@ -1,11 +1,11 @@
-# tests/Makefile -- build c2py23 dlsym test modules (POSIX make)
+# tests/Makefile -- build c2py23 dlsym test modules (GNU make)
 #
 # Usage:
 #   make -f tests/Makefile all             # build all test modules (Linux/macOS)
 #   make -f tests/Makefile all EXT=.pyd     # build on Windows
 #   make -f tests/Makefile clean
 #
-# Environment: CC CFLAGS LDFLAGS LIBS EXT
+# Environment: CC CFLAGS LDFLAGS LIBS EXT MSVC
 
 CC       ?= gcc
 CFLAGS   ?= -O2 -Wall -fPIC
@@ -17,7 +17,8 @@ RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
                 c2py23/runtime/c2py_dlsym.h \
                 c2py23/runtime/c2py_pythonh.h
 
-ifdef MSVC
+# Auto-detect MSVC from CC or env var
+ifneq ($(or $(MSVC),$(findstring cl,$(CC))),)
   EXT      ?= .pyd
   LIBS     ?=
 else
