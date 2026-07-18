@@ -160,7 +160,7 @@ for pair in \
     "types|$CASES/types/types.c2py" \
     "optional|$CASES/optional/optional.c2py" \
     "scalar_output|$CASES/scalar_output/stats.c2py" \
-    "template|$CASES/template/template.c2py" \
+    "template|$CASES/template/sum.c2py" \
     "constants|$CASES/constants/constants.c2py" \
     "docstring|$CASES/docstring/docstring.c2py" \
     "timing|$CASES/timing/timing.c2py" \
