@@ -1,13 +1,26 @@
-module: freethreadmod
-source: [freethread.c]
-free_threading: true
-
-functions:
-  - py_sig: "double_it(a: buffer, result: buffer) -> int"
-    checks:
-      - "a.format == 'd'"
-      - "result.format == 'd'"
-      - "result.n >= a.n"
-    c_overloads:
-      - sig: "double_it(const double *a, double *result, intptr_t n) -> int"
-        map: {a: "a.ptr", result: "result.ptr", n: "a.n"}
+# Python dict format equivalent of freethread.c2py
+{
+    "module": "freethreadmod",
+    "source": ["freethread.c"],
+    "free_threading": True,
+    "functions": [
+        {
+            "py_sig": "double_it(a: buffer, result: buffer) -> int",
+            "checks": [
+                "a.format == 'd'",
+                "result.format == 'd'",
+                "result.n >= a.n",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "double_it(const double *a, double *result, intptr_t n) -> int",
+                    "map": {
+                        "a": "a.ptr",
+                        "result": "result.ptr",
+                        "n": "a.n",
+                    },
+                },
+            ],
+        },
+    ],
+}

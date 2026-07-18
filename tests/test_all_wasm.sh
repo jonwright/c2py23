@@ -154,8 +154,8 @@ FAILED_BUILDS=0
 
 # 17 uniform test modules (order matches test runner)
 for pair in \
-    "fill|$CASES/fill/fill.c2py" \
-    "arraysum|$CASES/arraysum/arraysum.c2py" \
+    "fill|$CASES/fill/fill.c" \
+    "arraysum|$CASES/arraysum/arraysum.c" \
     "dot|$CASES/dot/dot.c2py" \
     "types|$CASES/types/types.c2py" \
     "optional|$CASES/optional/optional.c2py" \

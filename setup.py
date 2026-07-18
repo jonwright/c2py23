@@ -42,14 +42,9 @@ setup(
     package_data={"c2py23": ["runtime/*.h", "runtime/*.c"]},
     install_requires=[],
     extras_require={
-        "yaml": [
-            'PyYAML>=5.1;python_version>="3"',
-            'PyYAML>=3.10,<6;python_version=="2.7"',
-        ],
         "test": [
             "pytest",
             "numpy",
-            "PyYAML",
         ],
     },
     entry_points={

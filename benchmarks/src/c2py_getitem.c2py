@@ -1,24 +1,25 @@
+# Python dict format equivalent of c2py_getitem.c2py
 {
-  "module": "c2py_getitem",
-  "source": ["tiny_kernel.c"],
-  "headers": ["tiny_kernel.h"],
-  "timing": true,
-  "functions": [
-    {
-      "py_sig": "getitem(buf: buffer, i: int) -> float",
-      "checks": [
-        "buf.format == 'd'",
-        "buf.ndim == 1"
-      ],
-      "c_overloads": [
+    "module": "c2py_getitem",
+    "source": ["tiny_kernel.c"],
+    "headers": ["tiny_kernel.h"],
+    "timing": True,
+    "functions": [
         {
-          "sig": "double get_item(const double arr[], int i)",
-          "map": {
-            "arr": "buf.ptr",
-            "i": "i"
-          }
-        }
-      ]
-    }
-  ]
+            "py_sig": "getitem(buf: buffer, i: int) -> float",
+            "checks": [
+                "buf.format == 'd'",
+                "buf.ndim == 1",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "double get_item(const double arr[], int i)",
+                    "map": {
+                        "arr": "buf.ptr",
+                        "i": "i",
+                    },
+                },
+            ],
+        },
+    ],
 }

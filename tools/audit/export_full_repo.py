@@ -137,7 +137,7 @@ def _lang_tag(path):
         ".h": "c",
         ".toml": "toml",
         ".yaml": "yaml",
-        ".c2py": "yaml",
+        ".c2py": "python",
         ".md": "markdown",
         ".sh": "bash",
         ".cfg": "ini",

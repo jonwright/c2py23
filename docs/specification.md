@@ -16,7 +16,7 @@ the C code trivially simple.
 The project defines a strict subset language: Python on one side (memory
 blocks with metadata  --  acquired via NumPy struct-cast, DLPack, or the
 PEP 3118 buffer protocol), C99 on the other (flat pointers, scalar returns).
-The interface is described declaratively in YAML. The code generator
+The interface is described declaratively as a Python dict. The code generator
 transpiles this into a CPython C extension that acquires pointers to the
 underlying memory, then dispatches to the right C function based on buffer
 properties: element type, dimensionality, and layout. The wrapper itself is
@@ -40,12 +40,16 @@ The long-term goal is a substrate for:
 
 ### Python Dict Format (Canonical)
 
-The Python dict format is the canonical representation. When embedding
-c2py23 definitions in C source comments, the dict format is used because
-it parses safely via ast.literal_eval without PyYAML.
+The Python dict format is the canonical representation.  When embedding
+c2py23 definitions in C source comments (C2PY_BEGIN blocks), the dict
+format is used because it parses safely via `ast.literal_eval` with
+no external dependencies.  An early version of c2py23 used YAML as the
+interface format but this was removed in v0.4.0 -- YAML's indentation
+rules and C-extension dependency (PyYAML) proved too fragile for the
+cross-platform, backwards-compatible mission.  Use `tools/convert_c2py_to_dict.py`
+to migrate legacy YAML files.
 
-Instead of YAML, the same interface can be written as a Python dict literal.
-This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
+The `load_c2py()` function auto-detects the format:
 
 ```python
 {
@@ -77,8 +81,8 @@ This is auto-detected by `load_c2py()` and requires no PyYAML dependency.
 }
 ```
 
-The key names and values are identical to the YAML schema below.
-Differences from YAML:
+The key names and values are shown in the schema below.
+Differences from YAML (legacy, no longer supported):
 
 - Dict keys use Python strings (e.g. "c_overloads", "py_sig", "when")
 - **Boolean values**: `True`/`False` (or `true`/`false` in Python)
@@ -86,7 +90,7 @@ Differences from YAML:
 - **Strings** use Python quoting (single or double)
 - **No indentation sensitivity** -- dict boundaries are `{`/`}`
 
-The `load_c2py()` function auto-detects between YAML and Python dict:
+The `load_c2py()` function supports both dict format (.c2py) and C2PY_BEGIN blocks (.c/.h):
 
 ```python
 from c2py23.parser import load_c2py, from_c2py_dict
@@ -161,10 +165,11 @@ running any build script -- it trusts the source.  For downloaded or
 untrusted code, always use `ast.literal_eval()` which only accepts
 Python literals (no functions, imports, or expressions).
 
-### YAML Format (Alternative)
+### .c2py File Format (Python dict)
 
-```yaml
-module: <python-module-name>          # required
+The `.c2py` file is a Python dict literal (parsed via `ast.literal_eval`).
+The structure (schema shown below -- actual .c2py files use JSON-like quoting):
+
 source: [file1.c, file2.c, ...]       # required: C source files
 headers: [header1.h, header2.h, ...]  # optional: C headers to #include
 constants:                            # optional: module-level integer constants
@@ -223,7 +228,7 @@ via `${VAR}` string substitution. All value lists under `expand:` must have the
 same length N. For each index i, a copy of the function definition is generated
 with `${VAR}` replaced by `values[i]` in all string fields.
 
-```yaml
+```python
 functions:
   - expand:
       TYPE: [uint8_t, uint16_t, int32_t]
@@ -243,7 +248,7 @@ C function rather than passed by the Python caller. c2py23 auto-allocates a
 1-element stack variable, passes a pointer to the C function, and returns the
 resulting value as part of the Python return tuple.
 
-```yaml
+```python
 c_overloads:
   - sig: "stats(const double *data, int n, double *minval, double *maxval)"
     map: {data: "data.ptr", n: "data.n"}
@@ -297,7 +302,7 @@ Returns:
 A C parameter with type `void*` maps from Python `int` (a pointer-width integer).
 The wrapper casts through `intptr_t` and never dereferences the pointer:
 
-```yaml
+```python
 c_overloads:
   - sig: "gpu_kernel(void *gpu_buf, int n)"
     map: {gpu_buf: gpu_addr, n: "data.n"}
@@ -510,7 +515,7 @@ inner (packed) dimension, such as 3 in an `A[n][3]` AoS layout.
 When a kernel assumes a specific axis ordering, put the layout
 constraint in `checks:` so it applies to all overloads:
 
-```yaml
+```python
 checks:
   - "points.slow_axis == 0"      # requires C-contiguous, no transpose
 c_overloads:
@@ -526,32 +531,32 @@ A C kernel that operates on `float A[n][3]` needs `n` as the loop
 count.  For C-contiguous data, `n = shape[0]`.  For F-contiguous data,
 `n = shape[ndim-1]`.  `slow_dim` gives the correct `n` regardless:
 
-```yaml
+```python
 map: {a: "a.ptr", n: "a.slow_dim", out: "out.ptr"}
 ```
 
 This works for any ndim -- `slow_dim` is always the size of the axis
 that the C loop iterates over.
 
-#### Quoting in map: and YAML values
+#### Quoting in map values
 
-YAML interprets `.`, `[`, `(`, and spaces as syntax.  Values containing
+In the dict format `.`, `[`, `(`, and spaces as syntax.  Values containing
 these characters MUST be quoted:
 
-```yaml
-map: {ng: "gv.shape[0]"}     # quoted -- . and [ are YAML special
+```python
+map: {ng: "gv.shape[0]"}     # quoted -- . and [ are Python syntax
 map: {ptr: "buf.ptr"}        # quoted -- . is YAML special
 map: {tol: tol}               # no quotes -- bare scalar
 ```
 
-The rule: bare YAML values (scalars, ints) need no quotes; any value
+The rule: bare dict values (scalars, ints) need no quotes; any value
 containing `.`, `[`, `(`, or whitespace must be quoted.
 
 #### Variant Ordering
 
 Variant dispatch respects declaration order. The first variant whose
 `when:` condition matches wins auto-dispatch. Both Python 3.7+ dicts and
-PyYAML `safe_load` preserve insertion order.
+The dict preserves key order.
 
 Variants with `default: false` are skipped during auto-resolve and are
 reachable only via `_rebind_<name>()`. At least one variant per group
@@ -564,7 +569,7 @@ from `sig` (e.g., `poly_f32_avx512`). If specified, `name` must match
 the C function name exactly  --  enforced at parse time. This ensures
 `_variants_<name>()` returns names that correspond to real .so symbols.
 
-```yaml
+```python
 variants:
   - sig: "void poly_f32_avx512(...)"   # name -> "poly_f32_avx512"
     when: "c2py_amd64_avx512f"
@@ -609,7 +614,7 @@ int array_sum(const double *a, const double *b, double *result, int n) {
 ```
 
 **Interface** (`arraysum.c2py`):
-```yaml
+```python
 module: arraysum
 source: [arraysum.c]
 
@@ -669,7 +674,7 @@ void fill_d(double *arr, int n, double value) {
 ```
 
 **Interface** (`fill.c2py`):
-```yaml
+```python
 module: fillmod
 source: [fill.c]
 
@@ -743,7 +748,7 @@ void transform_soa(double *points, intptr_t n, double *out) {
 ```
 
 **Interface** (`transform.c2py`):
-```yaml
+```python
 module: xfrm
 source: [transform.c]
 timing: true
@@ -846,7 +851,7 @@ void fill_f64(double *arr, int n, double value) {
 ```
 
 **Interface** (`typedispatch.c2py`):
-```yaml
+```python
 module: dispatchmod
 source: [typedispatch.c]
 headers: [stdint.h]
@@ -1000,7 +1005,7 @@ followed by a `\n--\n\n` separator), which allows `inspect.signature()` and
 
 With `doc:` set:
 
-```yaml
+```python
 functions:
   - py_sig: "inc(x: int) -> int"
     doc: "Increment x by 1 and return the result"
@@ -1177,7 +1182,7 @@ for any glibc-linked binary.
 The wrapper holds the GIL by default. Set `gil_release: true` to release
 it during pure-C computation:
 
-```yaml
+```python
 functions:
   - py_sig: "compute(data: buffer) -> void"
     gil_release: true
@@ -1187,7 +1192,7 @@ On Python 3.14t (free-threading), the GIL is disabled by default but
 c2py23 modules re-enable it unless `free_threading: true` is declared at
 module level:
 
-```yaml
+```python
 module: mymod
 free_threading: true
 ```

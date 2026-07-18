@@ -113,7 +113,7 @@ Tell the LLM:
 ### Step 2: Review One Wrapper at a Time
 
 Upload each file from `tools/audit/wrappers/<name>.md` sequentially. Each
-file contains the YAML interface definition, the C implementation, the
+file contains the interface definition, the C implementation, the
 generated wrapper, and any test scripts for that module.
 
 For each wrapper, ask the LLM:
@@ -174,7 +174,7 @@ end-to-end.
 
 | Technique | Approach |
 |-----------|----------|
-| Malformed input | Feed broken `.c2py` YAML to the parser |
+| Malformed input | Feed broken `.c2py` to the parser |
 | Edge cases | 0-length arrays, max `Py_ssize_t`, negative sizes |
 | Large buffers | 1 GB+ arrays to stress overflow guards |
 | Aliasing | Same buffer as input+output, verify detection |

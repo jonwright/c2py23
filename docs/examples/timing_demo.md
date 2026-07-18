@@ -5,7 +5,7 @@ Two overloads (double and float) show per-variant timing breakdown.
 
 ## Interface
 
-```yaml
+```python
 --8<-- "examples/timing_demo/wsum.c2py"
 ```
 

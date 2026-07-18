@@ -1,29 +1,30 @@
+# Python dict format equivalent of c2py_vnorm_ndarray.c2py
 {
-  "module": "c2py_vnorm_ndarray",
-  "source": ["tiny_kernel.c"],
-  "headers": ["tiny_kernel.h"],
-  "functions": [
-    {
-      "py_sig": "vnorm(vec: buffer, mods: buffer) -> void",
-      "acquire": ["ndarray"],
-      "checks": [
-        "vec.format == 'd'",
-        "mods.format == 'd'",
-        "vec.ndim == 2",
-        "mods.ndim == 1",
-        "vec.shape[1] == 3",
-        "mods.n == vec.shape[0]"
-      ],
-      "c_overloads": [
+    "module": "c2py_vnorm_ndarray",
+    "source": ["tiny_kernel.c"],
+    "headers": ["tiny_kernel.h"],
+    "functions": [
         {
-          "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",
-          "map": {
-            "vec": "vec.ptr",
-            "mods": "mods.ptr",
-            "n": "vec.shape[0]"
-          }
-        }
-      ]
-    }
-  ]
+            "py_sig": "vnorm(vec: buffer, mods: buffer) -> void",
+            "acquire": ["ndarray"],
+            "checks": [
+                "vec.format == 'd'",
+                "mods.format == 'd'",
+                "vec.ndim == 2",
+                "mods.ndim == 1",
+                "vec.shape[1] == 3",
+                "mods.n == vec.shape[0]",
+            ],
+            "c_overloads": [
+                {
+                    "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",
+                    "map": {
+                        "vec": "vec.ptr",
+                        "mods": "mods.ptr",
+                        "n": "vec.shape[0]",
+                    },
+                },
+            ],
+        },
+    ],
 }

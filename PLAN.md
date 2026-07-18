@@ -147,7 +147,7 @@ this issue.
   `tests/wasm/pyodide_pkg/`, setup scripts to `docs/`.
 
 - **Multi-backend buffer acquisition (2026-07)**  --  NumPy struct-cast, PEP 3118
-  buffer protocol, and DLPack capsule extraction, selectable via `acquire:` YAML key.
+  buffer protocol, and DLPack capsule extraction, selectable via `acquire:` key.
   Default is `[ndarray, buffer]`; ndarray struct-cast is 2-3x faster than gold
   baselines for small arrays (~70ns vs 120ns).  `c2py_ptr_info` abstracts the
   buffer metadata into a unified struct shared by all backends.
@@ -211,7 +211,7 @@ this issue.
   refcount enforcement on FT.  All 14 uniform + 14 regression + 5 error-path
   tests pass on python3.14t.
 - P0: Parameter count validation -- raises ValueError on sig mismatch
-- YAML type coercion -- auto-coerce bare int/float in map/when/checks
+- Type coercion -- auto-coerce bare int/float in map/when/checks
 - Better check failure messages -- include actual runtime values
 - Buffer format vs C type compile-time validation -- raises ValueError
 - Output scalar convention -- `outputs:` key, auto-alloc, tuple return

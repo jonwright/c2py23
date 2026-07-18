@@ -100,3 +100,25 @@ that packages dlsym and pythonh variants automatically.
 
 `tests/Makefile` builds 17 test modules + 2 examples (kissfft, lz4) with
 vanilla C.  Type `make -f tests/Makefile all` from the project root.
+
+## Migrating from YAML (pre-v0.4.0)
+
+c2py23 originally used YAML for `.c2py` interface files.  This was removed
+in v0.4.0 -- YAML's indentation rules and the PyYAML C-extension dependency
+caused portability problems across Python 2.7-3.15, PyPy, and WASM.
+
+To migrate a legacy YAML `.c2py` file:
+
+```bash
+# 1. Convert to Python dict format:
+python tools/convert_c2py_to_dict.py mymodule.c2py
+
+# 2. Replace the YAML file with the generated .c2py.py sidecar:
+mv mymodule.c2py.py mymodule.c2py
+
+# 3. The new .c2py is a Python dict literal -- same keys, same values.
+#    c2py23 mymodule.c2py -o mymodule_wrapper.c  works as before.
+```
+
+`tools/convert_c2py_to_dict.py` requires PyYAML (for reading the old format
+only).  Once converted, PyYAML is no longer needed anywhere.

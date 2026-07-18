@@ -7,7 +7,7 @@ One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
 
 ## Quick Reference
 
-```yaml
+```python
 # mymod.c2py
 module: mymod
 source: [mymod.c]
@@ -47,7 +47,7 @@ See `docs/specification.md` for the full technical breakdown.
 
 Set `free_threading: true` in your `.c2py` file:
 
-```yaml
+```python
 module: mymod
 source: [mymod.c]
 free_threading: true
@@ -256,7 +256,7 @@ Set `timing: true` in your `.c2py` file to enable per-function wall-clock timing
 Each wrapped function gets a `_perf_<name>()` introspection method returning a dict
 with call count, total C time, and per-overload breakdown.
 
-```yaml
+```python
 module: mymod
 source: [mymod.c]
 timing: true

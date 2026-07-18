@@ -12,7 +12,7 @@ All approaches call the same `mc_pi()` C function.
 
 ## Interface
 
-```yaml
+```python
 --8<-- "examples/mp_bench/mc_pi.c2py"
 ```
 

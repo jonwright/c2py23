@@ -13,7 +13,7 @@ Zero copies, zero allocations. No numpy required.
 pip install c2py23
 ```
 
-Requires PyYAML and a C99 compiler (gcc, clang, or MSVC on Windows).
+Requires a C99 compiler (gcc, clang, or MSVC on Windows).  No Python dependencies beyond stdlib.
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ int array_sum(const double *a, const double *b, double *out, intptr_t n) {
 
 Write the interface file:
 
-```yaml
+```python
 # arraysum.c2py
 module: arraysum
 source: [arraysum.c]

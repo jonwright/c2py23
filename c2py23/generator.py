@@ -1903,7 +1903,7 @@ def _mod_doc(mod):
 # ---- Docstring generation ----
 def _doc(func):
     """Build a fully transparent docstring for a function.
-    Every piece of YAML info is surfaced: checks, maps, GIL, overloads, outputs.
+    Every piece of interface info is surfaced: checks, maps, GIL, overloads, outputs.
     Returns a Python string with real newlines (escaped at C embedding point)."""
     lines = []
 

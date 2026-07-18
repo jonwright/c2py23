@@ -35,7 +35,6 @@ TRIGGERS=(
     c2py23/runtime/c2py_runtime.h
     c2py23/runtime/c2py_runtime.c
     tests/cases/transform/transform.c2py
-    tests/cases/transform/transform.c
 )
 
 REBUILD=0

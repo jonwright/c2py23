@@ -1,15 +1,15 @@
-"""Parser for .c2py interface definition files.
+"""Parser for c2py23 interface definitions.
 
 Handles:
   - Python dict format (native, no dependency)
-  - YAML loading (via PyYAML)
+  - C2PY_BEGIN blocks embedded in C source files
   - C function signature parsing
   - Expression parsing (for 'when' conditions and 'map' substitutions)
   - Building the ModuleDef data model
 
-The entry point is `load_c2py(path)` which auto-detects the input format
-(Python dict or YAML).  For programmatic use, `from_c2py_dict(raw_dict, path)`
-accepts a Python dict directly.
+The entry point is `load_c2py(path)` which auto-detects the input format.
+For programmatic use, `from_c2py_dict(raw_dict, path)` accepts a Python dict
+directly.
 """
 
 from __future__ import print_function
@@ -20,13 +20,6 @@ import re
 import sys
 import warnings
 from collections import namedtuple
-
-try:
-    import yaml as _yaml
-
-    _HAS_YAML = True
-except ImportError:
-    _HAS_YAML = False
 
 # Python 2/3 compat: str covers bytes+unicode on 2.x, text on 3.x
 if sys.version_info[0] >= 3:
@@ -236,7 +229,7 @@ class FuncDef(
     """A wrapped Python function definition.
 
     params is an optional dict mapping parameter names to human-readable
-    descriptions, parsed from the YAML block. Keys are validated against
+    descriptions, parsed from the interface definition. Keys are validated against
     py_sig parameter names.
     """
 
@@ -292,12 +285,12 @@ class ModuleDef(
 
 
 # ---------------------------------------------------------------------------
-# Loading (Python dict or YAML)
+# Loading interface definitions
 # ---------------------------------------------------------------------------
 
 
 def from_c2py_dict(raw_dict, path="<dict>"):
-    """Parse a Python dict (from Python dict format or YAML) into a ModuleDef.
+    """Parse a Python dict (from dict format) into a ModuleDef.
 
     Args:
         raw_dict: A dict with keys: module, source, headers, functions,
@@ -334,14 +327,34 @@ def from_c2py_dict(raw_dict, path="<dict>"):
 
 
 def load_c2py(path):
-    """Load and parse a .c2py file, returning a ModuleDef.
+    """Load and parse an interface definition, returning a ModuleDef.
 
     Supports two formats, auto-detected:
-      1. Python dict: a file containing a Python dict literal
-         (parsed via ast.literal_eval, no PyYAML needed).
+      1. C source (.c, .h): C2PY_BEGIN..C2PY_END blocks embedded in
+         comments (parsed via c2py23.harvester).
+      2. Python dict (.c2py, .c2py.py): a file containing a Python
+         dict literal (parsed via ast.literal_eval).
          Lines starting with '#' are stripped as comments.
-      2. YAML: standard .c2py YAML format (requires PyYAML).
+
+    For .c and .h files, interface definitions are embedded as:
+        /* C2PY_BEGIN
+        "module": "mymod",
+        "source": ["mymod.c"],
+        "functions": ...
+        C2PY_END */
     """
+    # C source files -- extract C2PY_BEGIN blocks via harvester
+    if path.endswith(".c") or path.endswith(".h"):
+        from c2py23.harvester import extract_from_file
+
+        raw = extract_from_file(path)
+        if not isinstance(raw, dict) or "module" not in raw:
+            raise ValueError("No C2PY_BEGIN block with 'module' key found in {}".format(path))
+        mod = from_c2py_dict(raw, path)
+        base_dir = os.path.dirname(os.path.abspath(path))
+        _validate_module(mod, base_dir)
+        return mod
+
     with open(path, "r") as f:
         text = f.read()
 
@@ -350,27 +363,16 @@ def load_c2py(path):
     try:
         stripped = re.sub(r"(?m)^\s*#.*$", "", text)
         raw = ast.literal_eval(stripped)
-        if isinstance(raw, dict):
-            mod = from_c2py_dict(raw, path)
-            base_dir = os.path.dirname(os.path.abspath(path))
-            _validate_module(mod, base_dir)
-            return mod
     except (ValueError, SyntaxError):
-        pass
+        raw = None
 
-    # Fall back to YAML
-    if not _HAS_YAML:
-        raise ImportError(
-            "Could not parse '{}' as a Python dict and PyYAML is not installed.\n"
-            "Install PyYAML with: pip install PyYAML\n"
-            "Or use the Python dict format (see docs/specification.md).".format(path)
-        )
+    if isinstance(raw, dict):
+        mod = from_c2py_dict(raw, path)
+        base_dir = os.path.dirname(os.path.abspath(path))
+        _validate_module(mod, base_dir)
+        return mod
 
-    raw = _yaml.safe_load(text)
-    mod = from_c2py_dict(raw, path)
-    base_dir = os.path.dirname(os.path.abspath(path))
-    _validate_module(mod, base_dir)
-    return mod
+    raise ValueError("Could not parse '{}': not a valid Python dict".format(path))
 
 
 def _get_required(d, key, path):
@@ -1003,9 +1005,9 @@ def _expand_func_template(raw_func, path):
 
 
 def _coerce_expr_value(val, context, path):
-    """Coerce a non-string YAML value to string for expression parsing.
+    """Coerce a non-string value to string for expression parsing.
 
-    YAML parses bare integers/floats as their native types, but the expression
+    Dicts may contain bare integers/floats as their native types, but the expression
     parser expects strings. Map values like `verbose: 0` would crash otherwise.
     """
     if isinstance(val, _STRING_TYPES):
@@ -1224,7 +1226,7 @@ def _parse_func(raw, path):
 
 
 def _parse_check_value(val, path):
-    """Parse a check expression, coercing non-string values from YAML."""
+    """Parse a check expression, coercing non-string values from dicts."""
     val = _coerce_expr_value(val, "checks", path)
     return parse_expr(val)
 
