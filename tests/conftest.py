@@ -43,6 +43,44 @@ def _build_all():
         sys.exit(1)
 
 
+def _preload_modules():
+    """Preload all .so/.pyd modules via importlib for PyPy compatibility.
+
+    PyPy's import system does not find .so files via sys.path the same
+    way CPython does.  Pre-loading into sys.modules before collection
+    ensures tests can use plain 'import modname'.
+    """
+    import glob
+
+    cases_dir = os.path.join(PROJECT_DIR, "tests", "cases")
+    examples_dir = os.path.join(PROJECT_DIR, "examples")
+    so_files = glob.glob(os.path.join(cases_dir, "*", "*.so"))
+    so_files.extend(glob.glob(os.path.join(examples_dir, "*", "*.so")))
+    for so_path in so_files:
+        modname = os.path.basename(so_path)[:-3]
+        if modname in sys.modules:
+            continue
+        try:
+            if sys.version_info[0] >= 3:
+                import importlib.util as iu
+                import importlib.machinery as im
+
+                loader = im.ExtensionFileLoader(modname, so_path)
+                spec = iu.spec_from_file_location(modname, so_path, loader=loader)
+                if spec:
+                    mod = iu.module_from_spec(spec)
+                    sys.modules[modname] = mod
+                    loader.exec_module(mod)
+            else:
+                import imp
+
+                mod = imp.load_dynamic(modname, so_path)
+                sys.modules[modname] = mod
+        except Exception:
+            pass
+
+
 def pytest_configure(config):
-    """Build .so files before test collection."""
+    """Build .so files then preload modules before test collection."""
     _build_all()
+    _preload_modules()

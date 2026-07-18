@@ -123,4 +123,55 @@ jobs:
           m.fill(arr, 42.0)
           assert list(arr) == [42.0, 42.0, 42.0, 42.0]
           print('Python ${{ matrix.python-version }} --pythonh: PASS')
+           "
+
+  # PyPy: dlsym only (experimental -- see issue #81)
+  test-linux-pypy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pypy-version: ['pypy3.10', 'pypy3.9']
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up PyPy
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.pypy-version }}
+
+      - name: Install c2py23 and test deps
+        run: |
+          pip install -e . --quiet
+          pip install pytest --quiet
+
+      - name: Install numpy (PyPy may not have wheels)
+        run: pip install numpy --quiet 2>/dev/null || echo "(numpy skipped)"
+        continue-on-error: true
+
+      - name: Run tests (dlsym)
+        env:
+          CC: gcc
+          CFLAGS: -DC2PY_TARGET_PYPY -O1
+        run: |
+          python -m c2py23 tests/cases/fill/fill.c -o tests/cases/fill/fillmod_wrapper.c
+          make -f tests/Makefile tests/cases/fill/fillmod.so
+          python -c "
+          import ctypes, sys, importlib.util, importlib.machinery
+          sys.path.insert(0, 'tests/cases/fill')
+          loader = importlib.machinery.ExtensionFileLoader('fillmod', 'tests/cases/fill/fillmod.so')
+          spec = importlib.util.spec_from_file_location('fillmod', 'tests/cases/fill/fillmod.so', loader=loader)
+          mod = importlib.util.module_from_spec(spec)
+          sys.modules['fillmod'] = mod
+          loader.exec_module(mod)
+          arr = (ctypes.c_float * 4)(0,0,0,0)
+          mod.fill(arr, 42.0)
+          assert list(arr) == [42.0, 42.0, 42.0, 42.0], str(list(arr))
+          print('PyPy fill: PASS')
           "
