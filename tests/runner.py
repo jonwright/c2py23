@@ -79,7 +79,7 @@ def _module_name(c2py_path):
 
 
 def generate_all():
-    """Generate wrapper .c files for all test modules and examples."""
+    """Generate wrapper .c files for all test modules, examples, and benchmarks."""
     count = 0
     # Test cases
     cases_dir = os.path.join(HERE, "cases")
@@ -104,6 +104,18 @@ def generate_all():
                 if _needs_regen(c2py_path, wrapper_c):
                     subprocess.check_call([sys.executable, "-m", "c2py23", c2py_path, "-o", wrapper_c])
                     count += 1
+
+    # Benchmarks
+    bench_dir = os.path.join(PROJECT, "benchmarks", "src")
+    if os.path.isdir(bench_dir):
+        for c2py_path in _find_c2py_files(bench_dir):
+            mod = _module_name(c2py_path)
+            if not mod:
+                continue
+            wrapper_c = os.path.join(os.path.dirname(c2py_path), mod + "_wrapper.c")
+            if _needs_regen(c2py_path, wrapper_c):
+                subprocess.check_call([sys.executable, "-m", "c2py23", c2py_path, "-o", wrapper_c])
+                count += 1
 
     if count:
         print("[runner] Generated %d wrapper(s)" % count)
