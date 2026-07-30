@@ -301,6 +301,7 @@ def from_c2py_dict(raw_dict, path="<dict>"):
         A ModuleDef namedtuple.
     """
     module_name = _get_required(raw_dict, "module", path)
+    _check_ascii(module_name, "module", path)
     sources = raw_dict.get("source", [])
     if isinstance(sources, _STRING_TYPES):
         sources = [sources]
@@ -415,6 +416,7 @@ def _parse_py_sig(sig_str, path):
             if not pm:
                 raise ValueError("Invalid param '{}' in signature '{}'".format(part, sig_str))
             pname = pm.group(1)
+            _check_ascii(pname, "param name", path)
             ptype = pm.group(2)
             default_str = pm.group(3)
 
@@ -1024,6 +1026,7 @@ def _coerce_expr_value(val, context, path):
 def _parse_func(raw, path):
     py_sig_str = _get_required(raw, "py_sig", path)
     name, py_params, ret_type = _parse_py_sig(py_sig_str, path)
+    _check_ascii(name, "function name", path)
 
     checks = [_parse_check_value(c, path) for c in raw.get("checks", [])]
 

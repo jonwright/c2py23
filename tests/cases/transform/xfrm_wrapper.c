@@ -259,7 +259,7 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         char _c2py_err[256];
         const char *_fmt = info_points->format ? info_points->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.format == 'd' (got format='%c')", _got);
+        snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'points' check failed: points.format == 'd' (got format='%c')", _got);
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
@@ -268,28 +268,28 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         char _c2py_err[256];
         const char *_fmt = info_out->format ? info_out->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.format == 'd' (got format='%c')", _got);
+        snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'out' check failed: out.format == 'd' (got format='%c')", _got);
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: out.n == points.n */
     if (!((((info_out->len == 0) ? 0 : (info_out->len / info_out->itemsize))) == (((info_points->len == 0) ? 0 : (info_points->len / info_points->itemsize))))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: out.n == points.n (got %ld vs %ld)", (long)(((info_out->len == 0) ? 0 : (info_out->len / info_out->itemsize))), (long)(((info_points->len == 0) ? 0 : (info_points->len / info_points->itemsize))));
+        snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'out' check failed: out.n == points.n (got %ld vs %ld)", (long)(((info_out->len == 0) ? 0 : (info_out->len / info_out->itemsize))), (long)(((info_points->len == 0) ? 0 : (info_points->len / info_points->itemsize))));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: points.ndim == 2 */
     if (!((info_points->ndim) == (2))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.ndim == 2 (got %ld vs %ld)", (long)(info_points->ndim), (long)(2));
+        snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'points' check failed: points.ndim == 2 (got %ld vs %ld)", (long)(info_points->ndim), (long)(2));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
     /* check: points.slow_axis == 0 */
     if (!((_c2py_slow_axis_info_points) == (0))) {
         char _c2py_err[256];
-        snprintf(_c2py_err, sizeof(_c2py_err), "check failed: points.slow_axis == 0 (got %ld). Buffer must be C-contiguous (use slow_axis=0 or [][] notation).", (long)(_c2py_slow_axis_info_points));
+        snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'points' check failed: points.slow_axis == 0 (got %ld). Buffer must be C-contiguous (use slow_axis=0 or [][] notation).", (long)(_c2py_slow_axis_info_points));
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
