@@ -14,8 +14,10 @@ from c2py23.parser import (
     Subscript,
     IntLit,
     StrLit,
+    FloatLit,
     Compare,
     BinOp,
+    UnaryOp,
     COverload,
     _FORMAT_CHAR_TO_NAME,
     _escape_c_str,
@@ -576,7 +578,7 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
     # Checks
     for check in func.checks:
         b.emit("    /* check: {0} */".format(_expr_to_source(check)))
-        _emit_check(b, check, buf_params, scalar_params)
+        _emit_check(b, check, buf_params, scalar_params, name)
 
     # Overload dispatch
     _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_release)
@@ -1173,7 +1175,30 @@ def _get_buf_flags(buf_param, func):
 
 
 # ---- Expression helpers ----
-def _make_compare_diag(compare, buf_params, scalar_params):
+def _check_arg_varname(expr):
+    """Extract the primary Python argument name from a check expression.
+
+    Walks the left side of Compare/BinOp nodes and through Attr/Subscript
+    wrappers to find the root Var node. Returns None if no variable found.
+    """
+    if expr is None:
+        return None
+    if isinstance(expr, Var):
+        return expr.name
+    if isinstance(expr, Attr):
+        return _check_arg_varname(expr.obj)
+    if isinstance(expr, Subscript):
+        return _check_arg_varname(expr.obj)
+    if isinstance(expr, Compare):
+        return _check_arg_varname(expr.left)
+    if isinstance(expr, BinOp):
+        return _check_arg_varname(expr.left)
+    if isinstance(expr, UnaryOp):
+        return _check_arg_varname(expr.operand)
+    return None
+
+
+def _make_compare_diag(compare, buf_params, scalar_params, name):
     """Generate diagnostic C code for a Compare expression."""
     left = compare.left
     right = compare.right
@@ -1182,6 +1207,13 @@ def _make_compare_diag(compare, buf_params, scalar_params):
     left_c = _expr_to_c(left, buf_params, scalar_params, None)
     right_c = _expr_to_c(right, buf_params, scalar_params, None)
     source = _expr_to_source(compare)
+
+    # Build error message prefix with function name and arg name
+    argname = _check_arg_varname(left)
+    if argname:
+        prefix = "{0}: arg '{1}' check failed: ".format(name, argname)
+    else:
+        prefix = "{0}: check failed: ".format(name)
 
     # Determine if either side is a format attribute
     left_is_format = isinstance(left, Attr) and left.attr == "format"
@@ -1195,7 +1227,7 @@ def _make_compare_diag(compare, buf_params, scalar_params):
             'const char *_fmt = {0} ? {0} : "";'.format(left_c),
             "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"check failed: {0} (got format='%c')\", _got);".format(escaped_src),
+            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
         ]
         return lines
     if right_is_format and isinstance(left, StrLit) and len(left.value) == 1:
@@ -1205,7 +1237,7 @@ def _make_compare_diag(compare, buf_params, scalar_params):
             'const char *_fmt = {0} ? {0} : "";'.format(right_c),
             "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"check failed: {0} (got format='%c')\", _got);".format(escaped_src),
+            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
         ]
         return lines
 
@@ -1219,7 +1251,7 @@ def _make_compare_diag(compare, buf_params, scalar_params):
             "char _gl = _fmt_l[0] ? _fmt_l[strlen(_fmt_l) - 1] : '?';",
             "char _gr = _fmt_r[0] ? _fmt_r[strlen(_fmt_r) - 1] : '?';",
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"check failed: {0} (got '%c' vs '%c')\", _gl, _gr);".format(escaped_src),
+            "\"{0}{1} (got '%c' vs '%c')\", _gl, _gr);".format(prefix, escaped_src),
         ]
         return lines
 
@@ -1238,16 +1270,16 @@ def _make_compare_diag(compare, buf_params, scalar_params):
             lines = [
                 "char _c2py_err[256];",
                 "snprintf(_c2py_err, sizeof(_c2py_err), "
-                '"check failed: %s (got %%ld). '
+                '"{0}{1} (got %ld). '
                 'Buffer must be C-contiguous (use slow_axis=0 or [][] notation).",'
-                " (long)(%s));" % (escaped_src, left_c),
+                " (long)({2}));".format(prefix, escaped_src, left_c),
             ]
         else:
             lines = [
                 "char _c2py_err[256];",
                 "snprintf(_c2py_err, sizeof(_c2py_err), "
-                '"check failed: %s (got %%ld vs %%ld)",'
-                " (long)(%s), (long)(%s));" % (escaped_src, left_c, right_c),
+                '"{0}{1} (got %ld vs %ld)",'
+                " (long)({2}), (long)({3}));".format(prefix, escaped_src, left_c, right_c),
             ]
         return lines
 
@@ -1255,7 +1287,7 @@ def _make_compare_diag(compare, buf_params, scalar_params):
 
 
 # ---- Check emission and diagnostics ----
-def _make_check_diag(check, buf_params, scalar_params):
+def _make_check_diag(check, buf_params, scalar_params, name):
     """Generate C code to capture actual runtime values for a check failure message.
 
     Returns a list of C code lines (strings) that produce a diagnostic,
@@ -1263,17 +1295,17 @@ def _make_check_diag(check, buf_params, scalar_params):
     cannot be generated for this expression shape.
     """
     if isinstance(check, Compare):
-        return _make_compare_diag(check, buf_params, scalar_params)
+        return _make_compare_diag(check, buf_params, scalar_params, name)
     elif isinstance(check, BinOp):
-        left_diag = _make_check_diag(check.left, buf_params, scalar_params)
+        left_diag = _make_check_diag(check.left, buf_params, scalar_params, name)
         if left_diag is not None:
             return left_diag
-        return _make_check_diag(check.right, buf_params, scalar_params)
+        return _make_check_diag(check.right, buf_params, scalar_params, name)
     return None
 
 
 # ---- Check emission and diagnostics ----
-def _emit_check(b, check, buf_params, scalar_params):
+def _emit_check(b, check, buf_params, scalar_params, name):
     """Emit a check that raises if condition is false.
 
     For single-char format comparisons on old buffers (format == NULL),
@@ -1284,7 +1316,7 @@ def _emit_check(b, check, buf_params, scalar_params):
     """
     c_expr = _expr_to_c(check, buf_params, scalar_params, None)
     msg = _expr_to_source(check)
-    diag = _make_check_diag(check, buf_params, scalar_params)
+    diag = _make_check_diag(check, buf_params, scalar_params, name)
     b.emit("    if (!(" + c_expr + ")) {")
     if diag:
         b.emit("        " + diag[0])
@@ -1293,7 +1325,12 @@ def _emit_check(b, check, buf_params, scalar_params):
                 b.emit("        " + d)
         b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
     else:
-        b.emit('        PyErr_SetString(PyExc_ValueError, "check failed: ' + _escape_c_str(msg) + '");')
+        argname = _check_arg_varname(check)
+        if argname:
+            prefix_fb = "{0}: arg '{1}' check failed: ".format(name, argname)
+        else:
+            prefix_fb = "{0}: check failed: ".format(name)
+        b.emit('        PyErr_SetString(PyExc_ValueError, "' + prefix_fb + _escape_c_str(msg) + '");')
     b.emit("        return NULL;")
     b.emit("    }")
 
