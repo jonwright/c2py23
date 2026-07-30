@@ -1,5 +1,5 @@
 from __future__ import print_function
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 from c2py23.cli import generate
