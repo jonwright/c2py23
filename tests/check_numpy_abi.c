@@ -16,6 +16,28 @@
 #include <stdio.h>
 #include <stddef.h>
 
+/* numpy >= 2.0 hides the flags/elsize/alignment fields of PyArray_Descr
+ * when compiled with the default 1.x-compatible target: the public struct
+ * then only carries the shared fields, with the full 2.x layout in
+ * _PyArray_DescrNumPy2.  numpy 1.x (and numpy 2.x built with the 2.0
+ * target) exposes everything on PyArray_Descr itself. */
+#if NPY_ABI_VERSION >= 0x02000000
+    #if NPY_FEATURE_VERSION >= NPY_2_0_API_VERSION
+        #define C2PY_DESCR_FIELDS PyArray_Descr
+    #else
+        #define C2PY_DESCR_FIELDS _PyArray_DescrNumPy2
+    #endif
+#else
+    #define C2PY_DESCR_FIELDS PyArray_Descr
+#endif
+
+/* elsize is read via the portable accessor on numpy >= 2.0. */
+#if NPY_ABI_VERSION >= 0x02000000
+    #define C2PY_DESCR_ELSIZE(d) PyDataType_ELSIZE(d)
+#else
+    #define C2PY_DESCR_ELSIZE(d) ((d)->elsize)
+#endif
+
 static void check_offset(const char *label, ptrdiff_t offset) {
     printf("OFFSET %-35s %td\n", label, offset);
 }
@@ -42,6 +64,19 @@ int main(void) {
 
     printf("NUMPY_ABI %s\n", "1.0");
 
+    /* Expected runtime constants (c2py_pin_ndarray) for the current arch.
+     * LP64 verified historically; ILP32 values differ because numpy's
+     * int nd field (plus padding) and the pointers pack differently. */
+#if defined(__LP64__) || defined(_WIN64)
+    long exp_nd = 8, exp_dims = 16, exp_strides = 24;
+    long exp_descr = 40, exp_flags = 48;
+    int  exp_descr_type_off = 25;
+#else
+    long exp_nd = 4, exp_dims = 8, exp_strides = 12;
+    long exp_descr = 20, exp_flags = 24;
+    int  exp_descr_type_off = 13;
+#endif
+
     /* --- PyArrayObject layout --- */
     {
         PyArrayObject *tmp = (PyArrayObject*)PyArray_ZEROS(
@@ -64,16 +99,38 @@ int main(void) {
 
         /* Verify our hardcoded relative offsets from data_off */
         ptrdiff_t data_off = offsetof(PyArrayObject_fields, data);
-        printf("REL_OFF nd_from_data       %ld\n",
-               (long)(offsetof(PyArrayObject_fields, nd) - data_off));
-        printf("REL_OFF dims_from_data     %ld\n",
-               (long)(offsetof(PyArrayObject_fields, dimensions) - data_off));
-        printf("REL_OFF strides_from_data  %ld\n",
-               (long)(offsetof(PyArrayObject_fields, strides) - data_off));
-        printf("REL_OFF descr_from_data    %ld\n",
-               (long)(offsetof(PyArrayObject_fields, descr) - data_off));
-        printf("REL_OFF flags_from_data    %ld\n",
-               (long)(offsetof(PyArrayObject_fields, flags) - data_off));
+        long rel_nd       = (long)(offsetof(PyArrayObject_fields, nd) - data_off);
+        long rel_dims     = (long)(offsetof(PyArrayObject_fields, dimensions) - data_off);
+        long rel_strides  = (long)(offsetof(PyArrayObject_fields, strides) - data_off);
+        long rel_descr    = (long)(offsetof(PyArrayObject_fields, descr) - data_off);
+        long rel_flags    = (long)(offsetof(PyArrayObject_fields, flags) - data_off);
+        printf("REL_OFF nd_from_data       %ld\n", rel_nd);
+        printf("REL_OFF dims_from_data     %ld\n", rel_dims);
+        printf("REL_OFF strides_from_data  %ld\n", rel_strides);
+        printf("REL_OFF descr_from_data    %ld\n", rel_descr);
+        printf("REL_OFF flags_from_data    %ld\n", rel_flags);
+
+        /* The runtime uses arch-specific offsets (c2py_pin_ndarray).
+         * Verify this build matches the expected constants for the
+         * current pointer size so ILP32 is covered too. */
+        int abi_ok = 1;
+#define CHECK_REL(label, got, want) do { \
+            if ((got) != (want)) { \
+                printf("MISMATCH %s got=%ld want=%ld\n", label, (long)(got), (long)(want)); \
+                abi_ok = 0; \
+            } \
+        } while (0)
+        CHECK_REL("nd_from_data", rel_nd, exp_nd);
+        CHECK_REL("dims_from_data", rel_dims, exp_dims);
+        CHECK_REL("strides_from_data", rel_strides, exp_strides);
+        CHECK_REL("descr_from_data", rel_descr, exp_descr);
+        CHECK_REL("flags_from_data", rel_flags, exp_flags);
+        if (!abi_ok) {
+            printf("NUMPY_ABI_MISMATCH 1\n");
+            Py_DECREF(tmp);
+            Py_Finalize();
+            return 1;
+        }
 
         /* Verify PyArray_DATA macro actually returns the data pointer */
         check_ptr("PyArray_DATA_value", PyArray_DATA(tmp));
@@ -96,15 +153,17 @@ int main(void) {
         check_offset("PyArray_Descr.kind",      base + offsetof(PyArray_Descr, kind) - base);
         check_offset("PyArray_Descr.type",      base + offsetof(PyArray_Descr, type) - base);
         check_offset("PyArray_Descr.byteorder", base + offsetof(PyArray_Descr, byteorder) - base);
-        check_offset("PyArray_Descr.flags",     base + offsetof(PyArray_Descr, flags) - base);
+        check_offset("PyArray_Descr.flags",     base + offsetof(C2PY_DESCR_FIELDS, flags) - base);
         check_offset("PyArray_Descr.type_num",  base + offsetof(PyArray_Descr, type_num) - base);
-        check_offset("PyArray_Descr.elsize",    base + offsetof(PyArray_Descr, elsize) - base);
-        check_offset("PyArray_Descr.alignment", base + offsetof(PyArray_Descr, alignment) - base);
+        check_offset("PyArray_Descr.elsize",    base + offsetof(C2PY_DESCR_FIELDS, elsize) - base);
+        check_offset("PyArray_Descr.alignment", base + offsetof(C2PY_DESCR_FIELDS, alignment) - base);
 
-        /* Verify the type char at offset 25 (our hardcoded assumption) */
-        check_val("type_char_at_25", ((char*)d)[25] == d->type ? 1 : 0);
+        /* Verify the type char at the arch-expected offset
+         * (25 on LP64, 13 on ILP32 -- our hardcoded assumption) */
+        check_val("descr_type_char_at_expected_off",
+                  ((char*)d)[exp_descr_type_off] == d->type ? 1 : 0);
         check_val("type_char_val", (int)(unsigned char)d->type);
-        check_val("elsize_val", d->elsize);
+        check_val("elsize_val", (int)C2PY_DESCR_ELSIZE(d));
 
         Py_DECREF(d);
     }

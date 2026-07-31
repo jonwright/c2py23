@@ -667,6 +667,7 @@ typedef struct {
     int kind;               /* C2PY_PIN_* tag */
     void *ctx;              /* back-end context (DLManagedTensor* for DLPack) */
     char format_buf[8];     /* stack-local format string storage (non-PEP3118) */
+    Py_ssize_t shape_buf[C2PY_MAX_NDIM];   /* DLPack: int64 shape copied to Py_ssize_t */
     Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
 
@@ -819,6 +820,32 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     return 0;
 }
 
+/* Field offsets within PyArrayObject, relative to the data pointer.
+ * Empirically stable since numpy 1.0 through 2.x, but the offsets
+ * differ between LP64 and ILP32: numpy's int nd field (plus padding)
+ * and the following pointers pack differently, and PyArray_Descr.type
+ * sits at a different byte offset.  Verified by tests/check_numpy_abi.c
+ * on LP64 (REL_OFF +8/+16/+24/+40/+48, type char at 25) and by the
+ * ILP32 probe in CI (REL_OFF +4/+8/+12/+20/+24, type char at 13).
+ * ABI3T (limited-API) numpy builds do not affect this: Py_TARGET_ABI3T
+ * only hides the struct from compile-time consumers, so the runtime
+ * allocation and layout (and therefore these offsets) are unchanged. */
+#if defined(__LP64__) || defined(_WIN64)
+#define C2PY_NDARR_OFF_ND        8
+#define C2PY_NDARR_OFF_DIMS      16
+#define C2PY_NDARR_OFF_STRIDES   24
+#define C2PY_NDARR_OFF_DESCR     40
+#define C2PY_NDARR_OFF_FLAGS     48
+#define C2PY_DESCR_TYPE_CHAR_OFF 25
+#else
+#define C2PY_NDARR_OFF_ND        4
+#define C2PY_NDARR_OFF_DIMS      8
+#define C2PY_NDARR_OFF_STRIDES   12
+#define C2PY_NDARR_OFF_DESCR     20
+#define C2PY_NDARR_OFF_FLAGS     24
+#define C2PY_DESCR_TYPE_CHAR_OFF 13
+#endif
+
 /* Acquire via numpy ndarray struct-cast (no PyObject_GetBuffer).
  * Returns 0 on success, -1 to signal "try next backend" or real failure.
  * On first encounter of a numpy.ndarray, probes the data-pointer
@@ -874,15 +901,15 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             }
 
             /* Verify the layout against known numpy struct:
-             * data_off+8  -> nd   (int, 0 <= nd <= 32)
-             * data_off+16 -> shape ptr (reasonable pointer)
-             * data_off+40 -> descr (non-NULL pointer) */
-            nd    = *(int*)(base + L->data_off + 8);
-            descr = *(void**)(base + L->data_off + 40);
+             * data_off+OFF_ND      -> nd   (int, 0 <= nd <= 32)
+             * data_off+OFF_DIMS    -> shape ptr (reasonable pointer)
+             * data_off+OFF_DESCR   -> descr (non-NULL pointer) */
+            nd    = *(int*)(base + L->data_off + C2PY_NDARR_OFF_ND);
+            descr = *(void**)(base + L->data_off + C2PY_NDARR_OFF_DESCR);
             if (nd < 0 || nd > C2PY_MAX_NDIM || descr == NULL)
                 goto probe_fail;
             /* Sanity: shape pointer should be non-NULL if nd>0 */
-            if (nd > 0 && *(void**)(base + L->data_off + 16) == NULL)
+            if (nd > 0 && *(void**)(base + L->data_off + C2PY_NDARR_OFF_DIMS) == NULL)
                 goto probe_fail;
 
             L->ndarray_type = tp;
@@ -907,8 +934,8 @@ fill:
     base = (char*)obj;
 
     dptr  = *(void**)(base + L->data_off);
-    nd    = *(int*)(base + L->data_off + 8);
-    flags = *(int*)(base + L->data_off + 48);
+    nd    = *(int*)(base + L->data_off + C2PY_NDARR_OFF_ND);
+    flags = *(int*)(base + L->data_off + C2PY_NDARR_OFF_FLAGS);
 
     if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
         PyErr_SetString(PyExc_TypeError,
@@ -916,11 +943,11 @@ fill:
         return -1;
     }
 
-    descr = *(void**)(base + L->data_off + 40);
+    descr = *(void**)(base + L->data_off + C2PY_NDARR_OFF_DESCR);
     if (descr) {
-        /* type char at offset 25 within PyArray_Descr
+        /* type char at a fixed byte offset within PyArray_Descr
          * (stable since numpy 1.0 through 2.x on GIL builds) */
-        type_char = ((char*)descr)[25];
+        type_char = ((char*)descr)[C2PY_DESCR_TYPE_CHAR_OFF];
         pin->format_buf[0] = type_char;
         pin->format_buf[1] = '\0';
         info->format = pin->format_buf;
@@ -932,8 +959,8 @@ fill:
 
     info->ptr     = dptr;
     info->ndim    = nd;
-    info->shape   = *(Py_ssize_t**)(base + L->data_off + 16);
-    info->strides = *(Py_ssize_t**)(base + L->data_off + 24);
+    info->shape   = *(Py_ssize_t**)(base + L->data_off + C2PY_NDARR_OFF_DIMS);
+    info->strides = *(Py_ssize_t**)(base + L->data_off + C2PY_NDARR_OFF_STRIDES);
 
     nelem = 1;
     if (info->shape) {
@@ -1017,10 +1044,20 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 
     nelem = 1;
     if (t->shape && t->ndim > 0) {
-        info->shape   = (Py_ssize_t*)t->shape;
+        int d;
+        /* DLPack shapes/strides are int64_t, but Py_ssize_t is only 32-bit
+         * on ILP32.  Copy into the pinned buffers instead of aliasing the
+         * int64 array, otherwise multi-dimension shapes read wrong values. */
+        if (t->ndim > C2PY_MAX_NDIM) {
+            PyErr_SetString(PyExc_ValueError,
+                "DLPack: too many dimensions (exceeds C2PY_MAX_NDIM)");
+            goto fail;
+        }
+        for (d = 0; d < t->ndim; d++)
+            pin->shape_buf[d] = (Py_ssize_t)t->shape[d];
+        info->shape = pin->shape_buf;
         if (t->strides) {
             /* DLPack strides are in elements; convert to bytes. */
-            int d;
             for (d = 0; d < t->ndim; d++) {
                 pin->stride_buf[d] = (Py_ssize_t)t->strides[d] * info->itemsize;
             }
@@ -1029,7 +1066,6 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
             /* Implied C-contiguous strides: last dim = itemsize,
              * each preceding dim = product of later dims * itemsize */
             Py_ssize_t st = info->itemsize;
-            int d;
             for (d = t->ndim - 1; d >= 0; d--) {
                 pin->stride_buf[d] = st;
                 st *= (Py_ssize_t)t->shape[d];

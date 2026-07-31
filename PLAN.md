@@ -92,25 +92,30 @@ Low priority.  If strict atomicity is ever needed: change globals to
 
 ### 32-bit CI
 
-No 32-bit CI target (i386/ARM32).  Windows i386 CI runner exists and
-tests pythonh mode (2.7, 3.12).  Dlsym mode 32-bit is untested --
-Py_buffer layout differs (48-byte vs 68+ on LP64), and FT does not
-exist on ILP32.
+Windows i386 CI runner (`test-windows-i386` in `windows.yml`) tests both
+dlsym and pythonh mode (Python 2.7 and 3.12).  Dlsym mode 32-bit works
+(issue #87): the numpy ndarray struct-cast fast-path uses arch-conditional
+field offsets (`C2PY_NDARR_OFF_*`), the `PyArray_Descr` type-char offset
+is arch-conditional too (13 on ILP32 vs 25 on LP64), and the DLPack
+backend copies int64 shapes/strides into `Py_ssize_t` buffers instead of
+aliasing the int64 array (which read wrong values on ILP32).  `check_numpy_abi.c`
+verifies the offsets for the current pointer size.  ABI3T (limited-API)
+numpy builds are unaffected: `Py_TARGET_ABI3T` only hides the struct from
+compile-time consumers, so the runtime allocation/layout (and the probed
+offsets) are unchanged.  `sizeof(Py_buffer)` is
+52/44 bytes on ILP32 (pre/post 3.12) vs 96/80 on LP64; the runtime probe
+selects the right size.  Free-threading does not exist on ILP32.
 
 Windows 64-bit uses LLP64 (`sizeof(long)=4`) which we handle correctly
-(format-dispatch, length type).  Windows 32-bit i386 would be the same
-LLP64 + 4-byte pointers  --  but 32-bit Py_buffer layout differs
-(`sizeof(Py_buffer)` is 48 on ILP32 vs 68/80/96 on LP64), and FT does
-not exist on ILP32.
+(format-dispatch, length type).  Windows 32-bit i386 is LLP64 + 4-byte
+pointers.
 
 Gohlke's numpy binaries cover Windows 32-bit (i386)  --  but for c2py23,
 32-bit support would require:
-1. ILP32 Py_buffer layout verification (2.7, 3.x)
-2. `_c2py_py_buffer_layout` enum entries for 48-byte layout
-3. `SIZE_T_MAX` -> `INT_MAX` guards on buffer sizes
-4. i386 CI runner (GitHub Actions `windows-latest` is x64 only)
+1. `SIZE_T_MAX` -> `INT_MAX` guards on buffer sizes
+2. i386 ARM32 CI (GitHub Actions `windows-latest` is x64 only)
 
-Lowest priority.  Users needing 32-bit can use `--pythonh` on their
+Low priority.  Users needing 32-bit can use `--pythonh` on their
 target Python (bypasses all dlsym layout detection).
 
 ### MSVC / Windows build
