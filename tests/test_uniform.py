@@ -539,6 +539,10 @@ def test_array_sig():
     r = arraymod.sum_rows(mv)
     assert abs(r - 21.0) < 0.001, "sum_rows([2,3]) = %s, expected 21.0" % r
 
+    # sum_rows_restrict: gv[restrict][3] -> same layout, restrict on pointer
+    rr = arraymod.sum_rows_restrict(mv)
+    assert abs(rr - 21.0) < 0.001, "sum_rows_restrict([2,3]) = %s, expected 21.0" % rr
+
     # sum_33: ubi[3][3] -> fixed 3x3, C-contiguous
     arr2 = (ct.c_double * 9)(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
     mv2 = memoryview(arr2).cast("B").cast("d", [3, 3])

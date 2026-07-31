@@ -97,14 +97,16 @@ class PyParam(namedtuple("PyParam", ["name", "pytype", "default"])):
     pass
 
 
-class CParam(namedtuple("CParam", ["name", "ctype", "base_type", "is_const", "is_pointer", "array_dims"])):
+class CParam(namedtuple("CParam", ["name", "ctype", "base_type", "is_const", "is_pointer", "array_dims", "restrict"])):
     """ctype is the full C type string, base_type is the element type.
     array_dims is a list of dimension values (strings or None for [])
     from C array notation like gv[][3] (-> [None, '3']).
-    None means the parameter was declared with plain * pointer notation."""
+    None means the parameter was declared with plain * pointer notation.
+    restrict is True when the array parameter used the C99 restrict
+    qualifier (e.g. gv[restrict][3]); the wrapper emits it as *restrict."""
 
-    def __new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims=None):
-        return super(CParam, cls).__new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims)
+    def __new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims=None, restrict=False):
+        return super(CParam, cls).__new__(cls, name, ctype, base_type, is_const, is_pointer, array_dims, restrict)
 
 
 class COverload(
@@ -577,6 +579,19 @@ def _parse_c_params(params_str):
             dim_str = part[open_br + 1 : close].strip()
             array_dims.insert(0, dim_str if dim_str else None)
             part = part[:open_br].strip()
+        # C99 restrict in array parameter notation (gv[restrict][3]) qualifies
+        # the adjusted pointer.  It is valid only in the first bracket; the
+        # generator emits it as the portable pointer form (*restrict).
+        if array_dims and any(d == "restrict" for d in array_dims):
+            if array_dims.count("restrict") != 1 or array_dims[0] != "restrict":
+                raise ValueError(
+                    "Cannot parse C param '{}': 'restrict' is only valid in the "
+                    "first dimension bracket".format(part + "".join("[{}]".format(d or "") for d in array_dims))
+                )
+            array_dims[0] = None
+            has_restrict = True
+        else:
+            has_restrict = False
         m = _C_PARAM_RE.match(part)
         if not m:
             raise ValueError("Cannot parse C param '{}'".format(part))
@@ -596,7 +611,7 @@ def _parse_c_params(params_str):
             ctype = ("const " if is_const else "") + base_type + " *"
         else:
             ctype = base_type
-        params.append(CParam(name, ctype, base_type, is_const, is_pointer, array_dims or None))
+        params.append(CParam(name, ctype, base_type, is_const, is_pointer, array_dims or None, has_restrict))
     return params
 
 

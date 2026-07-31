@@ -728,6 +728,47 @@ def test_array_dims_auto_checks():
     _pass()
 
 
+def test_restrict_array_param():
+    """C99 restrict in array notation is normalized to an unspecified dim.
+
+    gv[restrict][3] must parse to dims [None, '3'] with restrict=True, and
+    the auto-checks must never reference 'restrict' (it is a qualifier, not
+    a size).
+    """
+    from c2py23.parser import _parse_c_params, _derive_array_checks
+    from c2py23.generator import _make_decl_string
+
+    params = _parse_c_params("const double vec[restrict][3], double mods[restrict], ptrdiff_t n")
+    assert len(params) == 3
+    assert params[0].array_dims == [None, "3"]
+    assert params[0].restrict is True
+    assert params[1].array_dims == [None]
+    assert params[1].restrict is True
+    assert params[2].restrict is False
+
+    # Auto-checks derive from the normalized dims: no '== restrict'
+    checks = _derive_array_checks("vec", [None, "3"])
+    assert "vec.slow_axis == 0" in checks
+    assert "vec.ndim == 2" in checks
+    assert "vec.shape[1] == 3" in checks
+    assert not any("restrict" in c for c in checks)
+
+    # Extern declaration uses the portable pointer-restrict form
+    decl = _make_decl_string("void", "vnorm", params)
+    assert "const double (*restrict vec)[3]" in decl, decl
+    assert "double *restrict mods" in decl, decl
+    assert "[restrict]" not in decl, "must not emit MSVC-incompatible [restrict]"
+
+    # restrict is only valid in the first (outermost) bracket
+    try:
+        _parse_c_params("double bad[3][restrict]")
+        assert False, "Expected ValueError for restrict in non-first bracket"
+    except ValueError:
+        pass
+
+    _pass()
+
+
 def test_array_1d_fixed_extern_decl():
     """#19: 1D fixed-dim params must emit 'double t[3]' not 'double (*t)'."""
     from c2py23.parser import FuncDef, PyParam, CParam

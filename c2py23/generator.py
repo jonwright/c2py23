@@ -301,10 +301,18 @@ def _make_decl_string(ret, name, params):
         if p.array_dims:
             base = ("const " if p.is_const else "") + p.base_type
             if len(p.array_dims) == 1:
-                parts.append("%s %s%s" % (base, p.name, _dim(p.array_dims[0])))
+                # single-dim array parameter; keep restrict on the pointer
+                # (MSVC accepts *restrict but rejects [restrict])
+                if p.restrict:
+                    parts.append("%s *restrict %s" % (base, p.name))
+                else:
+                    parts.append("%s %s%s" % (base, p.name, _dim(p.array_dims[0])))
             else:
                 inner = "".join(_dim(d) for d in p.array_dims[1:])
-                parts.append("%s (*%s)%s" % (base, p.name, inner))
+                if p.restrict:
+                    parts.append("%s (*restrict %s)%s" % (base, p.name, inner))
+                else:
+                    parts.append("%s (*%s)%s" % (base, p.name, inner))
         else:
             parts.append(p.ctype + " " + p.name)
     return "extern {} {}({});".format(ret if ret != "void" else "void", name, ", ".join(parts))
