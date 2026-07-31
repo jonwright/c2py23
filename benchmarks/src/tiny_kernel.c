@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include "tiny_kernel.h"
 
-void vnorm(const double vec[restrict][3], double mods[restrict], ptrdiff_t n)
+void vnorm(const double (*restrict vec)[3], double *restrict mods, ptrdiff_t n)
 {
     ptrdiff_t i;
     for (i = 0; i < n; i++) {
