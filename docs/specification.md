@@ -387,6 +387,7 @@ to the Python buffer param via `map:` expressions (typically
 |-----------------|-----------------------|
 | `double arr[5]` | `arr.slow_axis == 0` (C-contiguous), `arr.shape[0] == 5` |
 | `double gv[][3]` | `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3` |
+| `double gv[restrict][3]` | `gv.slow_axis == 0`, `gv.ndim == 2`, `gv.shape[1] == 3` (same as `gv[][3]`) |
 | `double ubi[3][3]` | `ubi.slow_axis == 0`, `ubi.ndim == 2`, `ubi.shape[0] == 3`, `ubi.shape[1] == 3` |
 | `double blk[][5][5]` | `blk.slow_axis == 0`, `blk.ndim == 3`, `blk.shape[2] == 5` |
 
@@ -403,6 +404,12 @@ to the Python buffer param via `map:` expressions (typically
 - `ndim == D` is emitted for multi-dimensional arrays (D >= 2).
 - `shape[i] == N` is emitted for every dimension where a fixed size is given.
 - Variable dimensions (`[]`) produce no shape constraint.
+- The C99 `restrict` qualifier is accepted in array notation
+  (`double gv[restrict][3]`).  It is a qualifier, not a size: it produces no
+  shape check, and the generated extern declaration carries it on the pointer
+  (`const double (*restrict gv)[3]`) so it is accepted by gcc, clang, and
+  MSVC (which rejects `[restrict]` array syntax).  `restrict` is only valid
+  in the first dimension bracket.
 - **No `*pointer` notation**: when the C sig uses `double *arr` (no array
   coordinates), c2py23 performs no automatic shape validation.  The user is
   responsible for writing explicit `checks:`.
@@ -1293,6 +1300,11 @@ for any glibc-linked binary.
   pointer provenance complications, just numerical loops over disjoint memory.
   As Ed Post wrote in 1983: "Real Programmers can write FORTRAN programs in
   any language."
+
+  The `restrict` keyword may appear in C signatures (see
+  [C Function Signature](#c-function-signature)); c2py23 keeps it on
+  the generated pointer declaration so the same promise is visible to the
+  compiler on every supported toolchain.
 
 ```python
 {

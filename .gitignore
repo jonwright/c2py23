@@ -1,6 +1,10 @@
 # Build artifacts
 *.so
 *.o
+*.pyd
+*.obj
+*.lib
+*.exp
 tests/cases/*/*_wrapper.c
 !tests/cases/transform/*_wrapper.c
 node_modules/

@@ -10,6 +10,7 @@
 CC       ?= gcc
 CFLAGS   ?= -O2 -Wall
 LDFLAGS  ?=
+PYTHON   ?= python3
 
 # Single-header mode: USE_SINGLE_HEADER=1 uses c2py.h (stb-style blob)
 # instead of c2py_runtime.c.  Wrappers are generated with --emit-header.
@@ -42,10 +43,10 @@ include tests/test_makefile_deps.mk
 
 # ---- examples with non-standard source structures ----
 examples/kissfft_wrap/kissfftmod_wrapper.c: examples/kissfft_wrap/kissfft.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 examples/kissfft_wrap/kissfft.c2py -o $@
+	$(PYTHON) -m c2py23 examples/kissfft_wrap/kissfft.c2py -o $@
 
 examples/lz4_wrap/lz4mod_wrapper.c: examples/lz4_wrap/lz4.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 examples/lz4_wrap/lz4.c2py -o $@
+	$(PYTHON) -m c2py23 examples/lz4_wrap/lz4.c2py -o $@
 
 KISSFFT_SRC := examples/kissfft_wrap/kissfftmod_wrapper.c \
               examples/kissfft_wrap/kissfft_thin.c \
@@ -79,17 +80,18 @@ examples/lz4_wrap/lz4mod$(EXT): $(LZ4_SRC)
 endif
 
 # ---- benchmark modules (share tiny_kernel.c, output to benchmarks/build/) ----
-# Only built on Unix (pattern rules; skipped on MSVC for simplicity)
 BENCH_SRC := benchmarks/src/tiny_kernel.c
 BENCH_DIR := benchmarks/build
 BENCH_MODS := c2py_vnorm c2py_vnorm_bare c2py_vnorm_ndarray \
               c2py_vnorm_buffer c2py_vnorm_dlpack c2py_getitem c2py_noargs
 
+# tests/runner.py creates this directory before invoking make, so the recipe
+# is only a fallback for direct make builds (sh shell: mkdir -p).
 $(BENCH_DIR):
 	mkdir -p $(BENCH_DIR)
 
 benchmarks/src/%_wrapper.c: benchmarks/src/%.c2py $(RUNTIME_HDRS)
-	python3 -m c2py23 $< -o $@
+	$(PYTHON) -m c2py23 $< -o $@
 
 ifndef MSVC
 $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
@@ -98,7 +100,11 @@ $(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $
 
 BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 else
-BENCH_TARGETS :=
+$(BENCH_DIR)/%$(EXT): benchmarks/src/%_wrapper.c $(BENCH_SRC) $(RUNTIME_SRC) | $(BENCH_DIR)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Ibenchmarks/src \
+		$^ /link /OUT:$@ $(LDFLAGS)
+
+BENCH_TARGETS := $(addprefix $(BENCH_DIR)/,$(addsuffix $(EXT),$(BENCH_MODS)))
 endif
 
 # ---- aggregate targets ----

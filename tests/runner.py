@@ -145,6 +145,11 @@ def _needs_regen(c2py_path, wrapper_c):
 def build_all():
     """Build all dlsym .so files via vanilla C compilation (make)."""
     makefile = os.path.join(HERE, "Makefile")
+    # benchmarks/build is git-ignored; create it so the Makefile's mkdir
+    # fallback never has to run under a recipe shell.
+    bench_dir = os.path.join(PROJECT, "benchmarks", "build")
+    if not os.path.isdir(bench_dir):
+        os.makedirs(bench_dir)
     print("[runner] Building dlsym extensions (make)...")
     subprocess.check_call(["make", "-f", makefile, "all"], cwd=PROJECT)
     print("[runner] Build complete")

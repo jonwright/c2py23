@@ -1,7 +1,9 @@
 #ifndef TINY_KERNEL_H
 #define TINY_KERNEL_H
 
-void vnorm(const double vec[restrict][3], double mods[restrict], ptrdiff_t n);
+/* restrict qualified via pointer declarator: MSVC accepts restrict after
+ * '*' but not in the '[]' array parameter notation used before. */
+void vnorm(const double (*restrict vec)[3], double *restrict mods, ptrdiff_t n);
 
 void noop(void);
 
