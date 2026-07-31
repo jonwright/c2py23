@@ -175,6 +175,88 @@ keyword is enforced at the wrapper level. This eliminates pointer provenance
 issues, use-after-free bugs, and ownership confusion -- you write simple
 loops over disjoint arrays, and the wrapper handles the rest.
 
+### Batch Dimensions and Optional Leading Axes
+
+A common pattern: you write a C function that processes one element and want
+to extend it to handle many. C has no concept of "missing dimensions," but
+the resulting Python API should feel natural for both single-element and
+batched calls.
+
+**The scenario.** Your C function operates on a batch of 3x3 matrices and
+returns one score per matrix:
+
+```c
+/* C: processes N matrices, returns N doubles */
+void score_batch(const double ubi[][3][3], double *out, intptr_t n) {
+    for (intptr_t b = 0; b < n; b++) {
+        out[b] = trace(ubi[b]);
+    }
+}
+```
+
+You want Python callers to be able to pass either a single `[3, 3]` matrix
+or a batch of `[N, 3, 3]` matrices.
+
+**The solution: require `[1, 3, 3]` for the single case.** The `.c2py`
+interface expects the full dimensionality. There is no automatic promotion:
+
+```python
+{
+    "py_sig": "score(ubi: buffer, out: buffer) -> void",
+    "c_overloads": [{
+        "sig": "void score_batch(const double ubi[][3][3], double *out, intptr_t n)",
+        "map": {
+            "ubi": "ubi.ptr",
+            "out": "out.ptr",
+            "n": "ubi.shape[0]",
+        },
+    }],
+    "checks": [
+        "ubi.format == 'd'",
+        "out.format == 'd'",
+        "out.n >= ubi.shape[0]",
+    ],
+}
+```
+
+On the Python side, the caller adds the leading dimension explicitly:
+
+```python
+import ctypes
+
+# Single 3x3 -- cast to shape [1, 3, 3]
+ubi = (ctypes.c_double * 9)(*[1.0, 0.0, 0.0,
+                               0.0, 1.0, 0.0,
+                               0.0, 0.0, 1.0])
+out = (ctypes.c_double * 1)()
+mv = memoryview(ubi).cast("B").cast("d", [1, 3, 3])
+mymod.score(mv, out)
+assert out[0] == 3.0
+
+# Batch of 5 -- cast to shape [5, 3, 3]
+ubi5 = (ctypes.c_double * 45)(*range(45))
+out5 = (ctypes.c_double * 5)()
+mv5 = memoryview(ubi5).cast("B").cast("d", [5, 3, 3])
+mymod.score(mv5, out5)
+```
+
+With numpy, use `ubi.reshape(1, 3, 3)` or `ubi[np.newaxis, :, :]` to add
+the leading dimension. Both are zero-copy operations.
+
+**Why no automatic promotion?** c2py23 never copies, allocates, or reshapes
+data behind your back. Promoting a `[3, 3]` buffer to `[1, 3, 3]` would
+require either copying the data or synthesizing a new shape array inside the
+wrapper. Both violate c2py23's design rules: wrappers are 100%
+allocation-free, all memory is owned by Python, and pointers go directly to
+the original buffer with no intermediate transformation. The caller controls
+the layout, and inserting a `1` dimension costs one `.cast()` or
+`.reshape()` call -- explicit, fast, and zero-copy.
+
+The same principle applies to any function where a caller might have a
+lower-dimensional buffer than the C signature expects: just add a `1`
+dimension on the Python side. It is always valid because `shape == 1`
+dimensions contribute zero stride difference in contiguous layouts.
+
 ## For C Programmers: A Python Tutorial
 
 ### The Buffer Protocol
