@@ -99,7 +99,10 @@ field offsets (`C2PY_NDARR_OFF_*`), the `PyArray_Descr` type-char offset
 is arch-conditional too (13 on ILP32 vs 25 on LP64), and the DLPack
 backend copies int64 shapes/strides into `Py_ssize_t` buffers instead of
 aliasing the int64 array (which read wrong values on ILP32).  `check_numpy_abi.c`
-verifies the offsets for the current pointer size.  `sizeof(Py_buffer)` is
+verifies the offsets for the current pointer size.  ABI3T (limited-API)
+numpy builds are unaffected: `Py_TARGET_ABI3T` only hides the struct from
+compile-time consumers, so the runtime allocation/layout (and the probed
+offsets) are unchanged.  `sizeof(Py_buffer)` is
 52/44 bytes on ILP32 (pre/post 3.12) vs 96/80 on LP64; the runtime probe
 selects the right size.  Free-threading does not exist on ILP32.
 

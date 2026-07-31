@@ -826,7 +826,10 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
  * and the following pointers pack differently, and PyArray_Descr.type
  * sits at a different byte offset.  Verified by tests/check_numpy_abi.c
  * on LP64 (REL_OFF +8/+16/+24/+40/+48, type char at 25) and by the
- * ILP32 probe in CI (REL_OFF +4/+8/+12/+20/+24, type char at 13). */
+ * ILP32 probe in CI (REL_OFF +4/+8/+12/+20/+24, type char at 13).
+ * ABI3T (limited-API) numpy builds do not affect this: Py_TARGET_ABI3T
+ * only hides the struct from compile-time consumers, so the runtime
+ * allocation and layout (and therefore these offsets) are unchanged. */
 #if defined(__LP64__) || defined(_WIN64)
 #define C2PY_NDARR_OFF_ND        8
 #define C2PY_NDARR_OFF_DIMS      16

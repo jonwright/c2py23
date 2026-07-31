@@ -16,6 +16,28 @@
 #include <stdio.h>
 #include <stddef.h>
 
+/* numpy >= 2.0 hides the flags/elsize/alignment fields of PyArray_Descr
+ * when compiled with the default 1.x-compatible target: the public struct
+ * then only carries the shared fields, with the full 2.x layout in
+ * _PyArray_DescrNumPy2.  numpy 1.x (and numpy 2.x built with the 2.0
+ * target) exposes everything on PyArray_Descr itself. */
+#if NPY_ABI_VERSION >= 0x02000000
+    #if NPY_FEATURE_VERSION >= NPY_2_0_API_VERSION
+        #define C2PY_DESCR_FIELDS PyArray_Descr
+    #else
+        #define C2PY_DESCR_FIELDS _PyArray_DescrNumPy2
+    #endif
+#else
+    #define C2PY_DESCR_FIELDS PyArray_Descr
+#endif
+
+/* elsize is read via the portable accessor on numpy >= 2.0. */
+#if NPY_ABI_VERSION >= 0x02000000
+    #define C2PY_DESCR_ELSIZE(d) PyDataType_ELSIZE(d)
+#else
+    #define C2PY_DESCR_ELSIZE(d) ((d)->elsize)
+#endif
+
 static void check_offset(const char *label, ptrdiff_t offset) {
     printf("OFFSET %-35s %td\n", label, offset);
 }
@@ -131,17 +153,17 @@ int main(void) {
         check_offset("PyArray_Descr.kind",      base + offsetof(PyArray_Descr, kind) - base);
         check_offset("PyArray_Descr.type",      base + offsetof(PyArray_Descr, type) - base);
         check_offset("PyArray_Descr.byteorder", base + offsetof(PyArray_Descr, byteorder) - base);
-        check_offset("PyArray_Descr.flags",     base + offsetof(PyArray_Descr, flags) - base);
+        check_offset("PyArray_Descr.flags",     base + offsetof(C2PY_DESCR_FIELDS, flags) - base);
         check_offset("PyArray_Descr.type_num",  base + offsetof(PyArray_Descr, type_num) - base);
-        check_offset("PyArray_Descr.elsize",    base + offsetof(PyArray_Descr, elsize) - base);
-        check_offset("PyArray_Descr.alignment", base + offsetof(PyArray_Descr, alignment) - base);
+        check_offset("PyArray_Descr.elsize",    base + offsetof(C2PY_DESCR_FIELDS, elsize) - base);
+        check_offset("PyArray_Descr.alignment", base + offsetof(C2PY_DESCR_FIELDS, alignment) - base);
 
         /* Verify the type char at the arch-expected offset
          * (25 on LP64, 13 on ILP32 -- our hardcoded assumption) */
         check_val("descr_type_char_at_expected_off",
                   ((char*)d)[exp_descr_type_off] == d->type ? 1 : 0);
         check_val("type_char_val", (int)(unsigned char)d->type);
-        check_val("elsize_val", d->elsize);
+        check_val("elsize_val", (int)C2PY_DESCR_ELSIZE(d));
 
         Py_DECREF(d);
     }
