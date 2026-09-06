@@ -8,7 +8,6 @@ from __future__ import print_function
 
 import array
 import gc
-import sys
 import time
 
 import numpy as np

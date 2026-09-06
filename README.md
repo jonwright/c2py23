@@ -89,6 +89,8 @@ print(list(r))  # [6.0, 8.0, 10.0, 12.0]
 c2py23 file.c2py -o wrapper.c       # generate C wrapper
 c2py23 file.c2py                     # print to stdout
 c2py23 --version                     # print version
+c2py23 file.c2py -o wrapper.c --emit-header       # also emit c2py.h alongside the wrapper
+c2py23 --regenerate-header                        # regenerate c2py.h from runtime sources
 
 # Or via python -m:
 python -m c2py23 file.c2py -o wrapper.c

@@ -30,10 +30,10 @@ Quick local tests on one Python version:
 
 ```bash
 # Build test modules and run
-bash tests/run_tests.sh python3.12
+python tests/runner.py
 
 # Run pre-built modules only (no rebuild)
-bash tests/run_tests_only.sh python3.12
+python tests/runner.py --no-build
 ```
 
 Cross-version validation using snakepit containers:
@@ -91,8 +91,9 @@ generated `_wrapper.c`.  Pre-commit hook (`.githooks/pre-commit`) regenerates
 
 All in `.github/workflows/`:
 
-- `linux.yml` -- Python 2.7-3.15 on Ubuntu
-- `windows.yml` -- Python 2.7-3.15 on Windows
+- `linux.yml` -- Python 2.7 through 3.15t (endpoint + free-threaded variants) on Ubuntu;
+  full 2.7-3.15 range is covered via snakepit containers, not every CI job
+- `windows.yml` -- Python 2.7 through 3.15t (endpoint + free-threaded variants) on Windows
 - `aarch64.yml` -- Python 3.12 on arm64
 - `full_matrix.yml` -- combined matrix on push to main
 

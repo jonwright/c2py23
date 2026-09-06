@@ -15,7 +15,6 @@ from c2py23.parser import (
     Subscript,
     IntLit,
     StrLit,
-    FloatLit,
     Compare,
     BinOp,
     UnaryOp,
@@ -460,7 +459,6 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
         b.emit("        _active_perf_{0} = &{1};".format(name, pf))
 
     for gi, (i, ol) in enumerate(groups):
-        gname = ol.group_name or "group{0}".format(gi)
         b.emit("static int _var_{0}_{1} = -1;".format(name, gi))
         b.emit("static const char *_vname_{0}_{1} = NULL;".format(name, gi))
 
@@ -515,7 +513,6 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
     b.emit("    }")
     b.emit_blank()
     for gi, (i, ol) in enumerate(groups):
-        gname = ol.group_name or "group{0}".format(gi)
         for vi, v in enumerate(ol.variants):
             b.emit('    if (!strcmp(target, "{0}")) {{'.format(v.name))
             b.emit('        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(name, gi, vi, v.name))
@@ -1233,20 +1230,18 @@ def _make_compare_diag(compare, buf_params, scalar_params, name):
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt = {0} ? {0} : "";'.format(left_c),
-            "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
+            'const char *_fmt = {0} ? {0} : "(null)";'.format(left_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
+            "\"{0}{1} (got format='%s')\", _fmt);".format(prefix, escaped_src),
         ]
         return lines
     if right_is_format and isinstance(left, StrLit) and len(left.value) == 1:
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt = {0} ? {0} : "";'.format(right_c),
-            "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
+            'const char *_fmt = {0} ? {0} : "(null)";'.format(right_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
+            "\"{0}{1} (got format='%s')\", _fmt);".format(prefix, escaped_src),
         ]
         return lines
 
@@ -1255,12 +1250,10 @@ def _make_compare_diag(compare, buf_params, scalar_params, name):
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt_l = {0} ? {0} : "";'.format(left_c),
-            'const char *_fmt_r = {0} ? {0} : "";'.format(right_c),
-            "char _gl = _fmt_l[0] ? _fmt_l[strlen(_fmt_l) - 1] : '?';",
-            "char _gr = _fmt_r[0] ? _fmt_r[strlen(_fmt_r) - 1] : '?';",
+            'const char *_fmt_l = {0} ? {0} : "(null)";'.format(left_c),
+            'const char *_fmt_r = {0} ? {0} : "(null)";'.format(right_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got '%c' vs '%c')\", _gl, _gr);".format(prefix, escaped_src),
+            "\"{0}{1} (got '%s' vs '%s')\", _fmt_l, _fmt_r);".format(prefix, escaped_src),
         ]
         return lines
 

@@ -173,6 +173,57 @@ class TestDlpackFallback:
         c2py_getitem.getitem(a, 2)
 
 
+def _other_byteorder():
+    """'>' on a little-endian host, '<' on a big-endian host --
+    i.e. always the non-native PEP 3118 prefix character."""
+    return ">" if sys.byteorder == "little" else "<"
+
+
+@needs_modules
+class TestByteOrderRejection:
+    """c2py23 only supports native-byte-order buffers (see AGENTS.md).  A
+    buffer with an explicit non-native PEP 3118 prefix must raise instead
+    of being silently read with the wrong byte order."""
+
+    def test_buffer_backend_rejects_non_native(self):
+        """acquire: [buffer] -- format string carries the explicit
+        prefix, checked directly by c2py_format_is_native()."""
+        swapped = _other_byteorder() + "f8"
+        vec = make_vec().astype(swapped)
+        mods = make_mods().astype(swapped)
+        with pytest.raises(ValueError):
+            c2py_vnorm_buffer.vnorm(vec, mods)
+
+    def test_ndarray_backend_rejects_non_native(self):
+        """acquire: [ndarray] only -- the fast path itself detects the
+        non-native PyArray_Descr.byteorder and refuses to use it; with
+        no other backend configured, acquisition fails outright."""
+        swapped = _other_byteorder() + "f8"
+        vec = make_vec().astype(swapped)
+        mods = make_mods().astype(swapped)
+        with pytest.raises(Exception):
+            c2py_vnorm_ndarray.vnorm(vec, mods)
+
+    def test_default_backend_falls_through_and_rejects(self):
+        """Default acquire: [ndarray, buffer] -- ndarray fast path
+        declines (non-native byteorder), falls through to the buffer
+        protocol backend, which then correctly rejects it too."""
+        swapped = _other_byteorder() + "f8"
+        vec = make_vec().astype(swapped)
+        mods = make_mods().astype(swapped)
+        with pytest.raises(ValueError):
+            c2py_vnorm.vnorm(vec, mods)
+
+    def test_native_byteorder_still_works(self):
+        """Sanity check: explicit native-order dtype (e.g. '<f8' on a
+        little-endian host) is accepted exactly like a bare 'f8'."""
+        native = "<" if sys.byteorder == "little" else ">"
+        vec = make_vec().astype(native + "f8")
+        mods = make_mods().astype(native + "f8")
+        c2py_vnorm.vnorm(vec, mods)
+        assert np.allclose(mods, np.linalg.norm(vec, axis=1))
+
+
 def test_dlpack_abi():
     """Verify DLPack struct layouts match expectations (compile-time)."""
     import subprocess

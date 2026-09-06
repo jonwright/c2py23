@@ -15,7 +15,6 @@ from __future__ import print_function
 import os
 import subprocess
 import sys
-import time
 
 IS_PY3 = sys.version_info[0] >= 3
 
@@ -102,17 +101,6 @@ def build_and_demo(example_dir, example_name):
 
     c_file = _find_c_file(example_dir)
     py_scripts = _find_py_script(example_dir)
-
-    source_dir = example_dir
-    for sub in ["kissfft", "lz4"]:
-        candidate = os.path.join(example_dir, "..", sub)
-        if os.path.isdir(candidate):
-            source_dir = None
-            if c_file:
-                c_path = os.path.join(example_dir, c_file)
-                if os.path.isfile(c_path):
-                    source_dir = example_dir
-            break
 
     # Generate wrapper
     rc, gen_stdout, gen_stderr = _cmd(

@@ -1270,6 +1270,13 @@ _FORMAT_TO_CTYPE = {
     "?": "uint8_t",
 }
 
+# Byte-order-sensitive format chars (itemsize > 1).  c2py23 only
+# supports native byte order; an explicit non-native PEP 3118 prefix
+# ('<', '>', '!') on one of these must be rejected rather than silently
+# read as native (see c2py_format_is_native in c2py_runtime.h). 1-byte
+# types (b, B, ?, c) are byte-order-invariant and skip the check.
+_ENDIAN_SENSITIVE_FORMAT_CHARS = frozenset("hHiIlLqQfdeZz")
+
 _FORMAT_CHAR_TO_NAME = {
     "b": "int8",
     "B": "uint8",
@@ -1653,10 +1660,21 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             fmt_expr = right if isinstance(expr.left, StrLit) else left
             if len(str_lit.value) == 1:
                 ch = str_lit.value
+                endian_sensitive = ch in _ENDIAN_SENSITIVE_FORMAT_CHARS
                 if op == "==":
-                    result = "(!{0} || {0}[strlen({0}) - 1] == '{1}')".format(fmt_expr, ch)
+                    if endian_sensitive:
+                        result = "(!{0} || ({0}[strlen({0}) - 1] == '{1}' && c2py_format_is_native({0})))".format(
+                            fmt_expr, ch
+                        )
+                    else:
+                        result = "(!{0} || {0}[strlen({0}) - 1] == '{1}')".format(fmt_expr, ch)
                 elif op == "!=":
-                    result = "({0} && {0}[strlen({0}) - 1] != '{1}')".format(fmt_expr, ch)
+                    if endian_sensitive:
+                        result = "({0} && ({0}[strlen({0}) - 1] != '{1}' || !c2py_format_is_native({0})))".format(
+                            fmt_expr, ch
+                        )
+                    else:
+                        result = "({0} && {0}[strlen({0}) - 1] != '{1}')".format(fmt_expr, ch)
                 # 'l'/'L' are platform-sized in PEP 3118: sizeof(long)
                 # differs between LP64 (8) and LLP64 (4).  Add an
                 # itemsize check so the same .c2py works on both.
@@ -1681,11 +1699,17 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             and expr.right.attr == "format"
         ):
             if op == "==":
-                return "((!{0} && !{1}) || ({0} && {1} && " "{0}[strlen({0}) - 1] == {1}[strlen({1}) - 1]))".format(
-                    left, right
-                )
+                return (
+                    "((!{0} && !{1}) || ({0} && {1} && "
+                    "{0}[strlen({0}) - 1] == {1}[strlen({1}) - 1] && "
+                    "c2py_format_is_native({0}) && c2py_format_is_native({1})))"
+                ).format(left, right)
             elif op == "!=":
-                return "({0} && {1} && " "{0}[strlen({0}) - 1] != {1}[strlen({1}) - 1])".format(left, right)
+                return (
+                    "({0} && {1} && ("
+                    "{0}[strlen({0}) - 1] != {1}[strlen({1}) - 1] || "
+                    "!c2py_format_is_native({0}) || !c2py_format_is_native({1})))"
+                ).format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for format attributes".format(op))
         else:

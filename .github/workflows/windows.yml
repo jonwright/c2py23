@@ -80,10 +80,9 @@ jobs:
         if: matrix.python-version == '3.15' || matrix.python-version == '3.15t'
         run: |
           $ver = if ("${{ matrix.python-version }}" -eq "3.15") { "cp315-cp315" } else { "cp315-cp315t" }
-          $url = "https://github.com/cgohlke/numpy-mkl-wheels/releases/download/v2026.5.20/numpy-2.4.6-$ver-win_amd64.whl"
+          $url = "https://github.com/cgohlke/numpy-mkl-wheels/releases/download/v2026.8.22/numpy-2.5.2-$ver-win_amd64.whl"
           Write-Output "Downloading numpy from: $url"
-          python -m pip install --only-binary=:all: "$url" --quiet 2>$null
-        continue-on-error: true
+          python -m pip install --only-binary=:all: "$url" --quiet
 
       - name: Run tests (3.x)
         if: matrix.python-version != '2.7'

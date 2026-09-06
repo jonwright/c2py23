@@ -128,6 +128,12 @@ def _needs_regen(c2py_path, wrapper_c):
     w_mtime = os.path.getmtime(wrapper_c)
     if os.path.getmtime(c2py_path) > w_mtime:
         return True
+    # Check the codegen itself: any wrapper is stale if the parser or
+    # generator that produced it has changed since, even if the .c2py
+    # source and runtime headers did not.
+    for fn in ("parser.py", "generator.py"):
+        if os.path.getmtime(os.path.join(PROJECT, "c2py23", fn)) > w_mtime:
+            return True
     # Check runtime headers
     for fn in os.listdir(RUNTIME):
         if fn.endswith((".h", ".c")):
@@ -177,8 +183,6 @@ def run_tests():
         "--ignore=" + os.path.join(HERE, "test_workspace"),
         HERE,
     ]
-    if "--no-build" in sys.argv:
-        args.append("--no-build")
     return pytest.main(args)
 
 

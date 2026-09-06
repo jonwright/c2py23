@@ -14,7 +14,6 @@ generated content (test_venv/, node_modules/, site/) are excluded.
 
 from __future__ import print_function
 
-import os
 import sys
 
 SKIP_DIRS = ("/examples/lz4/", "/kissfft/", "/test_venv", "/node_modules", "/site/")

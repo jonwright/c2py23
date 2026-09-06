@@ -468,11 +468,25 @@ cmp_op ::= "==" | "!=" | "<" | ">" | "<=" | ">="
 ```
 
 Format comparison with a single-character string literal uses last-character
-matching to handle PEP 3118 endianness prefixes:
+matching to handle the type-char position of a PEP 3118 format string
+regardless of its (optional) byte-order prefix:
 ```
-arr.format == 'd'   matches "d", "<d", ">d", "=d", "!d"
-arr.format == 'f'   matches "f", "<f", ">f", "=f", "!f"
+arr.format == 'd'   matches "d", "<d", "=d", "@d" (on a little-endian build)
+arr.format == 'H'   matches "H", "<H", "=H", "@H" (on a little-endian build)
 ```
+
+c2py23 only supports **native byte order**: for a byte-order-sensitive type
+(anything wider than one byte -- `h`/`H`/`i`/`I`/`l`/`L`/`q`/`Q`/`f`/`d`/`e`),
+an explicit non-native prefix (`>d`/`!d` on a little-endian build, `<d` on a
+big-endian build) fails the check instead of matching. A caller passing an
+explicitly byte-swapped buffer gets a `ValueError` (or, for `acquire:
+[ndarray]`-only functions, a buffer-acquisition `TypeError`) rather than
+silently reading the data with the wrong byte order. 1-byte types
+(`b`/`B`/`?`/`c`) are byte-order-invariant and are never rejected on this
+basis. The check is a compile-time-resolved host-endianness comparison
+(`c2py_format_is_native()` in `c2py_runtime.h`), so it works correctly on
+both little-endian and big-endian builds (e.g. ppc64le and a hypothetical
+ppc64be) without extra runtime cost.
 
 When the format pointer is NULL (old buffer protocol on Python 2.7), the
 condition evaluates to true, allowing the first matching overload to proceed.
