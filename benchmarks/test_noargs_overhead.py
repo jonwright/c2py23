@@ -2,8 +2,6 @@
 from __future__ import print_function
 
 import gc
-import sys
-import time
 
 from conftest import measure, NOARGS_ITERS, read_builtin_perf, _results, load_pythonh_module
 import c2py23.perf

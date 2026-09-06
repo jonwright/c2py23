@@ -110,7 +110,6 @@ def read_builtin_perf(func):
 
     buf = (ctypes.c_uint64 * 11)()
     getattr(mod, "_c2py_perf_read")(ptr, buf)
-    freq_hz = mod._c2py_tick_frequency()
     result = {
         "call_count": buf[0],
         "c_min_ns": buf[5],

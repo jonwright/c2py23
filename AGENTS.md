@@ -276,6 +276,8 @@ The snakepit container images must be present at `../snakepit/` relative to this
 - `c2py23/perf.py` -- ctypes-free performance data decoder (uses generated C accessors)
 - `c2py23/invariant_checker.py` -- Validates generated C code structure
 - `c2py23/c2py_loader.py` -- Multi-platform .so loader
+- `c2py23/harvester.py` -- Discovers `.c2py`/embedded-interface sources for build integration
+- `c2py23/setuptools_helper.py` -- `PythonhBuildExt`/`discover_modules` for `--pythonh` setuptools builds
 - `c2py23/__init__.py` -- Package init and version string
 - `c2py23/runtime/c2py_runtime.h` -- Nimpy-style CPython type definitions and API macros
 - `c2py23/runtime/c2py_runtime.c` -- Runtime loader using `dlopen()`/`dlsym()`

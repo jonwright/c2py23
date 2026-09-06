@@ -177,8 +177,6 @@ def run_tests():
         "--ignore=" + os.path.join(HERE, "test_workspace"),
         HERE,
     ]
-    if "--no-build" in sys.argv:
-        args.append("--no-build")
     return pytest.main(args)
 
 

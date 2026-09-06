@@ -11,9 +11,8 @@ Usage (pythonh):
 
 from __future__ import print_function
 
-from distutils.command.build_ext import build_ext
-
 from setuptools import Extension
+from setuptools.command.build_ext import build_ext
 
 
 class PythonhBuildExt(build_ext):

@@ -42,7 +42,6 @@ def render():
 
     pyver = sys.version.split()[0]
     uname = platform.uname()
-    cpu_info = "{} {}".format(uname.machine, uname.processor.split(",")[0] if uname.processor else "")
     date = time.strftime("%Y-%m-%d %H:%M")
 
     lines = []
@@ -92,9 +91,6 @@ def render():
         L("| wrapper | acquire | checks | timing | ns/call |")
         L("|---------|---------|--------|--------|---------|")
         for r in V:
-            extra = ""
-            if r.get("c_mean"):
-                extra = " (c={} w={})".format(r["c_mean"], r["wrap"])
             L(
                 "| {} | {} | {} | {} | {} |".format(
                     r["label"], r["acquire"], r["checks"], r["timing"], fmt(r["ns_per_call"], "{:.0f}")
@@ -132,9 +128,6 @@ def render():
         L("| wrapper | timing | ns/call |")
         L("|---------|--------|---------|")
         for r in G:
-            extra = ""
-            if r.get("c_mean") and r.get("c_mean") != "--":
-                extra = " (c={} w={})".format(r["c_mean"], r["wrap"])
             L("| {} | {} | {} |".format(r["label"], r["timing"], fmt(r["ns_per_call"], "{:.0f}")))
         L()
 

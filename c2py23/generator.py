@@ -15,7 +15,6 @@ from c2py23.parser import (
     Subscript,
     IntLit,
     StrLit,
-    FloatLit,
     Compare,
     BinOp,
     UnaryOp,
@@ -460,7 +459,6 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
         b.emit("        _active_perf_{0} = &{1};".format(name, pf))
 
     for gi, (i, ol) in enumerate(groups):
-        gname = ol.group_name or "group{0}".format(gi)
         b.emit("static int _var_{0}_{1} = -1;".format(name, gi))
         b.emit("static const char *_vname_{0}_{1} = NULL;".format(name, gi))
 
@@ -515,7 +513,6 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
     b.emit("    }")
     b.emit_blank()
     for gi, (i, ol) in enumerate(groups):
-        gname = ol.group_name or "group{0}".format(gi)
         for vi, v in enumerate(ol.variants):
             b.emit('    if (!strcmp(target, "{0}")) {{'.format(v.name))
             b.emit('        _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(name, gi, vi, v.name))
