@@ -1230,20 +1230,18 @@ def _make_compare_diag(compare, buf_params, scalar_params, name):
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt = {0} ? {0} : "";'.format(left_c),
-            "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
+            'const char *_fmt = {0} ? {0} : "(null)";'.format(left_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
+            "\"{0}{1} (got format='%s')\", _fmt);".format(prefix, escaped_src),
         ]
         return lines
     if right_is_format and isinstance(left, StrLit) and len(left.value) == 1:
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt = {0} ? {0} : "";'.format(right_c),
-            "char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';",
+            'const char *_fmt = {0} ? {0} : "(null)";'.format(right_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got format='%c')\", _got);".format(prefix, escaped_src),
+            "\"{0}{1} (got format='%s')\", _fmt);".format(prefix, escaped_src),
         ]
         return lines
 
@@ -1252,12 +1250,10 @@ def _make_compare_diag(compare, buf_params, scalar_params, name):
         escaped_src = _escape_c_str(source)
         lines = [
             "char _c2py_err[256];",
-            'const char *_fmt_l = {0} ? {0} : "";'.format(left_c),
-            'const char *_fmt_r = {0} ? {0} : "";'.format(right_c),
-            "char _gl = _fmt_l[0] ? _fmt_l[strlen(_fmt_l) - 1] : '?';",
-            "char _gr = _fmt_r[0] ? _fmt_r[strlen(_fmt_r) - 1] : '?';",
+            'const char *_fmt_l = {0} ? {0} : "(null)";'.format(left_c),
+            'const char *_fmt_r = {0} ? {0} : "(null)";'.format(right_c),
             "snprintf(_c2py_err, sizeof(_c2py_err), "
-            "\"{0}{1} (got '%c' vs '%c')\", _gl, _gr);".format(prefix, escaped_src),
+            "\"{0}{1} (got '%s' vs '%s')\", _fmt_l, _fmt_r);".format(prefix, escaped_src),
         ]
         return lines
 
