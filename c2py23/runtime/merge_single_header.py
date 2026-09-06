@@ -108,10 +108,8 @@ def build_single_header():
             gate_end = i
             break
     if gate_start is not None and gate_end is not None:
-        before_gate = "\n".join(runtime_h_lines[:gate_start])
         after_gate = "\n".join(runtime_h_lines[gate_end + 1 :])
     else:
-        before_gate = ""
         after_gate = "\n".join(runtime_h_lines)
 
     header = []
