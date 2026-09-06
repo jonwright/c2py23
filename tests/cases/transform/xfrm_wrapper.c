@@ -255,7 +255,7 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
     uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;
 
     /* check: points.format == 'd' */
-    if (!((!info_points->format || info_points->format[strlen(info_points->format) - 1] == 'd'))) {
+    if (!((!info_points->format || (info_points->format[strlen(info_points->format) - 1] == 'd' && c2py_format_is_native(info_points->format))))) {
         char _c2py_err[256];
         const char *_fmt = info_points->format ? info_points->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
@@ -264,7 +264,7 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         return NULL;
     }
     /* check: out.format == 'd' */
-    if (!((!info_out->format || info_out->format[strlen(info_out->format) - 1] == 'd'))) {
+    if (!((!info_out->format || (info_out->format[strlen(info_out->format) - 1] == 'd' && c2py_format_is_native(info_out->format))))) {
         char _c2py_err[256];
         const char *_fmt = info_out->format ? info_out->format : "";
         char _got = _fmt[0] ? _fmt[strlen(_fmt) - 1] : '?';
