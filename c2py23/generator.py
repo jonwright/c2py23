@@ -466,11 +466,9 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
 
     for gi, (i, ol) in enumerate(groups):
         b.emit("static void _resolve_{0}_{1}(void) {{".format(name, gi))
-        has_default = False
         for vi, v in enumerate(ol.variants):
             if not v.default:
                 continue
-            has_default = True
             if v.when_expr is not None:
                 when_c = _expr_to_c(v.when_expr, buf_params, scalar_params, None)
                 b.emit("    if ({0}) {{".format(when_c))
@@ -478,20 +476,44 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
                 _perf_meta(gi, vi, v)
                 b.emit("        return;")
                 b.emit("    }")
-        # Find the last default:true variant for fallback
-        last_default_vi = -1
-        last_default_name = ""
-        for vi, v in enumerate(ol.variants):
-            if v.default:
-                last_default_vi = vi
-                last_default_name = v.name
-        if not has_default:
+        # The auto-resolve fallback (used when no when:-guarded variant
+        # matches) is the unconditional (when-less) default:true variant.
+        # parser.py already validates that there is exactly one such
+        # candidate per group for specs loaded via load_c2py()/
+        # from_c2py_dict(); re-checked here defensively in case a
+        # ModuleDef was built programmatically without going through it.
+        group_label = ol.group_name or "group{}".format(gi)
+        if not any(v.default for v in ol.variants):
             raise ValueError(
                 "Group '{0}' has no variant with default: true. "
-                "At least one variant must be auto-selectable.".format(ol.group_name or "group{}".format(gi))
+                "At least one variant must be auto-selectable.".format(group_label)
             )
-        b.emit('    _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(name, gi, last_default_vi, last_default_name))
-        _perf_meta(gi, last_default_vi, ol.variants[last_default_vi])
+        unconditional = [vi for vi, v in enumerate(ol.variants) if v.default and v.when_expr is None]
+        if not unconditional:
+            raise ValueError(
+                "Group '{0}' has no unconditional variant -- every default: true variant "
+                "has a when: condition, so there is no safe fallback if none of them match "
+                "at runtime. Add one plain variant with no when: condition.".format(group_label)
+            )
+        if len(unconditional) == 1:
+            fallback_vi = unconditional[0]
+        else:
+            marked = [vi for vi in unconditional if ol.variants[vi].fallback]
+            if len(marked) != 1:
+                names = ", ".join(ol.variants[vi].name for vi in unconditional)
+                raise ValueError(
+                    "Group '{0}' has {1} unconditional variants eligible as the auto-resolve "
+                    "fallback ({2}). Mark exactly one with 'fallback': True.".format(
+                        group_label, len(unconditional), names
+                    )
+                )
+            fallback_vi = marked[0]
+        b.emit(
+            '    _var_{0}_{1} = {2}; _vname_{0}_{1} = "{3}";'.format(
+                name, gi, fallback_vi, ol.variants[fallback_vi].name
+            )
+        )
+        _perf_meta(gi, fallback_vi, ol.variants[fallback_vi])
         b.emit("}")
         b.emit_blank()
 

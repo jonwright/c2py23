@@ -17,7 +17,7 @@ import warnings
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from c2py23.parser import load_c2py, _parse_c_sig, _FORMAT_TO_CTYPE, _C_TYPES_INT
-from c2py23.parser import ModuleDef, FuncDef, PyParam, CParam, COverload, parse_expr
+from c2py23.parser import ModuleDef, FuncDef, PyParam, CParam, COverload, CVariant, parse_expr, from_c2py_dict
 from c2py23.generator import generate, _doc, _expr_to_source
 
 
@@ -971,6 +971,194 @@ def test_array_dims_variant_sigs():
             "Variant sig array dims should generate >= 3 auto-checks (plus user 'format' check), "
             "got %d for '%s': %s" % (len(func.checks), func.name, func.checks)
         )
+    _pass()
+
+
+def _fallback_group_module(variant_a, variant_b):
+    """Build a minimal module dict with one group of two unconditional variants.
+
+    variant_a/variant_b are extra per-variant keys merged into the two
+    "proc_a"/"proc_b" variant dicts, e.g. {"fallback": True}.
+    """
+    a = dict({"sig": "void proc_a(const float *p, int n)"}, **variant_a)
+    b = dict({"sig": "void proc_b(const float *p, int n)"}, **variant_b)
+    return {
+        "module": "test_fallback",
+        "source": ["dummy.c"],
+        "headers": [],
+        "functions": [
+            {
+                "py_sig": "proc(buf: buffer) -> void",
+                "checks": ["buf.format == 'f'"],
+                "c_overloads": [
+                    {
+                        "when": "buf.format == 'f'",
+                        "map": {"p": "buf.ptr", "n": "buf.n"},
+                        "group": "g",
+                        "variants": [a, b],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _resolve_body(code, func_name, gi):
+    """Extract the body of _resolve_<func_name>_<gi>() from generated C."""
+    marker = "static void _resolve_{0}_{1}(void) {{".format(func_name, gi)
+    start = code.index(marker) + len(marker)
+    end = code.index("\n}\n", start)
+    return code[start:end]
+
+
+def test_fallback_disambiguates_ambiguous_group():
+    """fallback: true must win over declaration order for the auto-resolve base case."""
+    raw = _fallback_group_module({"default": True}, {"fallback": True})
+    code = generate(from_c2py_dict(raw))
+    body = _resolve_body(code, "proc", 0)
+    assert '_var_proc_0 = 1; _vname_proc_0 = "proc_b";' in body, (
+        "fallback: true variant (proc_b, declared last but marked fallback) must win: %s" % body
+    )
+    assert "_var_proc_0 = 0;" not in body, "proc_a must not be picked as fallback: %s" % body
+    _pass()
+
+
+def test_fallback_single_unconditional_wins_regardless_of_order():
+    """A lone unconditional default:true variant must be the static fallback even when
+    a later when:-guarded default:true variant is declared after it -- the resolve
+    fallback must not depend on declaration order relative to guarded variants."""
+    raw = _fallback_group_module({}, {"when": "c2py_amd64_avx512f"})
+    code = generate(from_c2py_dict(raw))
+    body = _resolve_body(code, "proc", 0)
+    assert '_var_proc_0 = 0; _vname_proc_0 = "proc_a";' in body, (
+        "the unconditional variant (proc_a) must be the static fallback regardless "
+        "of order relative to the when:-guarded proc_b: %s" % body
+    )
+    _pass()
+
+
+def test_fallback_ambiguous_without_marker_raises():
+    """Two unconditional default:true variants with no fallback marker must raise at parse
+    time (from_c2py_dict), not just at generate() -- this is the exact silent-misresolution
+    bug from bug_variant.md, and callers who only parse (e.g. harvester.py) must see it too."""
+    raw = _fallback_group_module({"default": True}, {})
+    try:
+        from_c2py_dict(raw)
+        assert False, "Expected ValueError for ambiguous unconditional default:true variants"
+    except ValueError as e:
+        msg = str(e)
+        assert "proc_a" in msg and "proc_b" in msg, "Error should name both candidates: %s" % msg
+        assert "fallback" in msg, "Error should point to the fallback: true fix: %s" % msg
+    _pass()
+
+
+def test_fallback_singleton_enforced():
+    """At most one variant per group may be marked fallback: true, checked at parse time."""
+    raw = _fallback_group_module({"fallback": True}, {"fallback": True})
+    try:
+        from_c2py_dict(raw)
+        assert False, "Expected ValueError for two variants both marked fallback: true"
+    except ValueError as e:
+        assert "proc_a" in str(e) and "proc_b" in str(e), "Error should name both candidates: %s" % e
+    _pass()
+
+
+def test_fallback_zero_unconditional_raises():
+    """A group where every default:true variant is when:-guarded (no plain fallback at
+    all) must raise at parse time -- there would be no safe choice if none of the when:
+    conditions match at runtime."""
+    raw = _fallback_group_module({"when": "c2py_amd64_avx512f"}, {"when": "c2py_amd64_avx2"})
+    try:
+        from_c2py_dict(raw)
+        assert False, "Expected ValueError for a group with zero unconditional variants"
+    except ValueError as e:
+        assert "unconditional" in str(e), "Error should explain the missing plain fallback: %s" % e
+    _pass()
+
+
+def test_fallback_rejects_when_condition():
+    """fallback: true must be unconditional -- combining it with when: is a parse-time error."""
+    raw = _fallback_group_module({"when": "true", "fallback": True}, {})
+    try:
+        from_c2py_dict(raw)
+        assert False, "Expected ValueError for fallback: true combined with when:"
+    except ValueError as e:
+        assert "fallback" in str(e) and "when" in str(e), "Error should mention the conflict: %s" % e
+    _pass()
+
+
+def test_fallback_rejects_default_false():
+    """fallback: true combined with default: false is contradictory and must raise at parse time."""
+    raw = _fallback_group_module({"default": False, "fallback": True}, {})
+    try:
+        from_c2py_dict(raw)
+        assert False, "Expected ValueError for fallback: true combined with default: false"
+    except ValueError as e:
+        assert "fallback" in str(e) and "default" in str(e), "Error should mention the conflict: %s" % e
+    _pass()
+
+
+def _variant_group_module(variants):
+    """Build a ModuleDef with one grouped-variant overload directly (bypassing
+    parser.py entirely), to test generate()'s own defensive validation."""
+    return ModuleDef(
+        name="gentest",
+        sources=["test.c"],
+        headers=[],
+        functions=[
+            FuncDef(
+                name="f",
+                py_params=[],
+                return_type="void",
+                checks=[],
+                overloads=[
+                    COverload(
+                        sig_str=None,
+                        params=None,
+                        return_type=None,
+                        map_exprs={},
+                        when_expr=None,
+                        variants=variants,
+                    )
+                ],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+
+
+def _variant(name, when_expr=None, default=True, fallback=False):
+    return CVariant(name, "void %s(void)" % name, [], "void", when_expr, default=default, fallback=fallback)
+
+
+def test_generator_defensive_check_zero_unconditional():
+    """generate() must still raise a clear ValueError (not a bare StopIteration, and
+    not silently picking a wrong variant) for an invalid variant group built
+    programmatically, bypassing parser.py's own validation entirely."""
+    mod = _variant_group_module(
+        [_variant("va", when_expr=parse_expr("true")), _variant("vb", when_expr=parse_expr("true"))]
+    )
+    try:
+        generate(mod)
+        assert False, "Expected ValueError for zero unconditional variants"
+    except ValueError as e:
+        assert "unconditional" in str(e), "Error should explain the missing plain fallback: %s" % e
+    _pass()
+
+
+def test_generator_defensive_check_ambiguous_unconditional():
+    """Same as above, for two unconditional variants with no fallback: true marker."""
+    mod = _variant_group_module([_variant("va"), _variant("vb")])
+    try:
+        generate(mod)
+        assert False, "Expected ValueError for ambiguous unconditional variants"
+    except ValueError as e:
+        assert "va" in str(e) and "vb" in str(e), "Error should name both candidates: %s" % e
     _pass()
 
 
