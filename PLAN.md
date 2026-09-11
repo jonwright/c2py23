@@ -129,6 +129,39 @@ issue: `CC=cl` is set in CI and `make` auto-detects it.
 
 ## Completed
 
+- **Variant `fallback: true` singleton marker (2026-09)**  --  a group's
+  auto-resolve fallback (the variant picked when no `when:`-guarded variant
+  matches) used to be "the last declared `default: true` variant", which
+  silently misresolved in two related ways (see `bug_variant.md`): (1) 2+
+  unconditional (when-less) `default: true` variants in one group -- the
+  last-declared one won regardless of author intent; (2) a single
+  unconditional variant declared *before* a later `when:`-guarded
+  `default: true` variant -- the guarded one silently stole the fallback
+  slot even when its `when:` condition was false at runtime. The fallback
+  is now always the unique unconditional `default: true` variant when
+  there is exactly one, full stop, regardless of declaration order. When a
+  group has 2+ such candidates, exactly one must be marked `fallback:
+  true`, or parsing raises `ValueError` naming the group and the
+  competing variants, instead of silently picking one. A third case is
+  also now rejected: a group where *every* `default: true` variant is
+  `when:`-guarded (zero unconditional variants) has no safe choice when
+  none of them match at runtime (e.g. no compiled CPU-feature variant is
+  supported by the machine running the code) -- this used to silently
+  assign a guarded variant's index anyway; it now raises at parse time,
+  telling the author to add one plain fallback variant. All three checks
+  run in `from_c2py_dict()`/`load_c2py()` (parse time), not just
+  `generate()`, so parse-only consumers (e.g. `harvester.py`) see the
+  error immediately too. Every `.c2py` spec in this repo is
+  byte-identical (none hits any of these three patterns); a spec with 2+
+  unconditional `default: true` variants per group -- like the
+  `bslz4_to_sparse_llm` case this closes -- must add `fallback: true` to
+  exactly one variant and regenerate, or parsing now fails with a clear
+  error instead of producing a silently-wrong wrapper. `generate()` also
+  re-checks all three invariants defensively (same messages), in case a
+  `ModuleDef` is built programmatically without going through
+  `load_c2py()`/`from_c2py_dict()`. Documented in `docs/specification.md`
+  (Variant Ordering).
+
 - **`--pythonh` mode (2026-07)**  --  direct `#include <Python.h>` build, no dlsym
   trick.  Works on all runtimes (CPython 2.7-3.15t, PyPy 3.9/3.11, GraalPy 3.12).
   CI covers 3.14t end member (inline in `linux.yml`), i386 2.7 + 3.12 (in

@@ -224,7 +224,7 @@ Additional per-key details:
 | `"when"` | `str` | no | per-call group dispatch condition |
 | `"group"` | `str` | no | group name for rebind/docstrings |
 | `"doc"` | `str` | no | group-level docstring notes |
-| `"variants"` | `list[dict]` | yes | variant list, each with `"sig"`, optional `"when"`, `"name"`, `"outputs"`, `"default"`
+| `"variants"` | `list[dict]` | yes | variant list, each with `"sig"`, optional `"when"`, `"name"`, `"outputs"`, `"default"`, `"fallback"`
 
 ### Template Expansion (expand:)
 
@@ -608,6 +608,41 @@ lists, so declaration order is always preserved across all Python versions.
 Variants with `default: False` are skipped during auto-resolve and are
 reachable only via `_rebind_<name>()`. At least one variant per group
 must have `default: True` (the default).
+
+Among the `default: True` variants, the ones with no `when:` at all are
+unconditional -- they are the base case used when no `when:`-guarded
+variant matches. A group must have **exactly one** unconditional
+`default: True` variant:
+
+- **Zero** -- every `default: True` variant is `when:`-guarded, so there
+  is no safe choice if none of them match at runtime (e.g. none of the
+  compiled CPU-feature variants are supported by the machine running the
+  code). Add one plain variant with no `when:` condition.
+- **One** -- always the fallback, regardless of declaration order
+  relative to any `when:`-guarded variants.
+- **Two or more** -- declaration order can no longer express which one
+  the author intended as the true fallback, so exactly one of them must
+  be marked `fallback: True`.
+
+All three of these are checked when the `.c2py` file is parsed (e.g. by
+`load_c2py()`/`from_c2py_dict()`), not only when the C wrapper is
+generated -- tools that parse a `.c2py` spec without generating code
+(such as `harvester.py`) see the error immediately too.
+
+`fallback: True` must be unconditional (no `when:` on the same variant)
+and cannot be combined with `default: False`. It is optional (a no-op)
+when a group already has exactly one unconditional variant -- it is
+only *required* to disambiguate a group with two or more.
+
+```python
+"variants": [
+    {"sig": "kernel_fast(...)", "default": True},   # optional, unconditional
+    {"sig": "kernel_slow(...)", "fallback": True},  # the true default
+]
+```
+
+Without `fallback: True` on `kernel_slow` here, both variants are
+unconditional `default: True` candidates and parsing would raise.
 
 #### Variant Naming
 

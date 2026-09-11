@@ -42,6 +42,11 @@
                         },
                         {
                             "sig": "void poly_f32_scalar(const float *a, const float *b, float *out, int n)",
+                            # Optional here: this is the only unconditional (when-less)
+                            # variant in the group, so it's already the auto-resolve
+                            # fallback without this key. fallback: true is only
+                            # *required* when a group has 2+ unconditional variants.
+                            "fallback": True,
                         },
                     ],
                 },

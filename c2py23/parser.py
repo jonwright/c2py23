@@ -193,6 +193,9 @@ class CVariant(
     c_name is the extracted C function name (no re-parsing needed).
     default is True if the variant should be auto-selected at init.
       Set default: false to make the variant reachable only via _rebind_<name>().
+    fallback is True if this is *the* unconditional auto-resolve base case.
+      At most one variant per group may set it; required only to disambiguate
+      a group with more than one unconditional (when-less) default:true variant.
     """
 
     def __new__(
@@ -206,10 +209,12 @@ class CVariant(
         doc=None,
         c_name=None,
         default=True,
+        fallback=False,
     ):
         self = super(CVariant, cls).__new__(cls, name, sig_str, params, return_type, when_expr, outputs, c_name)
         self.doc = doc
         self.default = default
+        self.fallback = fallback
         return self
 
 
@@ -1046,6 +1051,7 @@ def _parse_func(raw, path):
     checks = [_parse_check_value(c, path) for c in raw.get("checks", [])]
 
     overloads = []
+    variant_group_gi = 0
     for ol in raw.get("c_overloads", []):
         # --- Grouped dispatch (has 'variants:') ---
         if "variants" in ol:
@@ -1101,6 +1107,19 @@ def _parse_func(raw, path):
                 v_default = v.get("default", True)
                 if not isinstance(v_default, bool):
                     raise ValueError("'default' must be true or false in {}".format(path))
+                v_fallback = v.get("fallback", False)
+                if not isinstance(v_fallback, bool):
+                    raise ValueError("'fallback' must be true or false in {}".format(path))
+                if v_fallback and v_when_raw is not None:
+                    raise ValueError(
+                        "variant '%s' sets fallback: true but also has a when: condition -- "
+                        "the fallback variant must be unconditional in %s" % (v_name, path)
+                    )
+                if v_fallback and not v_default:
+                    raise ValueError(
+                        "variant '%s' sets fallback: true and default: false -- contradictory in %s"
+                        % (v_name, path)
+                    )
                 variants.append(
                     CVariant(
                         v_name,
@@ -1112,8 +1131,44 @@ def _parse_func(raw, path):
                         doc=v_doc,
                         c_name=v_c_name,
                         default=v_default,
+                        fallback=v_fallback,
                     )
                 )
+
+            # The auto-resolve fallback (used when no when:-guarded variant
+            # matches) is the unconditional (when-less) default:true variant.
+            # There must be exactly one, regardless of declaration order:
+            #  - none -- every default:true variant is when:-guarded, so
+            #    there is no safe fallback for when none of them match at
+            #    runtime.
+            #  - 2+ -- declaration order cannot express which one the
+            #    author intended, so exactly one must be marked fallback: true.
+            group_label = group_name or "group{}".format(variant_group_gi)
+            if not any(v.default for v in variants):
+                raise ValueError(
+                    "Group '{0}' has no variant with default: true. "
+                    "At least one variant must be auto-selectable in {1}".format(group_label, path)
+                )
+            unconditional = [v for v in variants if v.default and v.when_expr is None]
+            if not unconditional:
+                raise ValueError(
+                    "Group '{0}' has no unconditional variant -- every default: true variant "
+                    "has a when: condition, so there is no safe fallback if none of them match "
+                    "at runtime. Add one plain variant with no when: condition in {1}".format(
+                        group_label, path
+                    )
+                )
+            if len(unconditional) > 1:
+                marked = [v for v in unconditional if v.fallback]
+                if len(marked) != 1:
+                    names = ", ".join(v.name for v in unconditional)
+                    raise ValueError(
+                        "Group '{0}' has {1} unconditional variants eligible as the auto-resolve "
+                        "fallback ({2}). Mark exactly one with 'fallback': True in {3}".format(
+                            group_label, len(unconditional), names, path
+                        )
+                    )
+            variant_group_gi += 1
 
             ol_doc = ol.get("doc")
             if ol_doc is not None:
