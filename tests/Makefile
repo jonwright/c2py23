@@ -126,6 +126,7 @@ MODULES := \
 	tests/cases/array_sig/arraymod$(EXT) \
 	tests/cases/freethreading/freethreadmod$(EXT) \
 	tests/cases/simd_dispatch/simd_fillmod$(EXT) \
+	tests/cases/variants/varcmod$(EXT) \
 	examples/kissfft_wrap/kissfftmod$(EXT) \
 	examples/lz4_wrap/lz4mod$(EXT) \
 	$(BENCH_TARGETS)

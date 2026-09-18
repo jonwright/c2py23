@@ -1,0 +1,29 @@
+{
+    "module": "varcmod",
+    "source": ["varcase.c"],
+    "headers": [],
+    "functions": [
+        {
+            "py_sig": "proc(buf: buffer, val: float=3.14) -> void",
+            "checks": [
+                "buf.format == 'f'",
+                "buf.n > 0"
+            ],
+            "c_overloads": [
+                {
+                    "when": "buf.format == 'f'",
+                    "map": {
+                        "p": "buf.ptr",
+                        "n": "buf.n",
+                        "val": "val"
+                    },
+                    "group": "g",
+                    "variants": [
+                        {"sig": "void proc_a(float *p, int n, float val)", "default": True},
+                        {"sig": "void proc_b(float *p, int n, float val)", "default": False}
+                    ]
+                }
+            ]
+        }
+    ]
+}
