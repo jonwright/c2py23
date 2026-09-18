@@ -292,3 +292,20 @@ tests/cases/types/typesmod$(EXT): tests/cases/types/typesmod_wrapper.c tests/cas
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/variants/varcmod_wrapper.c: tests/cases/variants/varcase.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/variants/varcase.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/variants/varcmod$(EXT): tests/cases/variants/varcmod_wrapper.c tests/cases/variants/varcase.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/variants \
+		tests/cases/variants/varcmod_wrapper.c tests/cases/variants/varcase.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/variants/varcmod$(EXT): tests/cases/variants/varcmod_wrapper.c tests/cases/variants/varcase.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/variants \
+		tests/cases/variants/varcmod_wrapper.c tests/cases/variants/varcase.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+

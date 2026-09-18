@@ -90,6 +90,26 @@ conftest builds the .so but no test exercises it).
 Low priority.  If strict atomicity is ever needed: change globals to
 `_Atomic int` (C11).
 
+### pythonh mode: 64-bit integer slots NULL on Python 2.7 (false positive -- no action)
+
+Flagged by the local symbol-resolution self-check
+(`tools/check_runtime_symbols.py`) but confirmed to be a **false positive**,
+not an active bug.  In `--pythonh` mode (compile against `<Python.h>`),
+`c2py_pythonh.c` leaves `C2PY.Long_FromLongLong`,
+`C2PY.Long_FromUnsignedLongLong`, and `C2PY.Long_AsLongLong` `NULL` on
+Python 2.  However those `C2PY.Long_*` slots are consumed **only** in
+dlsym mode: the `PyLong_FromLongLong` / `PyLong_AsLongLong` macros that
+map to them live inside the `#ifndef C2PY_USE_PYTHON_H` block of
+`c2py_runtime.h`, and the generator emits the macros, not `C2PY.Long_*`.
+In pythonh mode those macros are undefined, so generated code calls
+Python 2.7's real `<Python.h>` `PyLong_FromLongLong` /
+`PyLong_FromUnsignedLongLong` / `PyLong_AsLongLong` (all of which DO exist
+on CPython 2.7) directly.  The NULL `C2PY` slot is never dereferenced.
+
+No runtime change needed.  The analyzer now recognises dlsym-only
+consumers and reports these as informational, not as hazards.  If a future
+change ever reads `C2PY.Long_*` in pythonh mode, this should be revisisted.
+
 ### 32-bit CI
 
 Windows i386 CI runner (`test-windows-i386` in `windows.yml`) tests both

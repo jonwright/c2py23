@@ -5,6 +5,16 @@
 *.obj
 *.lib
 *.exp
+
+# Coverage artifacts (gcov / coverage.py)
+*.gcno
+*.gcda
+*.gcov
+.coverage
+coverage/
+htmlcov/
+tests/.call_coverage.json
+tests/coverage_report.md
 tests/cases/*/*_wrapper.c
 !tests/cases/transform/*_wrapper.c
 node_modules/
