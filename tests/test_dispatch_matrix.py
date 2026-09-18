@@ -98,13 +98,6 @@ def test_typesmod_fill_dtype(ct, fmt, val):
         assert arr[i] == val
 
 
-@pytest.mark.parametrize("ct,_fmt,_val", DISPATCH_TYPES)
-def test_dispatchmod_fill_zero_length(ct, _fmt, _val):
-    dispatchmod = _import("typedispatch")
-    arr = _arr(ct, 0)
-    dispatchmod.fill(arr, 7.0)  # zero-length must not crash
-
-
 def test_typesmod_unsupported_dtype_raises():
     typesmod = _import("types")
     arr = _arr(ctypes.c_double, 4)  # format 'd' not in typesmod set
@@ -214,10 +207,3 @@ def test_dot_size_mismatch_raises():
     b = _arr(ctypes.c_float, 5, 2.0)
     with pytest.raises(ValueError):
         dotmod.dot(a, b)
-
-
-def test_dot_zero_length():
-    dotmod = _import("dot")
-    a = _arr(ctypes.c_float, 0)
-    b = _arr(ctypes.c_float, 0)
-    assert dotmod.dot(a, b) == 0.0

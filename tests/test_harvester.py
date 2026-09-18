@@ -108,10 +108,10 @@ def test_extract_from_file_malformed_raises():
 
 def test_extract_from_dir_merges_c_and_h():
     d = tempfile.mkdtemp()
-    open(os.path.join(d, "a.c"), "w").write(_c_text('{"module": "m", "functions": []}'))
-    open(os.path.join(d, "b.h"), "w").write(
-        _c_text('{"py_sig": "z(x: int) -> int"}')
-    )
+    with open(os.path.join(d, "a.c"), "w") as f:
+        f.write(_c_text('{"module": "m", "functions": []}'))
+    with open(os.path.join(d, "b.h"), "w") as f:
+        f.write(_c_text('{"py_sig": "z(x: int) -> int"}'))
     # Only .c/.h touched; b.h contributes a function.
     merged = extract_from_dir(d)
     assert merged["module"] == "m"
