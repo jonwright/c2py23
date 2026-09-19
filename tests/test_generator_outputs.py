@@ -97,6 +97,38 @@ def test_default_raise_emits_message():
     assert "expected float buffer" in code
 
 
+def test_decode_time_dtype_check_emitted():
+    code = _gen(_mk("mdt", [
+        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
+              {"a": "a.ptr", "n": "a.n"},
+              when="a.format == 'f'"),
+    ]))
+    assert "decode-time dtype check: a" in code
+    assert "argument 1 (a)" in code
+    assert "has unsupported format" in code
+    assert "c2py_format_is_native" in code
+
+
+def test_decode_time_dtype_check_position():
+    code = _gen(_mk("mdt2", [
+        _func("proc(a: buffer, b: buffer) -> void",
+              "void proc(const double *a, const float *b, int n)",
+              {"a": "a.ptr", "b": "b.ptr", "n": "a.n"},
+              when="a.format == 'd' and b.format == 'f'"),
+    ]))
+    assert "argument 1 (a)" in code
+    assert "argument 2 (b)" in code
+
+
+def test_no_decode_check_for_shape_only_dispatch():
+    code = _gen(_mk("mdt3", [
+        _func("proc(p: buffer) -> void", "void proc(const double p[][3], int n)",
+              {"p": "p.ptr", "n": "p.n"},
+              when="p.shape[1] == 3"),
+    ]))
+    assert "decode-time dtype check" not in code
+
+
 def test_slow_axis_array_dims():
     code = _gen(_mk("mta", [
         _func("proc(m: buffer) -> void", "void proc(const float m[][3], int n)",

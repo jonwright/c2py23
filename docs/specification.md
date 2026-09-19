@@ -491,6 +491,22 @@ ppc64be) without extra runtime cost.
 When the format pointer is NULL (old buffer protocol on Python 2.7), the
 condition evaluates to true, allowing the first matching overload to proceed.
 
+### Decode-time dtype validation
+
+When a buffer argument's format participates in `when:` dispatch (i.e. some
+overload's `when:` condition compares its `.format`), the generator emits a
+decode-time check immediately after that buffer is acquired. If the buffer's
+PEP 3118 format (its last character, plus byte order) is not accepted by any
+overload, a `TypeError` is raised at that argument's decode site, naming the
+argument, its 1-based position, and the received format string, e.g.:
+
+    fill: argument 1 (arr) has unsupported format '<i'; expected formats: d, f
+
+Arguments are validated one at a time in signature order, so the offending
+argument is always identified instead of an opaque `SystemError` from a later
+dispatch failure. Buffers whose format is only constrained by `checks:` (and
+never by a `when:` condition) do not get this check.
+
 ### Checks
 
 `checks:` are pre-conditions evaluated before dispatch. If a check fails,
