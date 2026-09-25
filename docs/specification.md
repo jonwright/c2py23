@@ -507,6 +507,13 @@ argument is always identified instead of an opaque `SystemError` from a later
 dispatch failure. Buffers whose format is only constrained by `checks:` (and
 never by a `when:` condition) do not get this check.
 
+If a `when:` condition also has an `or <buf>.itemsize == N` fallback (used to
+accept a platform-equivalent PEP 3118 format char -- e.g. numpy reports `'L'`
+rather than `'I'` for a `uint32` array on Windows/LLP64, where `sizeof(long)
+== 4`), the decode-time check accepts that itemsize as an alternative to the
+literal format chars, matching the full `when:` condition instead of only its
+format-char comparisons.
+
 ### Checks
 
 `checks:` are pre-conditions evaluated before dispatch. If a check fails,

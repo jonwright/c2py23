@@ -29,6 +29,7 @@ from c2py23.parser import (
     _expr_to_c,
     _expr_to_source,
     _extract_fmt_from_expr,
+    _extract_itemsize_from_expr,
 )
 from c2py23.invariant_checker import verify_c_invariants
 
@@ -1445,11 +1446,14 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
 
 # ---- Buffer and wrapper helpers ----
 def _collect_buf_formats(func):
-    """Return {buffer_param_name: sorted list of supported format chars}.
+    """Return {buffer_param_name: (sorted format chars, sorted itemsizes)}.
 
     Collects the union of format chars that appear in any `when:` dispatch
     condition (flat overloads and group-level conditions) for each buffer
-    parameter. Buffers that are never dispatched on `.format` are omitted.
+    parameter, plus any `<buf>.itemsize == N` fallback alternatives written
+    alongside them (used to accept platform-equivalent PEP 3118 chars, e.g.
+    numpy's 'L' for uint32 on Windows/LLP64 where sizeof(long) == 4).
+    Buffers that are never dispatched on `.format`/`.itemsize` are omitted.
     """
     result = {}
     for ol in func.overloads:
@@ -1465,10 +1469,14 @@ def _collect_buf_formats(func):
                 if p.pytype != "buffer":
                     continue
                 chars = set()
+                itemsizes = set()
                 _extract_fmt_from_expr(e, p.name, chars)
-                if chars:
-                    result.setdefault(p.name, set()).update(chars)
-    return {k: sorted(v) for k, v in result.items()}
+                _extract_itemsize_from_expr(e, p.name, itemsizes)
+                if chars or itemsizes:
+                    entry = result.setdefault(p.name, [set(), set()])
+                    entry[0].update(chars)
+                    entry[1].update(itemsizes)
+    return {k: (sorted(chars), sorted(itemsizes)) for k, (chars, itemsizes) in result.items()}
 
 
 def _py_param_position(func, param_name):
@@ -1479,7 +1487,7 @@ def _py_param_position(func, param_name):
     return 0
 
 
-def _emit_decode_dtype_check(b, func, p, supported_chars):
+def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     """Emit a decode-time dtype check for a buffer that participates in
     `when:` format dispatch.
 
@@ -1488,11 +1496,27 @@ def _emit_decode_dtype_check(b, func, p, supported_chars):
     argument, its 1-based position in the call, and the received PEP 3118
     format string -- instead of an opaque SystemError from a later
     dispatch failure. Uses c2py_format_is_native for byte-order safety.
+
+    `supported_itemsizes` comes from `<buf>.itemsize == N` fallback
+    alternatives in the `when:` condition -- these accept any format char
+    whose element size matches, which is required for PEP 3118 chars that
+    are platform-sized (e.g. numpy reports 'L' rather than 'I' for a
+    uint32 array on Windows/LLP64, where sizeof(long) == 4). Without this,
+    a decode-time check built from format chars alone would reject valid
+    buffers on platforms where numpy picks a different (but same-width)
+    format char than it does on Linux.
     """
     name = func.name
     pos = _py_param_position(func, p.name)
-    last_cmp = " || ".join("_last == '{0}'".format(c) for c in supported_chars)
-    expected = ", ".join(supported_chars)
+    cmp_parts = ["_last == '{0}'".format(c) for c in supported_chars]
+    cmp_parts.extend("info_{0}.itemsize == {1}".format(p.name, sz) for sz in supported_itemsizes)
+    last_cmp = " || ".join(cmp_parts)
+    expected_parts = []
+    if supported_chars:
+        expected_parts.append(", ".join(supported_chars))
+    if supported_itemsizes:
+        expected_parts.append("itemsize in ({0})".format(", ".join(str(sz) for sz in supported_itemsizes)))
+    expected = "; or ".join(expected_parts)
     b.emit("    /* decode-time dtype check: {0} */".format(p.name))
     b.emit("    {")
     b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
@@ -1532,7 +1556,8 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         # Decode-time dtype validation: report the offending arg at the point
         # its buffer is decoded, one argument at a time.
         if p.name in buf_formats:
-            _emit_decode_dtype_check(b, func, p, buf_formats[p.name])
+            chars, itemsizes = buf_formats[p.name]
+            _emit_decode_dtype_check(b, func, p, chars, itemsizes)
         b.emit("")
 
     # Restrict checks

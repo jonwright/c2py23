@@ -129,6 +129,22 @@ def test_no_decode_check_for_shape_only_dispatch():
     assert "decode-time dtype check" not in code
 
 
+def test_decode_time_dtype_check_honors_itemsize_fallback():
+    # A `when:` with an `or <buf>.itemsize == N` fallback (used to accept
+    # numpy's 'L' for uint32 on Windows/LLP64, where sizeof(long) == 4)
+    # must not be reduced to a bare `_last == 'I'` equality check -- that
+    # rejects a valid same-width buffer whose format char differs by
+    # platform. See: reorder_u16_a32 TypeError on Windows wheels.
+    code = _gen(_mk("mdt4", [
+        _func("proc(adr: buffer) -> void", "void proc(const uint32_t *adr, int n)",
+              {"adr": "adr.ptr", "n": "adr.n"},
+              when="adr.format == 'I' or adr.itemsize == 4"),
+    ]))
+    assert "decode-time dtype check: adr" in code
+    assert "info_adr.itemsize == 4" in code
+    assert "itemsize in (4)" in code
+
+
 def test_slow_axis_array_dims():
     code = _gen(_mk("mta", [
         _func("proc(m: buffer) -> void", "void proc(const float m[][3], int n)",

@@ -1819,6 +1819,28 @@ def _extract_fmt_from_expr(expr, param_name, fmt_chars):
         _extract_fmt_from_expr(expr.operand, param_name, fmt_chars)
 
 
+def _extract_itemsize_from_expr(expr, param_name, itemsizes):
+    """Recursively extract `<param>.itemsize == N` comparisons from an
+    expression tree.  This is the platform-portable fallback that lets a
+    `when:`/`checks:` condition accept a PEP 3118 format char that varies
+    by platform (e.g. numpy reports 'L' rather than 'I' for uint32 on
+    Windows/LLP64) as long as the element size still matches."""
+    if isinstance(expr, Compare) and expr.op == "==":
+        for side, other in [(expr.left, expr.right), (expr.right, expr.left)]:
+            if (
+                isinstance(side, Attr)
+                and side.attr == "itemsize"
+                and _expr_refers_to(side.obj, param_name)
+                and isinstance(other, IntLit)
+            ):
+                itemsizes.add(other.value)
+    elif isinstance(expr, BinOp):
+        _extract_itemsize_from_expr(expr.left, param_name, itemsizes)
+        _extract_itemsize_from_expr(expr.right, param_name, itemsizes)
+    elif isinstance(expr, UnaryOp):
+        _extract_itemsize_from_expr(expr.operand, param_name, itemsizes)
+
+
 # ---- Buffer and wrapper helpers ----
 
 
