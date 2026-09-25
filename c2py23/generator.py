@@ -1444,6 +1444,74 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
 
 
 # ---- Buffer and wrapper helpers ----
+def _collect_buf_formats(func):
+    """Return {buffer_param_name: sorted list of supported format chars}.
+
+    Collects the union of format chars that appear in any `when:` dispatch
+    condition (flat overloads and group-level conditions) for each buffer
+    parameter. Buffers that are never dispatched on `.format` are omitted.
+    """
+    result = {}
+    for ol in func.overloads:
+        exprs = []
+        if ol.when_expr is not None:
+            exprs.append(ol.when_expr)
+        if ol.variants:
+            for v in ol.variants:
+                if v.when_expr is not None:
+                    exprs.append(v.when_expr)
+        for e in exprs:
+            for p in func.py_params:
+                if p.pytype != "buffer":
+                    continue
+                chars = set()
+                _extract_fmt_from_expr(e, p.name, chars)
+                if chars:
+                    result.setdefault(p.name, set()).update(chars)
+    return {k: sorted(v) for k, v in result.items()}
+
+
+def _py_param_position(func, param_name):
+    """Return the 1-based position of a Python param in the function signature."""
+    for idx, p in enumerate(func.py_params):
+        if p.name == param_name:
+            return idx + 1
+    return 0
+
+
+def _emit_decode_dtype_check(b, func, p, supported_chars):
+    """Emit a decode-time dtype check for a buffer that participates in
+    `when:` format dispatch.
+
+    Validation happens at the point the buffer argument is decoded, one
+    argument at a time, so an unsupported type is reported naming the
+    argument, its 1-based position in the call, and the received PEP 3118
+    format string -- instead of an opaque SystemError from a later
+    dispatch failure. Uses c2py_format_is_native for byte-order safety.
+    """
+    name = func.name
+    pos = _py_param_position(func, p.name)
+    last_cmp = " || ".join("_last == '{0}'".format(c) for c in supported_chars)
+    expected = ", ".join(supported_chars)
+    b.emit("    /* decode-time dtype check: {0} */".format(p.name))
+    b.emit("    {")
+    b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
+    b.emit("        char _last = _fmt[0] ? _fmt[strlen(_fmt) - 1] : 0;")
+    b.emit("        if (_fmt[0] && !(({0}) && c2py_format_is_native(info_{1}.format))) {{".format(last_cmp, p.name))
+    b.emit('            PyErr_Format(PyExc_TypeError,')
+    b.emit(
+        '                "{0}: argument {1} ({2}) has unsupported format \'%s\'; expected formats: {3}",'.format(
+            name, pos, p.name, expected
+        )
+    )
+    b.emit("                _fmt);")
+    b.emit("            goto cleanup;")
+    b.emit("        }")
+    b.emit("    }")
+    # Ensure the 'cleanup:' label is emitted even when this is the first buffer.
+    b._has_goto_cleanup = True
+
+
 def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
@@ -1453,12 +1521,18 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
         b.emit_buf_memset("info_" + p.name)
     b.emit("")
 
+    buf_formats = _collect_buf_formats(func)
+
     # Acquire buffers (first: return NULL on failure, subsequent: goto cleanup)
     for i, p in enumerate(buf_params):
         flags = _get_buf_flags(p, func)
         want_write = "PyBUF_WRITABLE" in flags
         write_val = "C2PY_BUF_WRITE" if want_write else "C2PY_BUF_READ"
         b.acquire_buffer("info_" + p.name, "py_" + p.name, write_val, name)
+        # Decode-time dtype validation: report the offending arg at the point
+        # its buffer is decoded, one argument at a time.
+        if p.name in buf_formats:
+            _emit_decode_dtype_check(b, func, p, buf_formats[p.name])
         b.emit("")
 
     # Restrict checks

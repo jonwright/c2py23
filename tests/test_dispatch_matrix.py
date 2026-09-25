@@ -112,6 +112,29 @@ def test_fillmod_unsupported_dtype_raises():
         fillmod.fill(arr, 7.0)
 
 
+def test_fillmod_unsupported_dtype_message():
+    fillmod = _import("fill")
+    arr = _arr(ctypes.c_int, 4)
+    with pytest.raises(TypeError) as exc:
+        fillmod.fill(arr, 7.0)
+    msg = str(exc.value)
+    assert "fill" in msg
+    assert "argument 1" in msg  # 1-based position
+    assert "(arr)" in msg  # argument name
+    assert "has unsupported format" in msg
+
+
+def test_dotmod_unsupported_dtype_argument_position():
+    dotmod = _import("dot")
+    a = _arr(ctypes.c_int, 4)  # 'i' not in dotmod set; dispatch is on arg 'a'
+    b = _arr(ctypes.c_float, 4)
+    with pytest.raises(TypeError) as exc:
+        dotmod.dot(a, b)
+    msg = str(exc.value)
+    assert "argument 1" in msg
+    assert "(a)" in msg
+
+
 @pytest.mark.parametrize("ct,_fmt,_val", [t for t in DISPATCH_TYPES if t[0] in (ctypes.c_float, ctypes.c_double)])
 def test_dotmod_float_and_double(ct, _fmt, _val):
     dotmod = _import("dot")
