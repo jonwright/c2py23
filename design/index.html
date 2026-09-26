@@ -1,0 +1,1349 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Zero-copy C99 function wrapping for Python 2.7-3.15">
+      
+      
+      
+      
+        <link rel="prev" href="../building/">
+      
+      
+        <link rel="next" href="../developer_guide/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Design Decisions - c2py23</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-decisions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="c2py23" class="md-header__button md-logo" aria-label="c2py23" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            c2py23
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Design Decisions
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jonwright/c2py23" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jonwright/c2py23
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="c2py23" class="md-nav__button md-logo" aria-label="c2py23" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    c2py23
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jonwright/c2py23" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jonwright/c2py23
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../specification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building Extensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-c2py23-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What c2py23 Does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-c2py23-does-not-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What c2py23 Does NOT Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What c2py23 Does NOT Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-keyword-arguments-44" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No keyword arguments (#44)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-memory-allocation-in-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No memory allocation in wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-complex-type-53" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No complex type (#53)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gpu-support-40" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU support (#40)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-asyncawait-41" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No async/await (#41)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-named-tuple-returns-42" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No named-tuple returns (#42)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-numpy-dependency-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No numpy dependency (#15)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-keyword-arguments-in-dispatch-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No keyword arguments in dispatch expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternative-python-wrapper-generators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternative Python Wrapper Generators
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../developer_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository Audit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/kissfft_wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    KISS FFT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/lz4_wrap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ4 Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/simd_dispatch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SIMD Dispatch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/threading_bench/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threading Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/mp_bench/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/timing_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance Timing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/cmake_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CMake Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/meson_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Meson Build
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/wheel_demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wheel Packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-c2py23-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What c2py23 Does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-c2py23-does-not-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What c2py23 Does NOT Do
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What c2py23 Does NOT Do">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-keyword-arguments-44" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No keyword arguments (#44)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-memory-allocation-in-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No memory allocation in wrappers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-complex-type-53" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No complex type (#53)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gpu-support-40" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GPU support (#40)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-asyncawait-41" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No async/await (#41)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-named-tuple-returns-42" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No named-tuple returns (#42)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-numpy-dependency-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No numpy dependency (#15)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-keyword-arguments-in-dispatch-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No keyword arguments in dispatch expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternative-python-wrapper-generators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternative Python Wrapper Generators
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="design-decisions">Design Decisions</h1>
+<p>This page documents what c2py23 does and does not do, with references
+to the GitHub issues where each decision was made.</p>
+<h2 id="what-c2py23-does">What c2py23 Does</h2>
+<ul>
+<li><strong>Zero-copy buffer access</strong> -- acquires raw C pointers from Python buffer
+  objects via PEP 3118, with Python 2.7 old-buffer fallback</li>
+<li><strong>One <code>.so</code> everywhere</strong> -- uses <code>dlopen(NULL)</code> + <code>dlsym()</code> (the nimpy trick)
+  rather than linking <code>-lpython</code>.  No <code>#include &lt;Python.h&gt;</code> anywhere.
+  For runtimes where this fails (GraalPy) or for debugging, use
+  <code>--pythonh</code> instead (<a href="../pythonh/">docs</a>).</li>
+<li><strong>Format dispatch</strong> -- route to different C overloads based on PEP 3118 format
+  characters: <code>'d'</code> (float64), <code>'f'</code> (float32), <code>'i'</code> (int32), etc.</li>
+<li><strong>CPU feature dispatch</strong> -- compile the same C source with different <code>-m</code> flags
+  and select at runtime via <code>when: c2py_amd64_avx2</code></li>
+<li><strong>Auto-derived array checks</strong> -- <code>const double gv[][3]</code> in a C sig generates
+  ndim, shape, and contiguity checks automatically</li>
+<li><strong>Auto-generated docstrings</strong> -- Python <code>help()</code> shows sigs, params, checks,
+  and overloads</li>
+<li><strong>GIL release</strong> -- opt-in per-function <code>gil_release: true</code></li>
+<li><strong>Free-threading</strong> -- module-level <code>free_threading: true</code> for Python 3.14t</li>
+</ul>
+<h2 id="what-c2py23-does-not-do">What c2py23 Does NOT Do</h2>
+<h3 id="no-keyword-arguments-44">No keyword arguments (#44)</h3>
+<p>C99 has no keyword arguments -- function parameters are positional, matched
+by order at the call site.  c2py23 maps directly to the C calling model, so
+all wrapped functions are positional-only.</p>
+<p>C99 does have <code>&lt;stdarg.h&gt;</code> for variadic functions, which is the C equivalent
+of optional arguments.  c2py23 supports this pattern through default values
+on positional parameters (<code>py_sig: "fn(a: buffer, n: int = 1) -&gt; int"</code>),
+but callers must pass arguments in order: <code>fn(data, 5)</code> works, <code>fn(data, n=5)</code>
+raises <code>TypeError</code>.</p>
+<p>Keyword argument support would also introduce <code>METH_KEYWORDS</code> in the generated
+CPython wrappers, which causes undefined behavior when cast to <code>PyCFunction</code>.
+Deferred until Python 2.7 is dropped and the minimum can be raised to 3.12
+where <code>METH_FASTCALL</code> avoids this issue natively.</p>
+<h3 id="no-memory-allocation-in-wrappers">No memory allocation in wrappers</h3>
+<p>Generated wrapper code never calls <code>malloc</code>, <code>calloc</code>, <code>realloc</code>, or <code>free</code>.
+All memory is owned by Python.  User C code may allocate internally, but must
+free before returning.</p>
+<h3 id="no-complex-type-53">No complex type (#53)</h3>
+<p>C99 <code>_Complex</code> and C++ <code>std::complex&lt;T&gt;</code> have incompatible ABIs and
+different calling conventions across compilers.  gcc/clang return C99
+complex values via SSE registers; MSVC does not support C99 <code>_Complex</code>
+at all and uses a C++ struct convention that passes via pointer.</p>
+<p>The interleaved real/imag layout (AoS) also complicates SIMD
+vectorization -- most SIMD kernels prefer separate real and imaginary
+arrays (SoA) or custom layouts.</p>
+<p>Users handle complex data in their C wrapper code with plain <code>float*</code>
+or <code>double*</code> buffers and interleaved pairs.  The kissfft example
+demonstrates this: declare <code>buffer</code> with format <code>'f'</code>, validate
+<code>buf.n % 2 == 0</code>, and cast to <code>(kiss_fft_cpx*)buf.ptr</code> in the C
+wrapper.  For SIMD-friendly layouts, split into separate real and
+imaginary arrays (SoA or structure-of-arrays) in your C code.</p>
+<p>This mirrors the Python 2 + Python 3 subset approach: where C99 and
+C++ conflict, c2py23 uses the common-denominator feature set that
+all platforms agree on.</p>
+<h3 id="gpu-support-40">GPU support (#40)</h3>
+<p>Under investigation.  For CPU arrays, c2py23 already gets a raw pointer
+via PEP 3118 at zero cost -- C function pointer dispatch via the
+<code>tp_as_buffer</code> slot, no allocation on repeated calls, no dict lookup,
+no release path.</p>
+<p>For GPU arrays, DLPack provides the mechanism: a PyCapsule containing
+a device pointer, device type, shape, and strides.  NumPy's C source
+shows <code>__dlpack__()</code> returns the same <code>PyArray_DATA()</code> pointer as
+getbuffer for CPU arrays (<code>device_type = kDLCPU</code>), and device-typed
+pointers for GPU tensors from CuPy, PyTorch, etc.</p>
+<p>The open question is not buffer access -- it's whether you have a C99
+function compiled for a GPU to call.  All GPU libraries (cuBLAS,
+cuFFT, ROCm) require JIT compilation or pre-compiled device code.
+Until there is a GPU-compiled C function to wrap, DLPack vs PEP 3118
+is a moot point.</p>
+<p>Deferred for future research.  Related: HPy (#49).</p>
+<h3 id="no-asyncawait-41">No async/await (#41)</h3>
+<p>Deferred until the Python 2.7 compatibility floor is raised (coroutines are
+3.5+).</p>
+<h3 id="no-named-tuple-returns-42">No named-tuple returns (#42)</h3>
+<p>Functions return positional tuples.  Wrap in a namedtuple on the Python side
+if needed.</p>
+<h3 id="no-numpy-dependency-15">No numpy dependency (#15)</h3>
+<p>c2py23 uses PEP 3118 directly.  <code>buf.contiguous</code> (<code>'C'</code>/<code>'F'</code>) was removed
+as a numpy-ism.  Use <code>buf.strides</code> and <code>buf.slow_axis</code> / <code>buf.fast_axis</code>
+instead.</p>
+<h3 id="no-keyword-arguments-in-dispatch-expressions">No keyword arguments in dispatch expressions</h3>
+<p><code>when:</code> and <code>checks:</code> expressions are compiled to C, not Python.  They
+support a limited grammar: comparisons, arithmetic, <code>and</code>/<code>or</code>/<code>not</code>,
+attribute access (<code>buf.n</code>, <code>buf.format</code>), and subscript (<code>buf.shape[1]</code>).</p>
+<h2 id="alternative-python-wrapper-generators">Alternative Python Wrapper Generators</h2>
+<p>c2py23 is deliberately incomplete and inflexible -- it maps a narrow set of
+C99 function signatures onto Python buffers, with no copies, no allocations,
+and no type conversion overhead.  Most alternatives below aim for broader
+coverage.</p>
+<ul>
+<li><strong><a href="https://docs.python.org/3/library/ctypes.html">ctypes</a></strong> -- built into
+  Python, no build step, but no buffer-protocol shape/format checking</li>
+<li><strong><a href="https://cffi.readthedocs.io/">cffi</a></strong> -- richer C type system, ABI and API
+  modes, but Python 2.7 is sunsetting</li>
+<li><strong><a href="https://pybind11.readthedocs.io/">pybind11</a></strong> -- C++ native, rich type
+  conversion, Python 3.6+ only</li>
+<li><strong><a href="https://cython.org/">Cython</a></strong> -- Python-like syntax for C extensions,
+  Python 2.7-3.x support</li>
+<li><strong><a href="https://numpy.org/doc/stable/f2py/">f2py</a></strong> -- wraps Fortran 77/90 and C
+  functions, generates C/API wrappers, numpy-aware</li>
+<li><strong><a href="https://www.swig.org/">SWIG</a></strong> -- multi-language wrapper generator
+  (C/C++ to Python, Java, Ruby, etc.), mature and feature-rich</li>
+<li><strong><a href="https://hpyproject.org/">HPy</a></strong> -- universal C extension API for CPython,
+  PyPy, and GraalPy.  HPy has first-class buffer support and is a serious option
+  for multi-interpreter portability.  See #49.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.sections", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
