@@ -325,6 +325,41 @@ typedef struct {
     Py_ssize_t *strides;      /* per-dimension strides (may be NULL) */
 } c2py_ptr_info;
 
+/* Runtime enforcement of the no-alias contract generated wrappers rely
+ * on when passing buffer pointers to C functions as restrict.
+ *
+ * The first `n_writable` entries of `infos` are writable buffers and the
+ * rest are read-only.  Any pair with at least one writable endpoint must
+ * not overlap in memory; read-only/read-only overlap is allowed.  Returns
+ * 0 when clean, or -1 with ValueError set when a writable buffer overlaps
+ * another buffer.
+ *
+ * `infos` is an array of pointers to the wrapper's c2py_ptr_info locals,
+ * ordered writables-first by the generator.  This centralizes the O(n^2)
+ * check in one out-of-line helper instead of inlining a block per pair
+ * (which exploded generated wrapper size for many-buffer functions). */
+static inline int
+c2py_check_no_overlap(c2py_ptr_info *const *infos, int n_writable, int n)
+{
+    int i, j;
+    for (i = 0; i < n_writable; i++) {
+        for (j = 0; j < n; j++) {
+            if (i == j) continue;
+            if ((char*)infos[i]->ptr >= (char*)infos[j]->ptr &&
+                (char*)infos[i]->ptr < (char*)infos[j]->ptr + infos[j]->len) {
+                PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
+                return -1;
+            }
+            if ((char*)infos[j]->ptr >= (char*)infos[i]->ptr &&
+                (char*)infos[j]->ptr < (char*)infos[i]->ptr + infos[i]->len) {
+                PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
 /* Backend tags for c2py_buf_pin.kind -- tells c2py_unpin_buffer
  * which release path to use.  Zero-init = C2PY_PIN_NONE = no-op. */
 #define C2PY_PIN_NONE     0

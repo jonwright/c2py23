@@ -493,7 +493,8 @@ checks:
 - **Alignment:** `"(uintptr_t)buf.ptr % alignment == 0"` for SIMD overloads in
   `when:` conditions (the scalar fallback handles misaligned cases)
 - **Alias:** c2py23 checks writable buffer aliasing at runtime; add
-  `default_raise:` for a clear error message
+  `default_raise:` for a clear error message.  Set `check_aliasing: false`
+  only when the caller guarantees non-overlap and the check is hot.
 
 ### Format char portability: never use `'l'` or `'L'` for fixed-width dispatch
 

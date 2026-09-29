@@ -194,29 +194,26 @@ class CBuilder:
                                 else:
                                     writable.add(p.name)
 
-        checked = set()
-        for wn in sorted(writable):
-            for other in sorted(writable | const_set):
-                if other == wn:
-                    continue
-                pair = tuple(sorted([wn, other]))
-                if pair in checked:
-                    continue
-                checked.add(pair)
-                self.emit("    /* restrict check: {} vs {} */".format(wn, other))
-                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(wn, other))
-                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(wn, other))
-                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-                self.emit("        goto cleanup;")
-                self._has_goto_cleanup = True
-                self.emit("    }")
-                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(other, wn))
-                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(other, wn))
-                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-                self.emit("        goto cleanup;")
-                self._has_goto_cleanup = True
-                self.emit("    }")
-                self.emit("")
+        # Order buffers writables-first so the runtime helper can treat the
+        # first n_writable entries as the writable set and check each
+        # against every buffer (including read-only ones).  A buffer that is
+        # writable in any overload counts as writable.
+        ordered_writable = sorted(writable)
+        if not ordered_writable:
+            return
+        ordered = ordered_writable + sorted(n for n in const_set if n not in writable)
+
+        infos = ", ".join("&info_" + n for n in ordered)
+        self.emit("    /* restrict check: writable buffers must not overlap */")
+        self.emit("    {")
+        self.emit("        c2py_ptr_info *_c2py_ov[] = {{ {0} }};".format(infos))
+        self.emit(
+            "        if (c2py_check_no_overlap(_c2py_ov, {0}, {1}) < 0)".format(len(ordered_writable), len(ordered))
+        )
+        self.emit("            goto cleanup;")
+        self.emit("    }")
+        self.emit("")
+        self._has_goto_cleanup = True
 
     def emit_contiguity_checks(self, buf_params):
         """Emit contiguity validation for each buffer.
@@ -1522,9 +1519,9 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
     b.emit("        char _last = _fmt[0] ? _fmt[strlen(_fmt) - 1] : 0;")
     b.emit("        if (_fmt[0] && !(({0}) && c2py_format_is_native(info_{1}.format))) {{".format(last_cmp, p.name))
-    b.emit('            PyErr_Format(PyExc_TypeError,')
+    b.emit("            PyErr_Format(PyExc_TypeError,")
     b.emit(
-        '                "{0}: argument {1} ({2}) has unsupported format \'%s\'; expected formats: {3}",'.format(
+        "                \"{0}: argument {1} ({2}) has unsupported format '%s'; expected formats: {3}\",".format(
             name, pos, p.name, expected
         )
     )
@@ -1560,8 +1557,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
             _emit_decode_dtype_check(b, func, p, chars, itemsizes)
         b.emit("")
 
-    # Restrict checks
-    b.emit_restrict_checks(buf_params, func)
+    # Restrict checks (opt out per-function with check_aliasing: false)
+    if getattr(func, "check_aliasing", True):
+        b.emit_restrict_checks(buf_params, func)
 
     # Call impl (with timing ticks around it)
     impl_args = []
@@ -2127,6 +2125,11 @@ def _doc(func):
     if func.gil_release:
         lines.append("")
         lines.append("GIL: released")
+
+    # 5b. Alias checking (only show when disabled, to avoid noise)
+    if not getattr(func, "check_aliasing", True):
+        lines.append("")
+        lines.append("Aliasing checks: disabled (caller guarantees no overlap)")
 
     # 6. Overloads section
     has_overloads = func.overloads and any(ol.sig_str or ol.variants for ol in func.overloads)
