@@ -145,6 +145,11 @@ that writable buffers do not alias (overlap) each other:
 "py_sig": "add(a: buffer, b: buffer, out: buffer) -> void"
 ```
 
+Set `"check_aliasing": false` on a function to skip this scan when the
+caller guarantees the buffers are disjoint (a hot path); this gives up the
+runtime safety net and relies on the C signature's `restrict` promise.
+The check is cheap, so keep the default unless a profile says otherwise.
+
 ### Memory Ownership
 
 **Python owns all memory.** Your C function receives pointers to
@@ -299,7 +304,8 @@ When Python calls `mymod.myfunc(a, b, out, 42)`:
 1. `PyArg_ParseTuple` extracts the Python objects and scalar values
 2. `c2py_pin` acquires raw pointers from each buffer object (using the
    configured acquisition backend: ndarray struct-cast, PEP 3118, or DLPack)
-3. Restrict check: verifies no writable buffers overlap
+3. Restrict check: verifies no writable buffers overlap (skipped when the
+   function sets `"check_aliasing": false`)
 4. Checks: evaluates all `"checks"` expressions; raises `ValueError` on failure
 5. Overload dispatch: iterates the `"c_overloads"` list, evaluates `"when"`
    conditions, calls the first matching C function
