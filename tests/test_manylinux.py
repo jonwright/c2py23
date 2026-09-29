@@ -30,24 +30,24 @@ SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
 WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
 LOG_FILE = os.path.join(SCRIPT_DIR, "test_manylinux_results.log")
 
-MANYLINUX_SIF = "manylinux2014.sif"
+MANYLINUX_SIF = "snakepit-manylinux2014.sif"
 MASTER_PYTHON = "3.12"
 
-# Cross-test targets (all containers from test_all.py)
+# Cross-test targets (snakepit three-container layout)
 CROSS_TEST_TARGETS = [
-    ("2.7", "ubuntu20.04.sif"),
-    ("3.6", "debian10.sif"),
-    ("3.7", "ubuntu24.04.sif"),
-    ("3.8", "ubuntu20.04.sif"),
-    ("3.9", "ubuntu24.04.sif"),
-    ("3.10", "ubuntu24.04.sif"),
-    ("3.11", "ubuntu24.04.sif"),
-    ("3.12", "ubuntu24.04.sif"),
-    ("3.13", "ubuntu24.04.sif"),
-    ("3.14", "ubuntu24.04.sif"),
-    ("3.14t", "ubuntu24.04.sif"),
-    ("3.15", "ubuntu26.04.sif"),
-    ("3.15t", "ubuntu26.04.sif"),
+    ("2.7", "snakepit-legacy.sif"),
+    ("3.6", "snakepit-legacy.sif"),
+    ("3.7", "snakepit-legacy.sif"),
+    ("3.8", "snakepit-legacy.sif"),
+    ("3.9", "snakepit-modern.sif"),
+    ("3.10", "snakepit-modern.sif"),
+    ("3.11", "snakepit-modern.sif"),
+    ("3.12", "snakepit-modern.sif"),
+    ("3.13", "snakepit-modern.sif"),
+    ("3.14", "snakepit-modern.sif"),
+    ("3.14t", "snakepit-modern.sif"),
+    ("3.15", "snakepit-modern.sif"),
+    ("3.15t", "snakepit-modern.sif"),
 ]
 
 _log_file = None
@@ -270,15 +270,17 @@ def phase2_cross_test(python_version, sif_file):
     print_header("Phase 2: Cross-test Python {} on {}".format(python_version, sif_file))
 
     system_py = "python" + python_version
-    # ubuntu26.04 has packages pre-installed
-    if sif_file == "ubuntu26.04.sif":
-        test_cmd = "cd /workspace && " + system_py + " tests/runner.py --no-build"
-    else:
-        test_cmd = (
-            "cd /workspace && "
-            "pip install -e . --quiet && "
-            "pip install pytest setuptools wheel --quiet && " + system_py + " tests/runner.py --no-build"
-        )
+    test_cmd = (
+        "cd /workspace && "
+        "(" + system_py + " -m ensurepip --user --upgrade >/dev/null 2>&1 || true) && "
+        "(PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --ignore-installed --upgrade pip --quiet >/dev/null 2>&1 || true) && "
+        "PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --ignore-installed setuptools wheel pytest --quiet && "
+        "PYTHONPATH=/workspace " + system_py + " tests/runner.py --no-build"
+    )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 
