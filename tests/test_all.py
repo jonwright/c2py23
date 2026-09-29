@@ -183,15 +183,23 @@ def run_python_version(python_version, sif_file):
     print_header("Testing Python " + python_version)
 
     system_py = "python" + python_version
-    # ubuntu26.04 has packages pre-installed at system level
-    if sif_file == "ubuntu26.04.sif":
-        test_cmd = "cd /workspace && " + system_py + " tests/runner.py"
-    else:
-        test_cmd = (
-            "cd /workspace && "
-            "pip install -e . --quiet && "
-            "pip install pytest setuptools wheel --quiet && " + system_py + " tests/runner.py"
-        )
+    # Install the test deps for the *target* interpreter (plain `pip` may
+    # belong to a different version in the multi-Python images), then run
+    # from the source tree via PYTHONPATH -- an editable install trips the
+    # `setup.py develop --user` incompatibility on Python 2.7 and PEP 668
+    # on modern distros.
+    test_cmd = (
+        "cd /workspace && "
+        "PIP_BREAK_SYSTEM_PACKAGES=1 " + system_py + " -m pip install --user pytest --quiet && "
+        # Force setuptools/wheel into the user site: some distro packages
+        # ship a setuptools whose distutils 'install' command lacks the
+        # install_layout option that wheel's bdist_wheel needs, which
+        # breaks the ABI-tag wheel test with AttributeError.
+        "PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --ignore-installed setuptools wheel --quiet && "
+        "PYTHONPATH=/workspace " + system_py + " tests/runner.py"
+    )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 

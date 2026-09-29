@@ -5,7 +5,7 @@ Tests all 5 buffer-alias patterns:
   2. Reversed: b = a[::-1]
   3. memoryview: b = memoryview(a)
   4. View: b = a.view()
-  5. Broadcast: b = np.broadcast_to(a, ...)
+  5. Self-alias: b = a
 
 Also tests contiguity enforcement:
   - Strided arrays (a[::2]) are rejected
@@ -20,9 +20,13 @@ import sys
 import os
 import warnings
 
+import pytest
+
 warnings.filterwarnings("ignore", message=".*API version mismatch.*")
 
-import numpy as np
+# numpy is an optional test dependency (see AGENTS.md): skip, do not fail,
+# in containers that do not ship it.
+np = pytest.importorskip("numpy")
 
 IS_PY3 = sys.version_info[0] >= 3
 
@@ -88,14 +92,17 @@ def test_alias_view():
 
 
 def test_alias_broadcast():
-    """Broadcast: np.broadcast_to shares data pointer."""
-    a = np.arange(100, dtype=np.float64)
-    b = np.broadcast_to(a, (3, 100))  # same data, different shape
+    """Self-alias: output is the same object as an input.
 
-    result = np.zeros(100, dtype=np.float64)
+    (Historic name: numpy < 1.10 has no np.broadcast_to, and a broadcast
+    view would be rejected as non-contiguous before the alias check; the
+    overlap this exercises is the self-alias case, which also covers the
+    aliasing a broadcast view would share.)
+    """
+    a = np.arange(100, dtype=np.float64)
     try:
-        arraysum.array_sum(a, a, a)  # output == input (simpler alias test)
-        raise AssertionError("FAIL: broadcast alias should be rejected")
+        arraysum.array_sum(a, a, a)  # output == input (self alias)
+        raise AssertionError("FAIL: self-alias should be rejected")
     except ValueError as e:
         assert "alias" in str(e), "Expected alias error, got: %s" % e
         print("PASS: broadcast (self-alias) detected")
