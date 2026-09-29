@@ -227,58 +227,17 @@ class CBuilder:
 
         for p in buf_params:
             name = p.name
-            fmt = lambda s: s.format(name)
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(name))
             self.emit("    (void)_c2py_slow_axis_info_{0};".format(name))
             self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
-            self.emit("    do {")
-            self.emit("        int _ok = 1;")
-            self.emit("        if (info_{0}->strides == NULL && info_{0}->ndim <= 1) {{".format(name))
-            self.emit("            _c2py_slow_axis_info_{0} = 0;".format(name))
-            self.emit("            _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1);".format(name))
-            self.emit("            break;")
-            self.emit("        }")
-            self.emit(fmt("        if (info_{0}->len == 0) {{"))
-            self.emit(fmt("            _c2py_slow_axis_info_{0} = 0;".format(name)))
-            self.emit(fmt("            _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1);".format(name)))
-            self.emit("            break;")
-            self.emit("        }")
-            self.emit(fmt("        if (info_{0}->ndim >= 1) {{"))
-            self.emit(fmt("            Py_ssize_t _expected = info_{0}->itemsize;"))
-            self.emit("            int _d;")
-            self.emit("            /* check F-contiguous (column-major): first dim varies fastest */")
-            self.emit(fmt("            for (_d = 0; _d < info_{0}->ndim; _d++) {{"))
-            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
-            self.emit("            }")
+            # info_<name> is already a c2py_ptr_info* inside the impl.
             self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_info_{0} = (int)(info_{0}->ndim - 1); _c2py_fast_axis_info_{0} = 0; break; }}".format(
-                    name
-                )
+                "    if (c2py_check_contiguity(info_{0}, &_c2py_slow_axis_info_{0}, "
+                "&_c2py_fast_axis_info_{0}) < 0)".format(name)
             )
-            self.emit("            /* check C-contiguous (row-major): last dim varies fastest */")
-            self.emit("            _ok = 1;")
-            self.emit(fmt("            _expected = info_{0}->itemsize;"))
-            self.emit(fmt("            for (_d = info_{0}->ndim - 1; _d >= 0; _d--) {{"))
-            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
-            self.emit("            }")
-            self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_info_{0} = 0; _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1); }}".format(
-                    name
-                )
-            )
-            self.emit("        }")
-            self.emit("        if (!_ok) {")
-            self.emit("            PyErr_SetString(PyExc_ValueError,")
-            self.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
-            self.emit("            return NULL;")
-            self.emit("        }")
-            self.emit("    } while(0);")
+            self.emit("        return NULL;")
             self.emit("")
 
 

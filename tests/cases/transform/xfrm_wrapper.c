@@ -168,88 +168,16 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
     (void)_c2py_slow_axis_info_points;
     (void)_c2py_fast_axis_info_points;
     /* contiguity check: points */
-    do {
-        int _ok = 1;
-        if (info_points->strides == NULL && info_points->ndim <= 1) {
-            _c2py_slow_axis_info_points = 0;
-            _c2py_fast_axis_info_points = (int)(info_points->ndim - 1);
-            break;
-        }
-        if (info_points->len == 0) {
-            _c2py_slow_axis_info_points = 0;
-            _c2py_fast_axis_info_points = (int)(info_points->ndim - 1);
-            break;
-        }
-        if (info_points->ndim >= 1) {
-            Py_ssize_t _expected = info_points->itemsize;
-            int _d;
-            /* check F-contiguous (column-major): first dim varies fastest */
-            for (_d = 0; _d < info_points->ndim; _d++) {
-                if (info_points->strides[_d] < 0) { _ok = 0; break; }
-                if (info_points->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= info_points->shape[_d];
-            }
-            if (_ok) { _c2py_slow_axis_info_points = (int)(info_points->ndim - 1); _c2py_fast_axis_info_points = 0; break; }
-            /* check C-contiguous (row-major): last dim varies fastest */
-            _ok = 1;
-            _expected = info_points->itemsize;
-            for (_d = info_points->ndim - 1; _d >= 0; _d--) {
-                if (info_points->strides[_d] < 0) { _ok = 0; break; }
-                if (info_points->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= info_points->shape[_d];
-            }
-            if (_ok) { _c2py_slow_axis_info_points = 0; _c2py_fast_axis_info_points = (int)(info_points->ndim - 1); }
-        }
-        if (!_ok) {
-            PyErr_SetString(PyExc_ValueError,
-                "buffer not contiguous (C or Fortran contiguous required)");
-            return NULL;
-        }
-    } while(0);
+    if (c2py_check_contiguity(info_points, &_c2py_slow_axis_info_points, &_c2py_fast_axis_info_points) < 0)
+        return NULL;
 
     int _c2py_slow_axis_info_out = -1;
     int _c2py_fast_axis_info_out = -1;
     (void)_c2py_slow_axis_info_out;
     (void)_c2py_fast_axis_info_out;
     /* contiguity check: out */
-    do {
-        int _ok = 1;
-        if (info_out->strides == NULL && info_out->ndim <= 1) {
-            _c2py_slow_axis_info_out = 0;
-            _c2py_fast_axis_info_out = (int)(info_out->ndim - 1);
-            break;
-        }
-        if (info_out->len == 0) {
-            _c2py_slow_axis_info_out = 0;
-            _c2py_fast_axis_info_out = (int)(info_out->ndim - 1);
-            break;
-        }
-        if (info_out->ndim >= 1) {
-            Py_ssize_t _expected = info_out->itemsize;
-            int _d;
-            /* check F-contiguous (column-major): first dim varies fastest */
-            for (_d = 0; _d < info_out->ndim; _d++) {
-                if (info_out->strides[_d] < 0) { _ok = 0; break; }
-                if (info_out->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= info_out->shape[_d];
-            }
-            if (_ok) { _c2py_slow_axis_info_out = (int)(info_out->ndim - 1); _c2py_fast_axis_info_out = 0; break; }
-            /* check C-contiguous (row-major): last dim varies fastest */
-            _ok = 1;
-            _expected = info_out->itemsize;
-            for (_d = info_out->ndim - 1; _d >= 0; _d--) {
-                if (info_out->strides[_d] < 0) { _ok = 0; break; }
-                if (info_out->strides[_d] != _expected) { _ok = 0; break; }
-                _expected *= info_out->shape[_d];
-            }
-            if (_ok) { _c2py_slow_axis_info_out = 0; _c2py_fast_axis_info_out = (int)(info_out->ndim - 1); }
-        }
-        if (!_ok) {
-            PyErr_SetString(PyExc_ValueError,
-                "buffer not contiguous (C or Fortran contiguous required)");
-            return NULL;
-        }
-    } while(0);
+    if (c2py_check_contiguity(info_out, &_c2py_slow_axis_info_out, &_c2py_fast_axis_info_out) < 0)
+        return NULL;
 
     int _c2py_do_time = _c2py_timing_enabled;
     uint64_t _c2py_ct0 = 0, _c2py_ct1 = 0;

@@ -342,3 +342,24 @@ def test_check_aliasing_false_skips_alias_check():
     spec["functions"][0]["check_aliasing"] = False
     code = _gen(spec)
     assert "c2py_check_no_overlap" not in code
+
+
+def test_buffer_emits_shared_contiguity_check():
+    code = _gen(
+        _mk(
+            "mcontig",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const float *a, int n)",
+                    {"a": "a.ptr", "n": "a.n"},
+                ),
+            ],
+        )
+    )
+    # The per-buffer contiguity body lives in the runtime helper; the
+    # wrapper declares the axis locals the `when:` expressions read and
+    # calls the helper once.
+    assert "c2py_check_contiguity" in code
+    assert "_c2py_slow_axis_info_a" in code
+    assert "_c2py_fast_axis_info_a" in code

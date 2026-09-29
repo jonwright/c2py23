@@ -360,6 +360,68 @@ c2py_check_no_overlap(c2py_ptr_info *const *infos, int n_writable, int n)
     return 0;
 }
 
+/* Validate that a buffer is C-contiguous or Fortran-contiguous and report
+ * the slowest/fastest varying axis indices through `slow_axis`/`fast_axis`
+ * (used by `when:` dispatch on `.slow_axis`/`.fast_axis`).  The caller
+ * must initialize both out-params; they are left untouched only for the
+ * degenerate ndim<1-with-strides case, which the wrapper initializes to
+ * -1.  Returns 0 when contiguous, or -1 with ValueError set otherwise.
+ *
+ * Centralizing this keeps the generated wrapper small: the check body is
+ * ~40 lines per buffer and was previously inlined into every expanded
+ * method.  `shape`/`strides` are read-only here. */
+static inline int
+c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
+{
+    int _ok = 1;
+    int _d;
+    Py_ssize_t _expected;
+
+    if (info->strides == NULL && info->ndim <= 1) {
+        *slow_axis = 0;
+        *fast_axis = (int)(info->ndim - 1);
+        return 0;
+    }
+    if (info->len == 0) {
+        *slow_axis = 0;
+        *fast_axis = (int)(info->ndim - 1);
+        return 0;
+    }
+    if (info->ndim >= 1) {
+        _expected = info->itemsize;
+        /* check F-contiguous (column-major): first dim varies fastest */
+        for (_d = 0; _d < info->ndim; _d++) {
+            if (info->strides[_d] < 0) { _ok = 0; break; }
+            if (info->strides[_d] != _expected) { _ok = 0; break; }
+            _expected *= info->shape[_d];
+        }
+        if (_ok) {
+            *slow_axis = (int)(info->ndim - 1);
+            *fast_axis = 0;
+            return 0;
+        }
+        /* check C-contiguous (row-major): last dim varies fastest */
+        _ok = 1;
+        _expected = info->itemsize;
+        for (_d = info->ndim - 1; _d >= 0; _d--) {
+            if (info->strides[_d] < 0) { _ok = 0; break; }
+            if (info->strides[_d] != _expected) { _ok = 0; break; }
+            _expected *= info->shape[_d];
+        }
+        if (_ok) {
+            *slow_axis = 0;
+            *fast_axis = (int)(info->ndim - 1);
+            return 0;
+        }
+    }
+    if (!_ok) {
+        PyErr_SetString(PyExc_ValueError,
+            "buffer not contiguous (C or Fortran contiguous required)");
+        return -1;
+    }
+    return 0;
+}
+
 /* Backend tags for c2py_buf_pin.kind -- tells c2py_unpin_buffer
  * which release path to use.  Zero-init = C2PY_PIN_NONE = no-op. */
 #define C2PY_PIN_NONE     0
