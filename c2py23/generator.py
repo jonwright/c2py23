@@ -918,7 +918,8 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     has_timing = module_def.timing
     has_variants = any(any(ol.variants for ol in f.overloads) for f in module_def.functions)
     has_attrs = module_def.constants or has_timing or has_gil_release
-    mod_doc_c = _escape_c_str(_mod_doc(module_def)) if _mod_doc(module_def) else None
+    mod_doc = _mod_doc(module_def)
+    mod_doc_c = _escape_c_str(mod_doc) if mod_doc else None
 
     b.emit("")
     b.emit("/* " + "-" * 44 + " */")
@@ -926,11 +927,19 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("/* " + "-" * 44 + " */")
     b.emit("")
 
+    # Emit each docstring once as a static array.  Both method tables (and
+    # the module defs) reference it, instead of embedding two copies of the
+    # same long literal -- the largest single redundancy in generated output.
+    for func in module_def.functions:
+        b.emit('static const char _doc_{0}[] = "{1}";'.format(func.name, _escape_c_str(_doc(func))))
+    if mod_doc_c:
+        b.emit('static const char _module_doc[] = "{0}";'.format(mod_doc_c))
+    b.emit("")
+
     # VARARGS method table
     b.emit("static PyMethodDef _methods_varargs[] = {")
     for func in module_def.functions:
-        doc_str = _escape_c_str(_doc(func))
-        b.emit('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(func.name, func.name, doc_str))
+        b.emit('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, _doc_{}}},'.format(func.name, func.name, func.name))
     if has_variants:
         for func in module_def.functions:
             if any(ol.variants for ol in func.overloads):
@@ -962,8 +971,9 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     # FASTCALL method table
     b.emit("static PyMethodDef _methods_fastcall[] = {")
     for func in module_def.functions:
-        doc_str = _escape_c_str(_doc(func))
-        b.emit('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(func.name, func.name, doc_str))
+        b.emit(
+            '    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, _doc_{}}},'.format(func.name, func.name, func.name)
+        )
     if has_variants:
         for func in module_def.functions:
             if any(ol.variants for ol in func.overloads):
@@ -997,7 +1007,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    PyModuleDef_HEAD_INIT,")
     b.emit('    "{}",'.format(name))
     if mod_doc_c:
-        b.emit('    "{}",'.format(mod_doc_c))
+        b.emit("    _module_doc,")
     else:
         b.emit("    NULL,")
     b.emit("    -1,")
@@ -1010,7 +1020,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    PyModuleDef_HEAD_INIT_FT,")
     b.emit('    "{}",'.format(name))
     if mod_doc_c:
-        b.emit('    "{}",'.format(mod_doc_c))
+        b.emit("    _module_doc,")
     else:
         b.emit("    NULL,")
     b.emit("    -1,")

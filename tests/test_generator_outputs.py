@@ -344,6 +344,30 @@ def test_check_aliasing_false_skips_alias_check():
     assert "c2py_check_no_overlap" not in code
 
 
+def test_function_docstring_emitted_once():
+    spec = _mk(
+        "mdoc",
+        [
+            {
+                "py_sig": "proc(a: buffer) -> void",
+                "doc": "UNIQUEDOCSENTINEL",
+                "c_overloads": [
+                    {
+                        "sig": "void proc(const float *a, int n)",
+                        "map": {"a": "a.ptr", "n": "a.n"},
+                    }
+                ],
+            }
+        ],
+    )
+    code = _gen(spec)
+    # The docstring body is defined once as a static array and referenced
+    # from both the VARARGS and FASTCALL method tables.
+    assert code.count("UNIQUEDOCSENTINEL") == 1
+    assert code.count("static const char _doc_proc[]") == 1
+    assert code.count("_doc_proc") >= 3
+
+
 def test_buffer_emits_shared_contiguity_check():
     code = _gen(
         _mk(

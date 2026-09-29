@@ -357,8 +357,11 @@ cleanup:
 /* Module definition                          */
 /* -------------------------------------------- */
 
+static const char _doc_transform[] = "transform(points, out)\n--\n\ntransform(points: buffer, out: buffer) -> void\n\nParameters\n----------\npoints : buffer\n    Type: float64 (format 'd')\n    Writable\n    Shape: 2D\nout : buffer\n    Type: float64 (format 'd')\n    Writable\n    Size must equal points\n\nChecks\n------\n  points.format == 'd'  [ValueError]\n  out.format == 'd'  [ValueError]\n  out.n == points.n  [ValueError]\n  points.ndim == 2  [ValueError]\n  points.slow_axis == 0  [ValueError]\n\nOverloads\n---------\n  transform_aos(double *points, intptr_t n, double *out) (When: points.shape[1] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[0] (intptr_t)\n         out = out.ptr (double *)\n  transform_soa(double *points, intptr_t n, double *out) (When: points.shape[0] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[1] (intptr_t)\n         out = out.ptr (double *)\n\nValueError: expected [N,3] or [3,N] buffer";
+static const char _module_doc[] = "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: yes (Py_MOD_GIL_NOT_USED)";
+
 static PyMethodDef _methods_varargs[] = {
-    {"transform", (PyCFunction)_transform_wrapper, METH_VARARGS, "transform(points, out)\n--\n\ntransform(points: buffer, out: buffer) -> void\n\nParameters\n----------\npoints : buffer\n    Type: float64 (format 'd')\n    Writable\n    Shape: 2D\nout : buffer\n    Type: float64 (format 'd')\n    Writable\n    Size must equal points\n\nChecks\n------\n  points.format == 'd'  [ValueError]\n  out.format == 'd'  [ValueError]\n  out.n == points.n  [ValueError]\n  points.ndim == 2  [ValueError]\n  points.slow_axis == 0  [ValueError]\n\nOverloads\n---------\n  transform_aos(double *points, intptr_t n, double *out) (When: points.shape[1] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[0] (intptr_t)\n         out = out.ptr (double *)\n  transform_soa(double *points, intptr_t n, double *out) (When: points.shape[0] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[1] (intptr_t)\n         out = out.ptr (double *)\n\nValueError: expected [N,3] or [3,N] buffer"},
+    {"transform", (PyCFunction)_transform_wrapper, METH_VARARGS, _doc_transform},
     {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,
      "return tick source frequency in Hz"},
     {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
@@ -379,7 +382,7 @@ static PyMethodDef _methods_varargs[] = {
 };
 
 static PyMethodDef _methods_fastcall[] = {
-    {"transform", (PyCFunction)_transform_fastcall, METH_FASTCALL, "transform(points, out)\n--\n\ntransform(points: buffer, out: buffer) -> void\n\nParameters\n----------\npoints : buffer\n    Type: float64 (format 'd')\n    Writable\n    Shape: 2D\nout : buffer\n    Type: float64 (format 'd')\n    Writable\n    Size must equal points\n\nChecks\n------\n  points.format == 'd'  [ValueError]\n  out.format == 'd'  [ValueError]\n  out.n == points.n  [ValueError]\n  points.ndim == 2  [ValueError]\n  points.slow_axis == 0  [ValueError]\n\nOverloads\n---------\n  transform_aos(double *points, intptr_t n, double *out) (When: points.shape[1] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[0] (intptr_t)\n         out = out.ptr (double *)\n  transform_soa(double *points, intptr_t n, double *out) (When: points.shape[0] == 3)\n    Map: points = points.ptr (double *)\n         n = points.shape[1] (intptr_t)\n         out = out.ptr (double *)\n\nValueError: expected [N,3] or [3,N] buffer"},
+    {"transform", (PyCFunction)_transform_fastcall, METH_FASTCALL, _doc_transform},
     {"_c2py_tick_frequency", (PyCFunction)__c2py_tick_frequency, METH_VARARGS,
      "return tick source frequency in Hz"},
     {"_c2py_ticks_to_ns", (PyCFunction)__c2py_ticks_to_ns, METH_VARARGS,
@@ -402,7 +405,7 @@ static PyMethodDef _methods_fastcall[] = {
 static PyModuleDef _module_def = {
     PyModuleDef_HEAD_INIT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: yes (Py_MOD_GIL_NOT_USED)",
+    _module_doc,
     -1,
     NULL,  /* methods set at init */
     NULL, NULL, NULL, NULL
@@ -411,7 +414,7 @@ static PyModuleDef _module_def = {
 static PyModuleDef_FT _module_def_ft = {
     PyModuleDef_HEAD_INIT_FT,
     "xfrm",
-    "Module: xfrm\nSource: ['transform.c']\nTiming: enabled\nFree-threading: yes (Py_MOD_GIL_NOT_USED)",
+    _module_doc,
     -1,
     NULL,  /* methods set at init */
     NULL,  /* m_slots = NULL (single-phase init; PyUnstable_Module_SetGIL handles FT) */
