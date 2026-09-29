@@ -149,25 +149,29 @@ issue: `CC=cl` is set in CI and `make` auto-detects it.
 
 ## Completed
 
-- **Wrapper size / thin marshalling helpers (2026-09)**  --  a consumer
+- **Wrapper size / thin marshalling (2026-09)**  --  a consumer
   (`jonwright/bslz4_to_sparse`) reported a 3.3 MB / 64,920-line generated
   wrapper whose alias and contiguity checks were inlined per buffer pair
-  and multiplied by every `expand` type variant.  Three generator changes
-  landed without changing runtime behaviour: (1) the writable-vs-any
+  and multiplied by every `expand` type variant.  Four generator changes
+  landed without changing observable behaviour: (1) the writable-vs-any
   overlap scan is now a single `c2py_check_no_overlap()` call
   (`static inline`, `c2py_runtime.h`) per wrapper instead of a 12-line
   block per pair per calling convention, with an opt-out `check_aliasing:
   false` function key for hot paths; (2) the C/F-contiguity validation is
   likewise centralized in `c2py_check_contiguity()`; (3) each docstring is
   emitted once as a `static const char _doc_<name>[]` shared by both the
-  VARARGS and FASTCALL tables.  For the reporting spec this took the
-  wrapper from 3,321,647 bytes / 64,920 lines to 1,154,555 bytes /
-  19,978 lines, and the compiled wrapper object's `.text` from 688,308 to
-  315,492 bytes (-54%); the compiler had already merged the duplicate
-  docstring literals, so that change is a source/compile-time win, not a
+  VARARGS and FASTCALL tables; (4) the METH_VARARGS wrapper is now a thin
+  shim that unpacks the args tuple into a fixed stack array and forwards to
+  the METH_FASTCALL function, which owns the marshalling body (adds
+  `PyTuple_Size`/`PyTuple_GetItem` to the runtime API table), so that body
+  is emitted once per method instead of twice.  For the reporting spec this
+  took the wrapper from 3,321,647 bytes / 64,920 lines to 1,036,630 bytes /
+  17,239 lines, and the compiled wrapper object's `.text` from 688,308 to
+  248,500 bytes (-64%); the compiler had already merged the duplicate
+  docstring literals, so that piece is a source/compile-time win, not a
   `.rodata` one.  The full 13-version container matrix (2.7-3.15 incl.
-  free-threaded) is green.  Remaining, deliberately deferred: a thin
-  VARARGS shim / shared wrapper body, and a polymorphic entry point that
+  free-threaded, on the consolidated snakepit-legacy/modern containers) is
+  green.  Remaining, deliberately deferred: a polymorphic entry point that
   collapses an `expand` family into one dtype-dispatching method (the only
   fix for the remaining per-type multiplication).  Recorded in
   `c2py23_wrapper_size_issue.md`.
