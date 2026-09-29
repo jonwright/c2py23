@@ -253,53 +253,6 @@ __pragma(warning(pop))
 }
 
 static PyObject*
-_transform_wrapper(PyObject *self, PyObject *args)
-{
-    PyObject *py_points = NULL;
-    PyObject *py_out = NULL;
-    c2py_buf_pin pin_points;
-    c2py_ptr_info info_points;
-    c2py_buf_pin pin_out;
-    c2py_ptr_info info_out;
-    PyObject *ret = NULL;
-    int _c2py_do_time = _c2py_timing_enabled;
-    uint64_t _c2py_t0 = 0, _c2py_t1 = 0, _c2py_t2 = 0;
-    if (_c2py_do_time) _c2py_t0 = c2py_ticks();
-
-    if (!PyArg_ParseTuple(args, "OO", &py_points, &py_out))
-        return NULL;
-
-    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
-    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
-
-    if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
-        return NULL;
-
-    if (c2py_pin(py_out, &pin_out, &info_out, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
-        goto cleanup;
-
-    /* restrict check: writable buffers must not overlap */
-    {
-        c2py_ptr_info *_c2py_ov[] = { &info_out, &info_points };
-        if (c2py_check_no_overlap(_c2py_ov, 2, 2) < 0)
-            goto cleanup;
-    }
-
-    if (_c2py_do_time) _c2py_t1 = c2py_ticks();
-    ret = _transform_impl(&info_points, &info_out);
-    if (_c2py_do_time) _c2py_t2 = c2py_ticks();
-
-cleanup:
-    c2py_unpin_buffer(&pin_out);
-    c2py_unpin_buffer(&pin_points);
-
-    if (_c2py_do_time) {
-        c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());
-    }
-    return ret;
-}
-
-static PyObject*
 _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
 {
     PyObject *py_points = NULL;
@@ -350,6 +303,25 @@ cleanup:
         c2py_perf_record(&_perf_transform, _c2py_t0, _c2py_t1, _c2py_t2, c2py_ticks());
     }
     return ret;
+}
+
+static PyObject*
+_transform_wrapper(PyObject *self, PyObject *args)
+{
+    PyObject *argv[2];
+    Py_ssize_t nargs = PyTuple_Size(args);
+    Py_ssize_t _i;
+    if (nargs < 0) return NULL;
+    if (nargs > 2) {
+        PyErr_SetString(PyExc_TypeError,
+            "transform expects at most 2 arguments");
+        return NULL;
+    }
+    for (_i = 0; _i < nargs; _i++) {
+        argv[_i] = PyTuple_GetItem(args, _i);
+        if (argv[_i] == NULL) return NULL;
+    }
+    return _transform_fastcall(self, argv, nargs);
 }
 
 

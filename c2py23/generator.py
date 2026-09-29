@@ -386,8 +386,10 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
 
     # Wrapper functions (VARARGS + FASTCALL)
-    _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing)
+    # FASTCALL first: the VARARGS shim forwards to it, so it must be
+    # declared before use (both are static functions).
     _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing)
+    _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing)
 
     b.assert_gil_balanced(name)
 
@@ -1102,33 +1104,6 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
 # ---------------------------------------------------------------------------
 
 
-# ---- Expression helpers ----
-def _build_parse_format(py_params, func=None):
-    """Build the PyArg_ParseTuple format string.
-
-    Inserts '|' before the first optional parameter (one with a default).
-    If func is provided, Python int params that map to C void* use
-    pointer-width format 'l' (long) instead of 'i' (int).
-    """
-    void_ptr_names = _collect_void_ptr_names(func) if func else set()
-    fmt = ""
-    hit_optional = False
-    for p in py_params:
-        if not hit_optional and p.default is not None:
-            hit_optional = True
-            fmt += "|"
-        if p.pytype == "buffer":
-            fmt += "O"
-        elif p.pytype == "int":
-            if p.name in void_ptr_names:
-                fmt += "n"  # Py_ssize_t: pointer-width on all platforms
-            else:
-                fmt += "i"
-        elif p.pytype == "float":
-            fmt += "d"
-    return fmt
-
-
 # ---- Expression transpilation ----
 def _get_buf_flags(buf_param, func):
     """Determine PyObject_GetBuffer flags for a buffer param.
@@ -1558,34 +1533,38 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
 
 # ---- Buffer and wrapper helpers ----
 def _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing):
-    """Emit the METH_VARARGS wrapper (Python 2.7 through 3.11)."""
+    """Emit the METH_VARARGS wrapper as a thin shim over the FASTCALL one.
+
+    Both entry points exist so one .so runs on 2.7-3.15; argument coercion
+    and the whole marshalling body live in _<name>_fastcall.  This shim
+    only unpacks the args tuple into a fixed stack array (no allocation)
+    and forwards, so the acquisition/checks/cleanup code is emitted once
+    per method instead of once per calling convention.
+    """
     name = func.name
-    all_params = func.py_params
+    nparams = len(func.py_params)
+    argc = nparams if nparams > 0 else 1
 
     b.emit("static PyObject*")
     b.emit("_" + name + "_wrapper(PyObject *self, PyObject *args)")
     b.emit("{")
-
-    # Local variables
-    _emit_wrapper_locals(b, buf_params, scalar_params, func, timing)
-
-    # Arg parse via PyArg_ParseTuple
-    fmt_str = _build_parse_format(all_params, func)
-    parse_args = ["args", '"' + fmt_str + '"']
-    for p in all_params:
-        if p.pytype == "buffer":
-            parse_args.append("&py_" + p.name)
-        elif p.pytype == "int":
-            parse_args.append("&c_" + p.name)
-        else:
-            parse_args.append("&c_" + p.name)
-    b.emit("    if (!PyArg_ParseTuple({}))".format(", ".join(parse_args)))
+    b.emit("    PyObject *argv[{0}];".format(argc))
+    b.emit("    Py_ssize_t nargs = PyTuple_Size(args);")
+    b.emit("    Py_ssize_t _i;")
+    b.emit("    if (nargs < 0) return NULL;")
+    b.emit("    if (nargs > {0}) {{".format(nparams))
+    b.emit("        PyErr_SetString(PyExc_TypeError,")
+    if nparams == 1:
+        b.emit('            "{0} expects 1 argument");'.format(name))
+    else:
+        b.emit('            "{0} expects at most {1} arguments");'.format(name, nparams))
     b.emit("        return NULL;")
-    b.emit("")
-
-    # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing)
-
+    b.emit("    }")
+    b.emit("    for (_i = 0; _i < nargs; _i++) {")
+    b.emit("        argv[_i] = PyTuple_GetItem(args, _i);")
+    b.emit("        if (argv[_i] == NULL) return NULL;")
+    b.emit("    }")
+    b.emit("    return _{0}_fastcall(self, argv, nargs);".format(name))
     b.emit("}")
     b.emit("")
 

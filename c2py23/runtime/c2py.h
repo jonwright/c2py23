@@ -385,9 +385,11 @@ typedef struct {
     PyObject* (*Long_FromUnsignedLongLong)(unsigned long long);
     PyObject* (*Float_FromDouble)(double);
 
-    /* Tuple construction */
+    /* Tuple construction and access (access used by the VARARGS shim) */
     PyObject* (*Tuple_New)(Py_ssize_t);
     int (*Tuple_SetItem)(PyObject*, Py_ssize_t, PyObject*);
+    Py_ssize_t (*Tuple_Size)(PyObject*);
+    PyObject* (*Tuple_GetItem)(PyObject*, Py_ssize_t);
 
     /* String construction (ASCII bytes only, no unicode/encodings) */
     PyObject* (*Bytes_FromStringAndSize)(const char*, Py_ssize_t);
@@ -504,6 +506,8 @@ extern c2py_api_t C2PY;
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
+#define PyTuple_Size(t)                C2PY.Tuple_Size((PyObject*)(t))
+#define PyTuple_GetItem(t, i)          C2PY.Tuple_GetItem((PyObject*)(t), (i))
 #define PyEval_SaveThread()            C2PY.SaveThread()
 #define PyEval_RestoreThread(s)        C2PY.RestoreThread((void*)(s))
 
@@ -2538,7 +2542,10 @@ static void _c2py_runtime_init_once(void)
 
     RESOLVE_REQ(C2PY.Tuple_New, "PyTuple_New");
     RESOLVE_REQ(C2PY.Tuple_SetItem, "PyTuple_SetItem");
-    if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL) return;
+    RESOLVE_REQ(C2PY.Tuple_Size, "PyTuple_Size");
+    RESOLVE_REQ(C2PY.Tuple_GetItem, "PyTuple_GetItem");
+    if (C2PY.Tuple_New == NULL || C2PY.Tuple_SetItem == NULL ||
+        C2PY.Tuple_Size == NULL || C2PY.Tuple_GetItem == NULL) return;
 
     RESOLVE(C2PY.Bytes_FromStringAndSize, "PyBytes_FromStringAndSize");
     if (C2PY.Bytes_FromStringAndSize == NULL)
