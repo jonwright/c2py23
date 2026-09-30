@@ -49,6 +49,7 @@ test_workspace/
 Thumbs.db
 /tests/test_venv_*/
 /tests/test_results.log
+/tests/test_manylinux_results.log
 examples/simd_dispatch/*_wrapper.c
 examples/simd_dispatch/*.so
 examples/simd_dispatch/*.o

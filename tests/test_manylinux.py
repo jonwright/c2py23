@@ -234,9 +234,11 @@ def phase1_master_build():
 
     build_cmd = (
         "cd /workspace && "
-        "pip install -e . --quiet && "
-        "pip install pytest setuptools wheel --quiet && "
-        "python3.12 tests/runner.py --no-test"
+        "PY312=python3.12 && "
+        "($PY312 -m ensurepip --user --upgrade >/dev/null 2>&1 || true) && "
+        "(PIP_BREAK_SYSTEM_PACKAGES=1 $PY312 -m pip install --user --ignore-installed --upgrade pip --quiet >/dev/null 2>&1 || true) && "
+        "PIP_BREAK_SYSTEM_PACKAGES=1 $PY312 -m pip install --user --ignore-installed setuptools wheel pytest --quiet && "
+        "PYTHONPATH=/workspace $PY312 tests/runner.py --no-test"
     )
     retcode, stdout, stderr = run_apptainer(MANYLINUX_SIF, build_cmd)
 
