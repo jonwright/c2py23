@@ -16,8 +16,11 @@ from __future__ import print_function
 
 import sys
 import os
-import numpy as np
 import pytest
+
+# numpy is an optional test dependency (see AGENTS.md): skip, do not fail,
+# in containers that do not ship it.
+np = pytest.importorskip("numpy")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "transform"))
 import xfrm

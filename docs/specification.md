@@ -199,6 +199,7 @@ Additional per-key details:
 | `"doc"` | `str` | no | custom docstring |
 | `"params"` | `dict[str, str]` | no | per-parameter descriptions |
 | `"gil_release"` | `bool` | no | release the GIL during C calls |
+| `"check_aliasing"` | `bool` | no | reject overlapping writable buffers (default: `True`) |
 | `"acquire"` | `list[str]` | no | acquisition backend order (default: `["ndarray", "buffer"]`) |
 | `"expand"` | `dict[str, list[str]]` | no | template expansion variables |
 | `"checks"` | `list[str]` | no | pre-condition expressions |
@@ -1368,6 +1369,9 @@ for any glibc-linked binary.
   this same guarantee at runtime: before calling your C function, the wrapper
   checks that no writable output buffer overlaps with any other buffer.
   If aliasing is detected, `ValueError` is raised before the C call.
+  Set `check_aliasing: false` on a function to skip the check when the caller
+  guarantees non-overlap on a hot path; this gives up the runtime safety net
+  and relies on the C signature's `restrict` promise alone.
   This lets you write C code that looks like FORTRAN -- flat arrays, no
   pointer provenance complications, just numerical loops over disjoint memory.
   As Ed Post wrote in 1983: "Real Programmers can write FORTRAN programs in

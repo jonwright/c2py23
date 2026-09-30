@@ -24,8 +24,18 @@ def _gen(spec, single=False):
     return generate(from_c2py_dict(spec), use_single_header=single)
 
 
-def _func(py_sig, c_sig, maps, checks=None, outputs=None, gil_release=False,
-          default_raise=None, variants=None, when=None, group=None):
+def _func(
+    py_sig,
+    c_sig,
+    maps,
+    checks=None,
+    outputs=None,
+    gil_release=False,
+    default_raise=None,
+    variants=None,
+    when=None,
+    group=None,
+):
     ol = {}
     if when is not None:
         ol["when"] = when
@@ -53,56 +63,108 @@ def _mk(name, funcs, **kw):
 
 
 def test_int64_output_uses_PyLong_FromLongLong():
-    code = _gen(_mk("m64", [
-        _func("proc(a: buffer) -> void", "void proc(const int64_t *a, intptr_t n, int64_t *out)",
-              {"a": "a.ptr", "n": "a.n"}, outputs={"out": "int64_t"}),
-    ]))
+    code = _gen(
+        _mk(
+            "m64",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const int64_t *a, intptr_t n, int64_t *out)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    outputs={"out": "int64_t"},
+                ),
+            ],
+        )
+    )
     assert "PyLong_FromLongLong" in code
     assert "PyFloat_FromDouble" not in code
 
 
 def test_uint64_output_uses_PyLong_FromUnsignedLongLong():
-    code = _gen(_mk("m64u", [
-        _func("proc(a: buffer) -> void", "void proc(const uint64_t *a, intptr_t n, uint64_t *out)",
-              {"a": "a.ptr", "n": "a.n"}, outputs={"out": "uint64_t"}),
-    ]))
+    code = _gen(
+        _mk(
+            "m64u",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const uint64_t *a, intptr_t n, uint64_t *out)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    outputs={"out": "uint64_t"},
+                ),
+            ],
+        )
+    )
     assert "PyLong_FromUnsignedLongLong" in code
 
 
 def test_double_output_uses_PyFloat_FromDouble():
-    code = _gen(_mk("mdbl", [
-        _func("proc(a: buffer) -> void", "void proc(const double *a, intptr_t n, double *out)",
-              {"a": "a.ptr", "n": "a.n"}, outputs={"out": "double"}),
-    ]))
+    code = _gen(
+        _mk(
+            "mdbl",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const double *a, intptr_t n, double *out)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    outputs={"out": "double"},
+                ),
+            ],
+        )
+    )
     assert "PyFloat_FromDouble" in code
 
 
 def test_gil_release_emits_save_restore():
-    code = _gen(_mk("mgil", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"}, gil_release=True),
-    ]))
+    code = _gen(
+        _mk(
+            "mgil",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const float *a, int n)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    gil_release=True,
+                ),
+            ],
+        )
+    )
     assert "PyEval_SaveThread" in code
     assert "PyEval_RestoreThread" in code
     assert "_gil_release_proc" in code
 
 
 def test_default_raise_emits_message():
-    code = _gen(_mk("mdr", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"},
-              default_raise="TypeError: expected float buffer"),
-    ]))
+    code = _gen(
+        _mk(
+            "mdr",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const float *a, int n)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    default_raise="TypeError: expected float buffer",
+                ),
+            ],
+        )
+    )
     assert "PyExc_TypeError" in code
     assert "expected float buffer" in code
 
 
 def test_decode_time_dtype_check_emitted():
-    code = _gen(_mk("mdt", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"},
-              when="a.format == 'f'"),
-    ]))
+    code = _gen(
+        _mk(
+            "mdt",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const float *a, int n)",
+                    {"a": "a.ptr", "n": "a.n"},
+                    when="a.format == 'f'",
+                ),
+            ],
+        )
+    )
     assert "decode-time dtype check: a" in code
     assert "argument 1 (a)" in code
     assert "has unsupported format" in code
@@ -110,22 +172,37 @@ def test_decode_time_dtype_check_emitted():
 
 
 def test_decode_time_dtype_check_position():
-    code = _gen(_mk("mdt2", [
-        _func("proc(a: buffer, b: buffer) -> void",
-              "void proc(const double *a, const float *b, int n)",
-              {"a": "a.ptr", "b": "b.ptr", "n": "a.n"},
-              when="a.format == 'd' and b.format == 'f'"),
-    ]))
+    code = _gen(
+        _mk(
+            "mdt2",
+            [
+                _func(
+                    "proc(a: buffer, b: buffer) -> void",
+                    "void proc(const double *a, const float *b, int n)",
+                    {"a": "a.ptr", "b": "b.ptr", "n": "a.n"},
+                    when="a.format == 'd' and b.format == 'f'",
+                ),
+            ],
+        )
+    )
     assert "argument 1 (a)" in code
     assert "argument 2 (b)" in code
 
 
 def test_no_decode_check_for_shape_only_dispatch():
-    code = _gen(_mk("mdt3", [
-        _func("proc(p: buffer) -> void", "void proc(const double p[][3], int n)",
-              {"p": "p.ptr", "n": "p.n"},
-              when="p.shape[1] == 3"),
-    ]))
+    code = _gen(
+        _mk(
+            "mdt3",
+            [
+                _func(
+                    "proc(p: buffer) -> void",
+                    "void proc(const double p[][3], int n)",
+                    {"p": "p.ptr", "n": "p.n"},
+                    when="p.shape[1] == 3",
+                ),
+            ],
+        )
+    )
     assert "decode-time dtype check" not in code
 
 
@@ -135,21 +212,33 @@ def test_decode_time_dtype_check_honors_itemsize_fallback():
     # must not be reduced to a bare `_last == 'I'` equality check -- that
     # rejects a valid same-width buffer whose format char differs by
     # platform. See: reorder_u16_a32 TypeError on Windows wheels.
-    code = _gen(_mk("mdt4", [
-        _func("proc(adr: buffer) -> void", "void proc(const uint32_t *adr, int n)",
-              {"adr": "adr.ptr", "n": "adr.n"},
-              when="adr.format == 'I' or adr.itemsize == 4"),
-    ]))
+    code = _gen(
+        _mk(
+            "mdt4",
+            [
+                _func(
+                    "proc(adr: buffer) -> void",
+                    "void proc(const uint32_t *adr, int n)",
+                    {"adr": "adr.ptr", "n": "adr.n"},
+                    when="adr.format == 'I' or adr.itemsize == 4",
+                ),
+            ],
+        )
+    )
     assert "decode-time dtype check: adr" in code
     assert "info_adr.itemsize == 4" in code
     assert "itemsize in (4)" in code
 
 
 def test_slow_axis_array_dims():
-    code = _gen(_mk("mta", [
-        _func("proc(m: buffer) -> void", "void proc(const float m[][3], int n)",
-              {"m": "m.ptr", "n": "m.n"}),
-    ]))
+    code = _gen(
+        _mk(
+            "mta",
+            [
+                _func("proc(m: buffer) -> void", "void proc(const float m[][3], int n)", {"m": "m.ptr", "n": "m.n"}),
+            ],
+        )
+    )
     assert "_c2py_slow_axis_info_m" in code
 
 
@@ -182,35 +271,119 @@ def test_variants_group_emits_variants_fn():
 
 
 def test_single_header_mode():
-    code = _gen(_mk("mh", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"}),
-    ]), single=True)
+    code = _gen(
+        _mk(
+            "mh",
+            [
+                _func("proc(a: buffer) -> void", "void proc(const float *a, int n)", {"a": "a.ptr", "n": "a.n"}),
+            ],
+        ),
+        single=True,
+    )
     assert "#define C2PY_IMPLEMENTATION" in code
     assert '#include "c2py.h"' in code
 
 
 def test_fastcall_and_varargs_method_tables():
-    code = _gen(_mk("mft", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"}),
-    ]))
+    code = _gen(
+        _mk(
+            "mft",
+            [
+                _func("proc(a: buffer) -> void", "void proc(const float *a, int n)", {"a": "a.ptr", "n": "a.n"}),
+            ],
+        )
+    )
     assert "_methods_varargs" in code
     assert "_methods_fastcall" in code
 
 
 def test_void_function_returns_none():
-    code = _gen(_mk("mvoid", [
-        _func("proc(a: buffer) -> void", "void proc(const float *a, int n)",
-              {"a": "a.ptr", "n": "a.n"}),
-    ]))
+    code = _gen(
+        _mk(
+            "mvoid",
+            [
+                _func("proc(a: buffer) -> void", "void proc(const float *a, int n)", {"a": "a.ptr", "n": "a.n"}),
+            ],
+        )
+    )
     assert "Py_RETURN_NONE" in code
 
 
 def test_two_writable_buffers_emits_alias_check():
-    code = _gen(_mk("malias", [
-        _func("pair(x: buffer, y: buffer) -> void", "void pair(float *x, float *y, int n)",
-              {"x": "x.ptr", "y": "y.ptr", "n": "x.n"}),
-    ]))
-    assert "buffer aliasing forbidden" in code
+    code = _gen(
+        _mk(
+            "malias",
+            [
+                _func(
+                    "pair(x: buffer, y: buffer) -> void",
+                    "void pair(float *x, float *y, int n)",
+                    {"x": "x.ptr", "y": "y.ptr", "n": "x.n"},
+                ),
+            ],
+        )
+    )
+    # The O(n^2) overlap check is centralized in the runtime helper; the
+    # wrapper just gathers the buffer infos and calls it once.
+    assert "c2py_check_no_overlap" in code
     assert "PyExc_ValueError" in code
+
+
+def test_check_aliasing_false_skips_alias_check():
+    spec = _mk(
+        "mnoalias",
+        [
+            _func(
+                "pair(x: buffer, y: buffer) -> void",
+                "void pair(float *x, float *y, int n)",
+                {"x": "x.ptr", "y": "y.ptr", "n": "x.n"},
+            ),
+        ],
+    )
+    spec["functions"][0]["check_aliasing"] = False
+    code = _gen(spec)
+    assert "c2py_check_no_overlap" not in code
+
+
+def test_function_docstring_emitted_once():
+    spec = _mk(
+        "mdoc",
+        [
+            {
+                "py_sig": "proc(a: buffer) -> void",
+                "doc": "UNIQUEDOCSENTINEL",
+                "c_overloads": [
+                    {
+                        "sig": "void proc(const float *a, int n)",
+                        "map": {"a": "a.ptr", "n": "a.n"},
+                    }
+                ],
+            }
+        ],
+    )
+    code = _gen(spec)
+    # The docstring body is defined once as a static array and referenced
+    # from both the VARARGS and FASTCALL method tables.
+    assert code.count("UNIQUEDOCSENTINEL") == 1
+    assert code.count("static const char _doc_proc[]") == 1
+    assert code.count("_doc_proc") >= 3
+
+
+def test_buffer_emits_shared_contiguity_check():
+    code = _gen(
+        _mk(
+            "mcontig",
+            [
+                _func(
+                    "proc(a: buffer) -> void",
+                    "void proc(const float *a, int n)",
+                    {"a": "a.ptr", "n": "a.n"},
+                ),
+            ],
+        )
+    )
+    # The per-buffer contiguity body lives in the runtime helper; the
+    # wrapper declares the axis locals the `when:` expressions read and
+    # calls the helper once.
+    assert "c2py_check_contiguity" in code
+    assert "_c2py_slow_axis_info_a" in code
+    assert "_c2py_fast_axis_info_a" in code

@@ -15,7 +15,7 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
 SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
-SIF_FILE = os.path.join(SNAKEPIT_DIR, "ubuntu24.04.sif")
+SIF_FILE = os.path.join(SNAKEPIT_DIR, "snakepit-modern.sif")
 
 
 def check_interpreter(py_exe, expected_gil_disabled):

@@ -194,29 +194,26 @@ class CBuilder:
                                 else:
                                     writable.add(p.name)
 
-        checked = set()
-        for wn in sorted(writable):
-            for other in sorted(writable | const_set):
-                if other == wn:
-                    continue
-                pair = tuple(sorted([wn, other]))
-                if pair in checked:
-                    continue
-                checked.add(pair)
-                self.emit("    /* restrict check: {} vs {} */".format(wn, other))
-                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(wn, other))
-                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(wn, other))
-                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-                self.emit("        goto cleanup;")
-                self._has_goto_cleanup = True
-                self.emit("    }")
-                self.emit("    if ((char*)info_{0}.ptr >= (char*)info_{1}.ptr && ".format(other, wn))
-                self.emit("        (char*)info_{0}.ptr < (char*)info_{1}.ptr + info_{1}.len) {{".format(other, wn))
-                self.emit('        PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");')
-                self.emit("        goto cleanup;")
-                self._has_goto_cleanup = True
-                self.emit("    }")
-                self.emit("")
+        # Order buffers writables-first so the runtime helper can treat the
+        # first n_writable entries as the writable set and check each
+        # against every buffer (including read-only ones).  A buffer that is
+        # writable in any overload counts as writable.
+        ordered_writable = sorted(writable)
+        if not ordered_writable:
+            return
+        ordered = ordered_writable + sorted(n for n in const_set if n not in writable)
+
+        infos = ", ".join("&info_" + n for n in ordered)
+        self.emit("    /* restrict check: writable buffers must not overlap */")
+        self.emit("    {")
+        self.emit("        c2py_ptr_info *_c2py_ov[] = {{ {0} }};".format(infos))
+        self.emit(
+            "        if (c2py_check_no_overlap(_c2py_ov, {0}, {1}) < 0)".format(len(ordered_writable), len(ordered))
+        )
+        self.emit("            goto cleanup;")
+        self.emit("    }")
+        self.emit("")
+        self._has_goto_cleanup = True
 
     def emit_contiguity_checks(self, buf_params):
         """Emit contiguity validation for each buffer.
@@ -230,58 +227,17 @@ class CBuilder:
 
         for p in buf_params:
             name = p.name
-            fmt = lambda s: s.format(name)
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(name))
             self.emit("    (void)_c2py_slow_axis_info_{0};".format(name))
             self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
-            self.emit("    do {")
-            self.emit("        int _ok = 1;")
-            self.emit("        if (info_{0}->strides == NULL && info_{0}->ndim <= 1) {{".format(name))
-            self.emit("            _c2py_slow_axis_info_{0} = 0;".format(name))
-            self.emit("            _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1);".format(name))
-            self.emit("            break;")
-            self.emit("        }")
-            self.emit(fmt("        if (info_{0}->len == 0) {{"))
-            self.emit(fmt("            _c2py_slow_axis_info_{0} = 0;".format(name)))
-            self.emit(fmt("            _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1);".format(name)))
-            self.emit("            break;")
-            self.emit("        }")
-            self.emit(fmt("        if (info_{0}->ndim >= 1) {{"))
-            self.emit(fmt("            Py_ssize_t _expected = info_{0}->itemsize;"))
-            self.emit("            int _d;")
-            self.emit("            /* check F-contiguous (column-major): first dim varies fastest */")
-            self.emit(fmt("            for (_d = 0; _d < info_{0}->ndim; _d++) {{"))
-            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
-            self.emit("            }")
+            # info_<name> is already a c2py_ptr_info* inside the impl.
             self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_info_{0} = (int)(info_{0}->ndim - 1); _c2py_fast_axis_info_{0} = 0; break; }}".format(
-                    name
-                )
+                "    if (c2py_check_contiguity(info_{0}, &_c2py_slow_axis_info_{0}, "
+                "&_c2py_fast_axis_info_{0}) < 0)".format(name)
             )
-            self.emit("            /* check C-contiguous (row-major): last dim varies fastest */")
-            self.emit("            _ok = 1;")
-            self.emit(fmt("            _expected = info_{0}->itemsize;"))
-            self.emit(fmt("            for (_d = info_{0}->ndim - 1; _d >= 0; _d--) {{"))
-            self.emit(fmt("                if (info_{0}->strides[_d] < 0) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                if (info_{0}->strides[_d] != _expected) {{ _ok = 0; break; }}"))
-            self.emit(fmt("                _expected *= info_{0}->shape[_d];"))
-            self.emit("            }")
-            self.emit(
-                "            if (_ok) {{ _c2py_slow_axis_info_{0} = 0; _c2py_fast_axis_info_{0} = (int)(info_{0}->ndim - 1); }}".format(
-                    name
-                )
-            )
-            self.emit("        }")
-            self.emit("        if (!_ok) {")
-            self.emit("            PyErr_SetString(PyExc_ValueError,")
-            self.emit('                "buffer not contiguous (C or Fortran contiguous required)");')
-            self.emit("            return NULL;")
-            self.emit("        }")
-            self.emit("    } while(0);")
+            self.emit("        return NULL;")
             self.emit("")
 
 
@@ -430,8 +386,10 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
 
     # Wrapper functions (VARARGS + FASTCALL)
-    _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing)
+    # FASTCALL first: the VARARGS shim forwards to it, so it must be
+    # declared before use (both are static functions).
     _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing)
+    _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing)
 
     b.assert_gil_balanced(name)
 
@@ -962,7 +920,8 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     has_timing = module_def.timing
     has_variants = any(any(ol.variants for ol in f.overloads) for f in module_def.functions)
     has_attrs = module_def.constants or has_timing or has_gil_release
-    mod_doc_c = _escape_c_str(_mod_doc(module_def)) if _mod_doc(module_def) else None
+    mod_doc = _mod_doc(module_def)
+    mod_doc_c = _escape_c_str(mod_doc) if mod_doc else None
 
     b.emit("")
     b.emit("/* " + "-" * 44 + " */")
@@ -970,11 +929,19 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("/* " + "-" * 44 + " */")
     b.emit("")
 
+    # Emit each docstring once as a static array.  Both method tables (and
+    # the module defs) reference it, instead of embedding two copies of the
+    # same long literal -- the largest single redundancy in generated output.
+    for func in module_def.functions:
+        b.emit('static const char _doc_{0}[] = "{1}";'.format(func.name, _escape_c_str(_doc(func))))
+    if mod_doc_c:
+        b.emit('static const char _module_doc[] = "{0}";'.format(mod_doc_c))
+    b.emit("")
+
     # VARARGS method table
     b.emit("static PyMethodDef _methods_varargs[] = {")
     for func in module_def.functions:
-        doc_str = _escape_c_str(_doc(func))
-        b.emit('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, "{}"}},'.format(func.name, func.name, doc_str))
+        b.emit('    {{"{}", (PyCFunction)_{}_wrapper, METH_VARARGS, _doc_{}}},'.format(func.name, func.name, func.name))
     if has_variants:
         for func in module_def.functions:
             if any(ol.variants for ol in func.overloads):
@@ -1006,8 +973,9 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     # FASTCALL method table
     b.emit("static PyMethodDef _methods_fastcall[] = {")
     for func in module_def.functions:
-        doc_str = _escape_c_str(_doc(func))
-        b.emit('    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, "{}"}},'.format(func.name, func.name, doc_str))
+        b.emit(
+            '    {{"{}", (PyCFunction)_{}_fastcall, METH_FASTCALL, _doc_{}}},'.format(func.name, func.name, func.name)
+        )
     if has_variants:
         for func in module_def.functions:
             if any(ol.variants for ol in func.overloads):
@@ -1041,7 +1009,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    PyModuleDef_HEAD_INIT,")
     b.emit('    "{}",'.format(name))
     if mod_doc_c:
-        b.emit('    "{}",'.format(mod_doc_c))
+        b.emit("    _module_doc,")
     else:
         b.emit("    NULL,")
     b.emit("    -1,")
@@ -1054,7 +1022,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    PyModuleDef_HEAD_INIT_FT,")
     b.emit('    "{}",'.format(name))
     if mod_doc_c:
-        b.emit('    "{}",'.format(mod_doc_c))
+        b.emit("    _module_doc,")
     else:
         b.emit("    NULL,")
     b.emit("    -1,")
@@ -1134,33 +1102,6 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
 # ---------------------------------------------------------------------------
 # Utility and emit functions
 # ---------------------------------------------------------------------------
-
-
-# ---- Expression helpers ----
-def _build_parse_format(py_params, func=None):
-    """Build the PyArg_ParseTuple format string.
-
-    Inserts '|' before the first optional parameter (one with a default).
-    If func is provided, Python int params that map to C void* use
-    pointer-width format 'l' (long) instead of 'i' (int).
-    """
-    void_ptr_names = _collect_void_ptr_names(func) if func else set()
-    fmt = ""
-    hit_optional = False
-    for p in py_params:
-        if not hit_optional and p.default is not None:
-            hit_optional = True
-            fmt += "|"
-        if p.pytype == "buffer":
-            fmt += "O"
-        elif p.pytype == "int":
-            if p.name in void_ptr_names:
-                fmt += "n"  # Py_ssize_t: pointer-width on all platforms
-            else:
-                fmt += "i"
-        elif p.pytype == "float":
-            fmt += "d"
-    return fmt
 
 
 # ---- Expression transpilation ----
@@ -1522,9 +1463,9 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
     b.emit("        char _last = _fmt[0] ? _fmt[strlen(_fmt) - 1] : 0;")
     b.emit("        if (_fmt[0] && !(({0}) && c2py_format_is_native(info_{1}.format))) {{".format(last_cmp, p.name))
-    b.emit('            PyErr_Format(PyExc_TypeError,')
+    b.emit("            PyErr_Format(PyExc_TypeError,")
     b.emit(
-        '                "{0}: argument {1} ({2}) has unsupported format \'%s\'; expected formats: {3}",'.format(
+        "                \"{0}: argument {1} ({2}) has unsupported format '%s'; expected formats: {3}\",".format(
             name, pos, p.name, expected
         )
     )
@@ -1560,8 +1501,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
             _emit_decode_dtype_check(b, func, p, chars, itemsizes)
         b.emit("")
 
-    # Restrict checks
-    b.emit_restrict_checks(buf_params, func)
+    # Restrict checks (opt out per-function with check_aliasing: false)
+    if getattr(func, "check_aliasing", True):
+        b.emit_restrict_checks(buf_params, func)
 
     # Call impl (with timing ticks around it)
     impl_args = []
@@ -1591,34 +1533,38 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
 
 # ---- Buffer and wrapper helpers ----
 def _emit_varargs_wrapper(b, func, buf_params, scalar_params, timing):
-    """Emit the METH_VARARGS wrapper (Python 2.7 through 3.11)."""
+    """Emit the METH_VARARGS wrapper as a thin shim over the FASTCALL one.
+
+    Both entry points exist so one .so runs on 2.7-3.15; argument coercion
+    and the whole marshalling body live in _<name>_fastcall.  This shim
+    only unpacks the args tuple into a fixed stack array (no allocation)
+    and forwards, so the acquisition/checks/cleanup code is emitted once
+    per method instead of once per calling convention.
+    """
     name = func.name
-    all_params = func.py_params
+    nparams = len(func.py_params)
+    argc = nparams if nparams > 0 else 1
 
     b.emit("static PyObject*")
     b.emit("_" + name + "_wrapper(PyObject *self, PyObject *args)")
     b.emit("{")
-
-    # Local variables
-    _emit_wrapper_locals(b, buf_params, scalar_params, func, timing)
-
-    # Arg parse via PyArg_ParseTuple
-    fmt_str = _build_parse_format(all_params, func)
-    parse_args = ["args", '"' + fmt_str + '"']
-    for p in all_params:
-        if p.pytype == "buffer":
-            parse_args.append("&py_" + p.name)
-        elif p.pytype == "int":
-            parse_args.append("&c_" + p.name)
-        else:
-            parse_args.append("&c_" + p.name)
-    b.emit("    if (!PyArg_ParseTuple({}))".format(", ".join(parse_args)))
+    b.emit("    PyObject *argv[{0}];".format(argc))
+    b.emit("    Py_ssize_t nargs = PyTuple_Size(args);")
+    b.emit("    Py_ssize_t _i;")
+    b.emit("    if (nargs < 0) return NULL;")
+    b.emit("    if (nargs > {0}) {{".format(nparams))
+    b.emit("        PyErr_SetString(PyExc_TypeError,")
+    if nparams == 1:
+        b.emit('            "{0} expects 1 argument");'.format(name))
+    else:
+        b.emit('            "{0} expects at most {1} arguments");'.format(name, nparams))
     b.emit("        return NULL;")
-    b.emit("")
-
-    # Shared body: buffer init, acquire, checks, impl, cleanup
-    _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing)
-
+    b.emit("    }")
+    b.emit("    for (_i = 0; _i < nargs; _i++) {")
+    b.emit("        argv[_i] = PyTuple_GetItem(args, _i);")
+    b.emit("        if (argv[_i] == NULL) return NULL;")
+    b.emit("    }")
+    b.emit("    return _{0}_fastcall(self, argv, nargs);".format(name))
     b.emit("}")
     b.emit("")
 
@@ -2127,6 +2073,11 @@ def _doc(func):
     if func.gil_release:
         lines.append("")
         lines.append("GIL: released")
+
+    # 5b. Alias checking (only show when disabled, to avoid noise)
+    if not getattr(func, "check_aliasing", True):
+        lines.append("")
+        lines.append("Aliasing checks: disabled (caller guarantees no overlap)")
 
     # 6. Overloads section
     has_overloads = func.overloads and any(ol.sig_str or ol.variants for ol in func.overloads)

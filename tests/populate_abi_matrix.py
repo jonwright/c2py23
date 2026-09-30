@@ -20,17 +20,19 @@ MATRIX_FILE = os.path.join(SCRIPT_DIR, "abi_matrix.json")
 CHECK_ABI_C = os.path.join(SCRIPT_DIR, "check_abi.c")
 
 PYTHON_VERSIONS = [
-    ("2.7", "ubuntu20.04.sif"),
-    ("3.6", "debian10.sif"),
-    ("3.7", "ubuntu24.04.sif"),
-    ("3.8", "ubuntu20.04.sif"),
-    ("3.9", "ubuntu24.04.sif"),
-    ("3.10", "ubuntu24.04.sif"),
-    ("3.11", "ubuntu24.04.sif"),
-    ("3.12", "ubuntu24.04.sif"),
-    ("3.13", "ubuntu24.04.sif"),
-    ("3.14", "ubuntu24.04.sif"),
-    ("3.14t", "ubuntu24.04.sif"),
+    ("2.7", "snakepit-legacy.sif"),
+    ("3.6", "snakepit-legacy.sif"),
+    ("3.7", "snakepit-legacy.sif"),
+    ("3.8", "snakepit-legacy.sif"),
+    ("3.9", "snakepit-modern.sif"),
+    ("3.10", "snakepit-modern.sif"),
+    ("3.11", "snakepit-modern.sif"),
+    ("3.12", "snakepit-modern.sif"),
+    ("3.13", "snakepit-modern.sif"),
+    ("3.14", "snakepit-modern.sif"),
+    ("3.14t", "snakepit-modern.sif"),
+    ("3.15", "snakepit-modern.sif"),
+    ("3.15t", "snakepit-modern.sif"),
 ]
 
 
@@ -93,20 +95,26 @@ def collect_abi(python_version, sif_file):
             " print(sysconfig.get_config_var('LDLIBRARY'))\" 2>/dev/null) && "
             "LNAME=$(echo \"$LDLIB\" | sed 's/^lib\\(.*\\)\\.so.*$/\\1/') && "
             'CFG="-I$INCLUDE -L$LIBDIR -Wl,-rpath,$LIBDIR -l$LNAME" && '
-            'echo "CFG=$CFG" && '
             "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
             "/tmp/check_abi 2>&1" % (py, py, py)
         )
     else:
-        # Some Python configs omit -lpythonN; add it explicitly if missing.
+        # Prefer pythonX.Y-config; fall back to sysconfig for interpreters
+        # installed without it (e.g. python-build-standalone/uv 3.8).  Add
+        # -lpythonN explicitly when the config script omits it.
         build_and_run = (
             "cd /workspace && "
-            "CFG=$(echo $(%s-config --includes --ldflags 2>/dev/null)) && "
-            "if echo \"$CFG\" | grep -qv -- '-lpython'; then "
-            '  CFG="$CFG -lpython%s"; '
-            "fi && "
+            "CFG=$(%(py)s-config --includes --ldflags 2>/dev/null); "
+            'if [ -z "$CFG" ]; then '
+            "  INCLUDE=$(%(py)s -c \"import sysconfig; print(sysconfig.get_path('include'))\") && "
+            "  LIBDIR=$(%(py)s -c \"import sysconfig; print(sysconfig.get_config_var('LIBDIR'))\") && "
+            "  LDLIB=$(%(py)s -c \"import sysconfig; print(sysconfig.get_config_var('LDLIBRARY'))\") && "
+            "  LNAME=$(echo \"$LDLIB\" | sed 's/^lib\\(.*\\)\\.so.*$/\\1/') && "
+            '  CFG="-I$INCLUDE -L$LIBDIR -Wl,-rpath,$LIBDIR -l$LNAME"; '
+            "fi; "
+            'if ! echo "$CFG" | grep -q -- \'-lpython\'; then CFG="$CFG -lpython%(ver)s"; fi; '
             "gcc -o /tmp/check_abi check_abi.c $CFG -ldl 2>&1 && "
-            "/tmp/check_abi 2>&1" % (py, python_version)
+            "/tmp/check_abi 2>&1" % {"py": py, "ver": python_version}
         )
     ret, stdout, stderr = run_apptainer(sif_file, build_and_run)
 

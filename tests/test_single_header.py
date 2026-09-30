@@ -162,6 +162,8 @@ def test_single_header_transform():
         mod = imp.load_dynamic("xfrm", so_path)
 
     # Basic functional test
+    if pytest is not None:
+        pytest.importorskip("numpy")
     import numpy as np
 
     arr = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)

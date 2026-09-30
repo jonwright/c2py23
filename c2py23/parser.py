@@ -252,6 +252,7 @@ class FuncDef(
         gil_release,
         params=None,
         acquire=None,
+        check_aliasing=True,
     ):
         self = super(FuncDef, cls).__new__(
             cls,
@@ -266,6 +267,7 @@ class FuncDef(
         )
         self.params = params or {}
         self.acquire = acquire
+        self.check_aliasing = check_aliasing
         return self
 
 
@@ -1117,8 +1119,7 @@ def _parse_func(raw, path):
                     )
                 if v_fallback and not v_default:
                     raise ValueError(
-                        "variant '%s' sets fallback: true and default: false -- contradictory in %s"
-                        % (v_name, path)
+                        "variant '%s' sets fallback: true and default: false -- contradictory in %s" % (v_name, path)
                     )
                 variants.append(
                     CVariant(
@@ -1154,9 +1155,7 @@ def _parse_func(raw, path):
                 raise ValueError(
                     "Group '{0}' has no unconditional variant -- every default: true variant "
                     "has a when: condition, so there is no safe fallback if none of them match "
-                    "at runtime. Add one plain variant with no when: condition in {1}".format(
-                        group_label, path
-                    )
+                    "at runtime. Add one plain variant with no when: condition in {1}".format(group_label, path)
                 )
             if len(unconditional) > 1:
                 marked = [v for v in unconditional if v.fallback]
@@ -1226,6 +1225,7 @@ def _parse_func(raw, path):
     if doc is not None:
         doc = _check_ascii(doc, "doc", path)
     gil_release = bool(raw.get("gil_release", False))
+    check_aliasing = bool(raw.get("check_aliasing", True))
 
     # Acquisition backend order. Maps to C2PY_PIN_* constants.
     # Default: [ndarray, buffer]
@@ -1295,6 +1295,7 @@ def _parse_func(raw, path):
         gil_release,
         params=params,
         acquire=acquire,
+        check_aliasing=check_aliasing,
     )
 
 

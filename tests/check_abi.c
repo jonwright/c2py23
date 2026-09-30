@@ -38,21 +38,20 @@ int main(void) {
     /* --- PyObject layout (for manual refcount fallback) --- */
     {
         PyObject *tmp = Py_None;
+#ifndef Py_GIL_DISABLED
         printf("OFFSET PyObject.ob_refcnt  %td\n",
                (char*)&tmp->ob_refcnt - (char*)tmp);
+#else
+        /* On free-threaded builds there is no ob_refcnt field; the
+         * refcount lives in ob_ref_local / ob_ref_shared, reported below. */
+        printf("OFFSET ob_ref_local        %td\n",
+               (char*)&tmp->ob_ref_local - (char*)tmp);
+        printf("OFFSET ob_ref_shared       %td\n",
+               (char*)&tmp->ob_ref_shared - (char*)tmp);
+#endif
         printf("OFFSET PyObject.ob_type    %td\n",
                (char*)&tmp->ob_type - (char*)tmp);
         printf("SIZEOF PyObject            %zu\n", sizeof(PyObject));
-#ifdef Py_GIL_DISABLED
-        /* On free-threaded builds, PyObject has additional fields.
-         * ob_refcnt does not exist directly; report the sub-fields. */
-        {
-            printf("OFFSET ob_ref_local        %td\n",
-                   (char*)&tmp->ob_ref_local - (char*)tmp);
-            printf("OFFSET ob_ref_shared       %td\n",
-                   (char*)&tmp->ob_ref_shared - (char*)tmp);
-        }
-#endif
     }
 
     /* --- Py_buffer layout --- */

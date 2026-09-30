@@ -24,21 +24,24 @@ SNAKEPIT_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "snakepit")
 WORKSPACE_DIR = os.path.join(SCRIPT_DIR, "test_workspace")
 LOG_FILE = os.path.join(SCRIPT_DIR, "test_results.log")
 
-# Python versions to test
+# Python versions to test.  Container names follow the snakepit
+# three-container layout (see snakepit MIGRATION.md): legacy = 2.7/3.6-3.8,
+# modern = 3.9-3.15 incl. free-threaded, manylinux2014 = old-glibc 3.9-3.11
+# (tested separately by test_manylinux.py).
 PYTHON_VERSIONS = [
-    ("2.7", "ubuntu20.04.sif"),
-    ("3.6", "debian10.sif"),
-    ("3.7", "ubuntu24.04.sif"),
-    ("3.8", "ubuntu20.04.sif"),
-    ("3.9", "ubuntu24.04.sif"),
-    ("3.10", "ubuntu24.04.sif"),
-    ("3.11", "ubuntu24.04.sif"),
-    ("3.12", "ubuntu24.04.sif"),
-    ("3.13", "ubuntu24.04.sif"),
-    ("3.14", "ubuntu24.04.sif"),
-    ("3.14t", "ubuntu24.04.sif"),
-    ("3.15", "ubuntu26.04.sif"),
-    ("3.15t", "ubuntu26.04.sif"),
+    ("2.7", "snakepit-legacy.sif"),
+    ("3.6", "snakepit-legacy.sif"),
+    ("3.7", "snakepit-legacy.sif"),
+    ("3.8", "snakepit-legacy.sif"),
+    ("3.9", "snakepit-modern.sif"),
+    ("3.10", "snakepit-modern.sif"),
+    ("3.11", "snakepit-modern.sif"),
+    ("3.12", "snakepit-modern.sif"),
+    ("3.13", "snakepit-modern.sif"),
+    ("3.14", "snakepit-modern.sif"),
+    ("3.14t", "snakepit-modern.sif"),
+    ("3.15", "snakepit-modern.sif"),
+    ("3.15t", "snakepit-modern.sif"),
 ]
 
 _log_file = None
@@ -183,15 +186,30 @@ def run_python_version(python_version, sif_file):
     print_header("Testing Python " + python_version)
 
     system_py = "python" + python_version
-    # ubuntu26.04 has packages pre-installed at system level
-    if sif_file == "ubuntu26.04.sif":
-        test_cmd = "cd /workspace && " + system_py + " tests/runner.py"
-    else:
-        test_cmd = (
-            "cd /workspace && "
-            "pip install -e . --quiet && "
-            "pip install pytest setuptools wheel --quiet && " + system_py + " tests/runner.py"
-        )
+    # Install the test deps for the *target* interpreter (plain `pip` may
+    # belong to a different version in the multi-Python images), then run
+    # from the source tree via PYTHONPATH -- an editable install trips the
+    # `setup.py develop --user` incompatibility on Python 2.7 and PEP 668
+    # on modern distros.
+    # Some images ship very old pips (3.6) whose --target handling conflicts
+    # with the user site, and some ship a pip too old for the interpreter
+    # (3.15).  Bootstrap pip via ensurepip, then upgrade it, then force
+    # stock setuptools/wheel into the user site (a distro setuptools can
+    # lack the install_layout option wheel's bdist_wheel needs).  Always
+    # target the interpreter being tested, then run from source via
+    # PYTHONPATH (an editable install trips setup.py develop --user on 2.7
+    # and PEP 668 on modern distros).
+    test_cmd = (
+        "cd /workspace && "
+        "(" + system_py + " -m ensurepip --user --upgrade >/dev/null 2>&1 || true) && "
+        "(PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --ignore-installed --upgrade pip --quiet >/dev/null 2>&1 || true) && "
+        "PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --ignore-installed setuptools wheel pytest --quiet && "
+        "PYTHONPATH=/workspace " + system_py + " tests/runner.py"
+    )
 
     retcode, stdout, stderr = run_apptainer(sif_file, test_cmd)
 
@@ -236,6 +254,10 @@ def prepare_workspace():
         dst = os.path.join(WORKSPACE_DIR, item)
         if item in (".git", "__pycache__", "*.pyc", "test_workspace", "*.egg-info"):
             continue
+        # Never copy host-built binaries into the container: their glibc/ABI
+        # may not match, and make would consider them up to date instead of
+        # rebuilding.  The container builds its own from the generated .c.
+        skip_bin = ("*.so", "*.pyd", "*.dll", "*.dylib")
         if os.path.isdir(src):
             if item == "tests":
                 # Copy tests but not test_workspace subdir
@@ -243,17 +265,13 @@ def prepare_workspace():
                     src,
                     dst,
                     ignore=shutil.ignore_patterns(
-                        "test_venv",
-                        "test_workspace",
-                        "__pycache__",
-                        "*.pyc",
-                        "*.egg-info",
+                        "test_venv", "test_workspace", "__pycache__", "*.pyc", "*.egg-info", *skip_bin
                     ),
                 )
             else:
-                shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", *skip_bin))
         else:
-            if not item.endswith(".pyc"):
+            if not item.endswith(".pyc") and not item.endswith((".so", ".pyd", ".dll", ".dylib")):
                 shutil.copy2(src, dst)
 
     print_success("Workspace prepared at " + WORKSPACE_DIR)
