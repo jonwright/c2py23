@@ -160,22 +160,28 @@ def build_single_header():
             skip_include_line = i
             break
 
+    # The system includes and C2PY_RESOLVE end at the "Shared globals" comment;
+    # the shared part ends at the "Backend selection" comment.  Markers, not
+    # line numbers, so that editing c2py_runtime.c cannot break the merge.
+    shared_start = [i for i, l in enumerate(runtime_c_lines)
+                    if l.startswith("/* ---- Shared globals")][0]
+    backend_start = [i for i, l in enumerate(runtime_c_lines)
+                     if l.startswith("/* ---- Backend selection")][0]
+
     for i, line in enumerate(runtime_c_lines):
         if skip_include_line is not None and i == skip_include_line:
             continue
-        if i >= 39:  # past the system includes and C2PY_RESOLVE section
+        if i >= shared_start:  # past the system includes and C2PY_RESOLVE section
             break
         impl.append(line)
 
-    # Shared globals from c2py_runtime.c lines 40-352
-    # Line 40 is the comment "/* ---- Shared globals (visible to both backends) ---- */"
-    # Up to line 352 (end of _c2py_probe_cpu_features)
-    # We stop before line 354 "/* ---- Backend selection ---- */"
+    # Shared globals and _c2py_probe_cpu_features from c2py_runtime.c, up to
+    # the "/* ---- Backend selection ---- */" comment.
     impl.append("")
     for i, line in enumerate(runtime_c_lines):
-        if i < 40:
+        if i < shared_start:
             continue
-        if i >= 354:
+        if i >= backend_start:
             break
         impl.append(line)
 

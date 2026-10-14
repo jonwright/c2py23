@@ -45,7 +45,7 @@ def _compile_cflags():
 
 def _compile_ext():
     """Return the shared library extension (.so or .pyd)."""
-    if _is_msvc():
+    if _is_msvc() or sys.platform == "win32":
         return ".pyd"
     else:
         return ".so"
@@ -55,6 +55,8 @@ def _compile_link_flags():
     """Return a list of link flags appropriate for the detected compiler."""
     if _is_msvc():
         return ["/link"]
+    elif sys.platform == "win32":
+        return ["-lm"]  # mingw: no libdl
     else:
         return ["-ldl", "-lm"]
 
