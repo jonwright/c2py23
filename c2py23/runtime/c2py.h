@@ -32,7 +32,21 @@
 #undef _XOPEN_SOURCE
 #include <Python.h>
 #include <stddef.h>
+/* MSVC before 2010 (_MSC_VER 1600) has no <stdint.h>.  Provide only what
+ * c2py needs; user C code that includes <stdint.h> still needs its own
+ * shim on the include path for these compilers. */
+#if defined(_MSC_VER) && _MSC_VER < 1600
+typedef signed char        int8_t;
+typedef unsigned char      uint8_t;
+typedef short              int16_t;
+typedef unsigned short     uint16_t;
+typedef int                int32_t;
+typedef unsigned int       uint32_t;
+typedef __int64            int64_t;
+typedef unsigned __int64   uint64_t;
+#else
 #include <stdint.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -57,6 +71,9 @@ typedef struct {
 #define PyModuleDef_HEAD_INIT 1, NULL, NULL, 0, NULL
 #endif
 
+#ifndef METH_FASTCALL
+#define METH_FASTCALL 0x0080
+#endif
 
 /* ---- Common definitions ---- */
 
@@ -104,7 +121,21 @@ int c2py_runtime_init(void);
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+/* MSVC before 2010 (_MSC_VER 1600) has no <stdint.h>.  Provide only what
+ * c2py needs; user C code that includes <stdint.h> still needs its own
+ * shim on the include path for these compilers. */
+#if defined(_MSC_VER) && _MSC_VER < 1600
+typedef signed char        int8_t;
+typedef unsigned char      uint8_t;
+typedef short              int16_t;
+typedef unsigned short     uint16_t;
+typedef int                int32_t;
+typedef unsigned int       uint32_t;
+typedef __int64            int64_t;
+typedef unsigned __int64   uint64_t;
+#else
 #include <stdint.h>
+#endif
 #include <limits.h>
 #include <stdio.h>
 #ifdef _WIN32
@@ -136,6 +167,30 @@ extern "C" {
  * __inline is the MSVC equivalent (also recognised by MinGW). */
 #ifdef _MSC_VER
 #define inline __inline
+/* MSVC spells C99 restrict __restrict (the keyword is always available). */
+#ifndef restrict
+#define restrict __restrict
+#endif
+/* The CRT "unsafe function" deprecation (_vsnprintf below) cannot
+ * be silenced by a macro here: stdio.h is already included by the wrapper. */
+#pragma warning(disable:4996)
+#endif
+
+/* snprintf arrived in MSVC 2015 (_MSC_VER 1900).  Older compilers have
+ * only _vsnprintf, which does not NUL-terminate on truncation. */
+#if defined(_MSC_VER) && _MSC_VER < 1900
+#include <stdarg.h>
+static int c2py_snprintf(char *buf, size_t n, const char *fmt, ...)
+{
+    va_list ap;
+    int r;
+    va_start(ap, fmt);
+    r = _vsnprintf(buf, n, fmt, ap);
+    va_end(ap);
+    if (n > 0) buf[n - 1] = '\0';
+    return r;
+}
+#define snprintf c2py_snprintf
 #endif
 
 /* DLL export attribute for module init functions.
@@ -1530,8 +1585,8 @@ static inline void c2py_perf_reset(c2py_perf_t *p)
         memset(p, 0, sizeof(c2py_perf_t));
         p->variant = -1;       /* unset */
         p->group_idx = -1;     /* flat */
-        p->t_c_min = UINT64_MAX;
-        p->t_wrap_min = UINT64_MAX;
+        p->t_c_min = ~(uint64_t)0;
+        p->t_wrap_min = ~(uint64_t)0;
     }
 }
 
@@ -1978,12 +2033,13 @@ x86_done:
 #if defined(_MSC_VER)
         int info[4];
         int got_freq = 0;
+        unsigned int eax, ebx, ecx;
         __cpuidex(info, 0, 0);
         if ((unsigned int)info[0] >= 0x15) {
             __cpuidex(info, 0x15, 0);
-            unsigned int eax = (unsigned int)info[0];
-            unsigned int ebx = (unsigned int)info[1];
-            unsigned int ecx = (unsigned int)info[2];
+            eax = (unsigned int)info[0];
+            ebx = (unsigned int)info[1];
+            ecx = (unsigned int)info[2];
             if (ebx != 0 && eax != 0 && ecx != 0) {
                 c2py_cycle_counter_frequency_hz =
                     (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
@@ -2269,10 +2325,10 @@ static int _resolve(void **ptr, const char *name)
  * call sites that need the PyPy fallback). */
 static void *_resolve_raw(const char *name)
 {
-    void *p = C2PY_RESOLVE(C2PY.dl_handle, name);
-    if (p) return p;
     char pypy_name[256];
     int prefix_len = (name[0] == '_') ? 3 : 2;
+    void *p = C2PY_RESOLVE(C2PY.dl_handle, name);
+    if (p) return p;
     snprintf(pypy_name, sizeof(pypy_name), "%.*sPy%s",
              prefix_len, name, name + prefix_len);
     return C2PY_RESOLVE(C2PY.dl_handle, pypy_name);
@@ -2300,15 +2356,18 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
     /* Try Py_InitModule4 first (Python 2.7 preferred) */
     typedef PyObject* (*init4_fn)(const char*, PyMethodDef*, const char*,
                                    PyObject*, int);
-    init4_fn fn4 = (init4_fn)_resolve_raw("Py_InitModule4_64");
+    typedef PyObject* (*init3_fn)(const char*, PyMethodDef*, const char*);
+    init4_fn fn4;
+    init3_fn fn3;
+
+    fn4 = (init4_fn)_resolve_raw("Py_InitModule4_64");
     if (fn4 == NULL) fn4 = (init4_fn)_resolve_raw("Py_InitModule4");
     if (fn4 != NULL) {
         return fn4(name, methods, NULL, NULL, 1013 /* PYTHON_API_VERSION */);
     }
 
     /* Fallback: Py_InitModule3 */
-    typedef PyObject* (*init3_fn)(const char*, PyMethodDef*, const char*);
-    init3_fn fn3 = (init3_fn)_resolve_raw("Py_InitModule3");
+    fn3 = (init3_fn)_resolve_raw("Py_InitModule3");
     if (fn3 != NULL) {
         return fn3(name, methods, NULL);
     }
@@ -2370,6 +2429,8 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 #endif
 static void _c2py_runtime_init_once(void)
 {
+    void *dl;
+
     _c2py_init_result = -1;  /* assume failure until full success */
 
     /* CPU feature probing runs first -- does not depend on Python */
@@ -2462,7 +2523,7 @@ static void _c2py_runtime_init_once(void)
     }
 #endif
 
-    void *dl = C2PY.dl_handle;
+    dl = C2PY.dl_handle;
 
     /* --- Detect Python version --- */
     {
@@ -2528,14 +2589,6 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.is_pypy) goto ft_detection_done;
     {
         int found_ft = 0;
-        const char *force_ft = getenv("C2PY_FORCE_FT");
-        if (force_ft != NULL) {
-            if (force_ft[0] == '1') {
-                found_ft = 1;
-            }
-            C2PY.is_free_threaded = found_ft;
-            goto ft_detection_done;
-        }
         {
             typedef const char* (*ver_fn)(void);
             ver_fn getver = (ver_fn)C2PY_RESOLVE(dl, "Py_GetVersion");
@@ -2748,9 +2801,10 @@ static void _c2py_runtime_init_once(void)
         Py_buffer *pb = (Py_buffer*)probe;
         typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
         bytes_fn mkbytes = (bytes_fn)_resolve_raw("PyBytes_FromStringAndSize");
+        PyObject *by;
         if (!mkbytes)
             mkbytes = (bytes_fn)_resolve_raw("PyString_FromStringAndSize");
-        PyObject *by = mkbytes ? mkbytes("x", 1) : NULL;
+        by = mkbytes ? mkbytes("x", 1) : NULL;
         if (by) {
             memset(probe, 0xAA, sizeof(probe));
             if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {

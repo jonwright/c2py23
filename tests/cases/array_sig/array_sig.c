@@ -1,5 +1,10 @@
 #include <stdint.h>
 
+/* MSVC 2008 (the Python 2.7 compiler) spells restrict __restrict. */
+#if defined(_MSC_VER) && !defined(restrict)
+#define restrict __restrict
+#endif
+
 double sum_rows(const double gv[][3], intptr_t ng)
 {
     double s = 0.0;

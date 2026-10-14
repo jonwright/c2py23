@@ -348,12 +348,13 @@ x86_done:
 #if defined(_MSC_VER)
         int info[4];
         int got_freq = 0;
+        unsigned int eax, ebx, ecx;
         __cpuidex(info, 0, 0);
         if ((unsigned int)info[0] >= 0x15) {
             __cpuidex(info, 0x15, 0);
-            unsigned int eax = (unsigned int)info[0];
-            unsigned int ebx = (unsigned int)info[1];
-            unsigned int ecx = (unsigned int)info[2];
+            eax = (unsigned int)info[0];
+            ebx = (unsigned int)info[1];
+            ecx = (unsigned int)info[2];
             if (ebx != 0 && eax != 0 && ecx != 0) {
                 c2py_cycle_counter_frequency_hz =
                     (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;

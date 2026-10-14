@@ -146,21 +146,21 @@ class CBuilder:
         self.emit(indent + "}")
 
     def emit_tuple_new(self, n, indent="    "):
-        self.emit(indent + "PyObject *_c2py_tup = PyTuple_New({0});".format(n))
+        self.emit(indent + "_c2py_tup = PyTuple_New({0});".format(n))
         self.emit(indent + "if (_c2py_tup == NULL) return NULL;")
 
     def emit_output_long(self, index, val, ctype="int", indent="    "):
         if ctype in ("int64_t",):
-            self.emit(indent + "PyObject *_c2py_obj{0} = PyLong_FromLongLong((long long){1});".format(index, val))
+            self.emit(indent + "_c2py_obj{0} = PyLong_FromLongLong((long long){1});".format(index, val))
         elif ctype in ("uint64_t",):
-            self.emit(indent + "PyObject *_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});".format(index, val))
+            self.emit(indent + "_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});".format(index, val))
         else:
-            self.emit(indent + "PyObject *_c2py_obj{0} = PyLong_FromLong((long){1});".format(index, val))
+            self.emit(indent + "_c2py_obj{0} = PyLong_FromLong((long){1});".format(index, val))
         self._check_output_obj("_c2py_obj{0}".format(index), indent)
         self.emit(indent + "PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});".format(index))
 
     def emit_output_double(self, index, val, indent="    "):
-        self.emit(indent + "PyObject *_c2py_obj{0} = PyFloat_FromDouble((double){1});".format(index, val))
+        self.emit(indent + "_c2py_obj{0} = PyFloat_FromDouble((double){1});".format(index, val))
         self._check_output_obj("_c2py_obj{0}".format(index), indent)
         self.emit("    PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});".format(index))
 
@@ -215,6 +215,12 @@ class CBuilder:
         self.emit("")
         self._has_goto_cleanup = True
 
+    def emit_contiguity_decls(self, buf_params):
+        """Declare the per-buffer axis variables (C89: before any statement)."""
+        for p in buf_params:
+            self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(p.name))
+            self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(p.name))
+
     def emit_contiguity_checks(self, buf_params):
         """Emit contiguity validation for each buffer.
 
@@ -227,8 +233,6 @@ class CBuilder:
 
         for p in buf_params:
             name = p.name
-            self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(name))
-            self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(name))
             self.emit("    (void)_c2py_slow_axis_info_{0};".format(name))
             self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
@@ -548,8 +552,8 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
     b.emit("_{0}_impl({1})".format(name, ", ".join(params_c)))
     b.emit("{")
 
-    # Contiguity checks (inside impl so when: conditions can use them)
-    b.emit_contiguity_checks(buf_params)
+    # C89: every declaration precedes the first statement.
+    b.emit_contiguity_decls(buf_params)
 
     if timing:
         b.emit("    int _c2py_do_time = _c2py_timing_enabled;")
@@ -561,6 +565,9 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
         b.emit("    int _c2py_do_gil = _c2py_gil_release_enabled" " && _gil_release_{0};".format(name))
         b.emit("    void *_c2py_thread_state = NULL;")
         b.emit_blank()
+
+    # Contiguity checks (inside impl so when: conditions can use them)
+    b.emit_contiguity_checks(buf_params)
 
     # Checks
     for check in func.checks:
@@ -799,12 +806,11 @@ def _emit_c_call(
     if not has_outputs:
         if ol.return_type in ("void", None):
             emitl(call_str + ";")
-        elif ol.return_type == "int":
-            emitl("int _ret = " + call_str + ";")
-        elif ol.return_type == "float":
-            emitl("float _ret = " + call_str + ";")
-        elif ol.return_type == "double":
-            emitl("double _ret = " + call_str + ";")
+        elif ol.return_type in ("int", "float", "double"):
+            # C89: open a block so the result variable heads it
+            emitl("{")
+            emitl("    {0} _ret;".format(ol.return_type))
+            emitl("    _ret = " + call_str + ";")
         else:
             emitl("/* unknown return type: {0} */".format(ol.return_type))
             emitl(call_str + ";")
@@ -822,29 +828,39 @@ def _emit_c_call(
         if ol.return_type in ("void", None):
             emitl("Py_RETURN_NONE;")
         elif ol.return_type == "int":
-            emitl("return PyLong_FromLong((long)_ret);")
+            emitl("    return PyLong_FromLong((long)_ret);")
+            emitl("}")
         elif ol.return_type == "float":
-            emitl("return PyFloat_FromDouble((double)_ret);")
+            emitl("    return PyFloat_FromDouble((double)_ret);")
+            emitl("}")
         elif ol.return_type == "double":
-            emitl("return PyFloat_FromDouble(_ret);")
+            emitl("    return PyFloat_FromDouble(_ret);")
+            emitl("}")
         else:
             emitl("Py_RETURN_NONE;")
         return
 
-    # Output scalar handling
+    # Output scalar handling.  Everything below sits in one block opened
+    # here so that its declarations head the block (C89).  Every path
+    # through the block ends in a return.
     out_items = []
+    n_out = len(outputs) + (1 if has_ret else 0)
+    emitl("{")
     if has_ret:
         ret_var = "_c2py_retval"
-        if ol.return_type == "int":
-            emitl("int {0} = {1};".format(ret_var, call_str))
-        elif ol.return_type == "float":
-            emitl("float {0} = {1};".format(ret_var, call_str))
-        elif ol.return_type == "double":
-            emitl("double {0} = {1};".format(ret_var, call_str))
+        rtype = ol.return_type if ol.return_type in ("int", "float", "double") else "int"
+        emitl("    {0} {1};".format(rtype, ret_var))
+    if n_out > 1:
+        emitl("    PyObject *_c2py_tup;")
+        for i in range(n_out):
+            emitl("    PyObject *_c2py_obj{0};".format(i))
+    if has_ret:
+        if ol.return_type in ("int", "float", "double"):
+            emitl("    {0} = {1};".format(ret_var, call_str))
         else:
             emitl("/* unknown return type: {0} */".format(ol.return_type))
             emitl(call_str + ";")
-            emitl("int {0} = 0;".format(ret_var))
+            emitl("{0} = 0;".format(ret_var))
         out_items.append(("ret", ol.return_type, ret_var))
     else:
         emitl(call_str + ";")
@@ -909,6 +925,7 @@ def _emit_c_call(
             else:
                 b.emit_output_double(i, val, indent)
         emitl("return _c2py_tup;")
+    emitl("}")
 
 
 # ---------------------------------------------------------------------------
@@ -1041,14 +1058,16 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
 
     # PyInit (Python 3)
     b.emit("C2PY_EXPORT PyObject* PyInit_{}(void) {{".format(name))
+    b.emit("    PyObject *module = NULL;")
+    b.emit("    PyMethodDef *methods;")
+    b.emit("")
     b.emit("    if (c2py_runtime_init() != 0) {")
     b.emit("        return NULL;  /* Python will raise ImportError */")
     b.emit("    }")
     for rc in resolve_calls:
         b.emit(rc)
     b.emit("")
-    b.emit("    PyObject *module = NULL;")
-    b.emit("    PyMethodDef *methods = C2PY.use_fastcall" " ? _methods_fastcall : _methods_varargs;")
+    b.emit("    methods = C2PY.use_fastcall" " ? _methods_fastcall : _methods_varargs;")
     b.emit("")
     b.emit("    if (C2PY.is_free_threaded) {")
     b.emit("        _module_def_ft.m_methods = methods;")
@@ -1085,13 +1104,15 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
 
     # Python 2.7 init
     b.emit("C2PY_EXPORT void init{}(void) {{".format(name))
+    b.emit("    PyObject *module;")
+    b.emit("")
     b.emit("    c2py_runtime_init();")
     for rc in resolve_calls:
         b.emit(rc)
     # Match original: resolve_calls always emitted (even if empty, adds blank line)
     if not resolve_calls:
         b.emit("")
-    b.emit('    PyObject *module = C2PY.InitModule_2_7("{}",'.format(name))
+    b.emit('    module = C2PY.InitModule_2_7("{}",'.format(name))
     b.emit("        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);")
     b.emit("    if (module != NULL) {")
     _emit_constants(b, module_def)
@@ -1958,13 +1979,15 @@ def _emit_timing_decls(b, mod):
     b.emit("static PyObject*")
     b.emit("__c2py_set_tick_source(PyObject *self, PyObject *args) {")
     b.emit("    const char *source = NULL;")
+    b.emit("    uint64_t old_freq;")
+    b.emit("    uint64_t new_freq;")
+    b.emit("    int new_mode;")
+    b.emit("    PyObject *tup;")
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "s", &source))')
     b.emit("        return NULL;")
     b.emit("")
-    b.emit("    uint64_t old_freq = c2py_tick_frequency_hz;")
-    b.emit("    uint64_t new_freq;")
-    b.emit("    int new_mode;")
+    b.emit("    old_freq = c2py_tick_frequency_hz;")
     b.emit("")
     b.emit('    if (source != NULL && strcmp(source, "cycle") == 0) {')
     b.emit("        new_mode = 1;")
@@ -1982,7 +2005,7 @@ def _emit_timing_decls(b, mod):
     b.emit("    _c2py_use_cycle_counter = new_mode;")
     b.emit("    c2py_tick_frequency_hz = new_freq;")
     b.emit("")
-    b.emit("    PyObject *tup = PyTuple_New(2);")
+    b.emit("    tup = PyTuple_New(2);")
     b.emit("    if (tup == NULL) return NULL;")
     b.emit("    PyTuple_SetItem(tup, 0, PyLong_FromUnsignedLongLong(old_freq));")
     b.emit("    PyTuple_SetItem(tup, 1, PyLong_FromUnsignedLongLong(new_freq));")

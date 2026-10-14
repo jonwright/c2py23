@@ -1,6 +1,11 @@
 #ifndef TINY_KERNEL_H
 #define TINY_KERNEL_H
 
+/* MSVC 2008 (the Python 2.7 compiler) spells restrict __restrict. */
+#if defined(_MSC_VER) && !defined(restrict)
+#define restrict __restrict
+#endif
+
 /* restrict qualified via pointer declarator: MSVC accepts restrict after
  * '*' but not in the '[]' array parameter notation used before. */
 void vnorm(const double (*restrict vec)[3], double *restrict mods, ptrdiff_t n);
