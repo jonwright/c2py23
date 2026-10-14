@@ -62,6 +62,10 @@ extern int c2py_amd64_gfni;
 extern int c2py_amd64_vaes;
 extern int c2py_amd64_vpclmulqdq;
 
+/* Vendor (from cpuid leaf 0).  Both 0 for other vendors or non-x86. */
+extern int c2py_amd64_vendor_intel;
+extern int c2py_amd64_vendor_amd;
+
 /* BMI / bit manipulation */
 extern int c2py_amd64_bmi1;
 extern int c2py_amd64_bmi2;

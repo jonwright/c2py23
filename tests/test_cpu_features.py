@@ -26,7 +26,8 @@ FLAGS = (
     "sse2 sse3 ssse3 sse4_1 sse4_2 avx avx2 fma f16c avx_vnni "
     "avx512f avx512cd avx512dq avx512bw avx512vl avx512ifma avx512vbmi "
     "avx512vbmi2 avx512vnni avx512bitalg avx512vpopcntdq aes pclmulqdq "
-    "sha_ni gfni vaes vpclmulqdq adx movbe bmi1 bmi2 popcnt lzcnt"
+    "sha_ni gfni vaes vpclmulqdq adx movbe bmi1 bmi2 popcnt lzcnt "
+    "vendor_intel vendor_amd"
 ).split()
 # feature -> features it builds on
 IMPLIES = {
@@ -55,6 +56,14 @@ def _read_flags():
     return dict((n, ctypes.c_int.in_dll(lib, "c2py_amd64_" + n).value) for n in FLAGS)
 
 
+def _cpuinfo_vendor():
+    with open("/proc/cpuinfo") as f:
+        for line in f:
+            if line.startswith("vendor_id"):
+                return line.split(":", 1)[1].strip()
+    return None
+
+
 def test_cpu_features():
     if platform.machine() not in ("x86_64", "AMD64") or not sys.platform.startswith("linux"):
         print("SKIP: cpu_features (needs Linux x86_64)")
@@ -64,7 +73,13 @@ def test_cpu_features():
         print("SKIP: cpu_features (no /proc/cpuinfo flags)")
         return
     got = _read_flags()
+    vendor = _cpuinfo_vendor()
+    if vendor is not None:
+        assert got["vendor_intel"] == int(vendor == "GenuineIntel"), vendor
+        assert got["vendor_amd"] == int(vendor == "AuthenticAMD"), vendor
     for name in FLAGS:
+        if name.startswith("vendor_"):
+            continue
         expect = int(CPUINFO.get(name, name) in cpu)
         assert got[name] == expect, "%s: c2py=%d cpuinfo=%d" % (name, got[name], expect)
     for name, base in IMPLIES.items():

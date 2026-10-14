@@ -67,6 +67,8 @@ int c2py_amd64_bmi1 = 0;
 int c2py_amd64_bmi2 = 0;
 int c2py_amd64_popcnt = 0;
 int c2py_amd64_lzcnt = 0;
+int c2py_amd64_vendor_intel = 0;
+int c2py_amd64_vendor_amd = 0;
 int c2py_amd64_f16c = 0;
 int c2py_amd64_movbe = 0;
 int c2py_amd64_adx = 0;
@@ -160,6 +162,16 @@ static unsigned long long _c2py_xgetbv0(void)
 #if defined(_MSC_VER)
 #if _MSC_FULL_VER >= 160040219 /* VS2010 SP1: _xgetbv exists */
     return (unsigned long long)_xgetbv(0);
+#elif defined(_WIN32)
+    /* Older cl (e.g. the Python 2.7 toolchain) has no _xgetbv and no
+     * inline asm on x64.  Windows 7 SP1 and later report the enabled
+     * state mask (same bits as XCR0) through GetEnabledXStateFeatures. */
+    {
+        typedef unsigned __int64 (WINAPI *xstate_fn)(void);
+        HMODULE k32 = GetModuleHandleA("kernel32.dll");
+        xstate_fn fn = k32 ? (xstate_fn)GetProcAddress(k32, "GetEnabledXStateFeatures") : 0;
+        return fn ? (unsigned long long)fn() : 0;
+    }
 #else
     return 0;
 #endif
@@ -190,6 +202,11 @@ static void _c2py_probe_cpu_features(void)
             goto x86_done; /* no usable cpuid: all flags stay 0 */
         }
         max_std = r[0];
+        /* vendor string is in ebx, edx, ecx of leaf 0 */
+        c2py_amd64_vendor_intel = (r[1] == 0x756e6547u && r[3] == 0x49656e69u
+                                   && r[2] == 0x6c65746eu); /* GenuineIntel */
+        c2py_amd64_vendor_amd   = (r[1] == 0x68747541u && r[3] == 0x69746e65u
+                                   && r[2] == 0x444d4163u); /* AuthenticAMD */
         if (max_std >= 1) {
             unsigned int edx1;
             _c2py_cpuid(1, 0, r);

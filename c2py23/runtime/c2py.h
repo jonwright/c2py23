@@ -1666,12 +1666,13 @@ int c2py_runtime_init(void);
 #include <intrin.h>
 #endif
 
-
+/* Cross-platform symbol resolution */
 #ifdef _WIN32
 #define C2PY_RESOLVE(handle, name) GetProcAddress((HMODULE)(handle), (name))
 #else
 #define C2PY_RESOLVE(handle, name) dlsym((handle), (name))
 #endif
+
 
 /* ---- Shared globals (visible to both backends) ---- */
 
@@ -1696,6 +1697,8 @@ int c2py_amd64_bmi1 = 0;
 int c2py_amd64_bmi2 = 0;
 int c2py_amd64_popcnt = 0;
 int c2py_amd64_lzcnt = 0;
+int c2py_amd64_vendor_intel = 0;
+int c2py_amd64_vendor_amd = 0;
 int c2py_amd64_f16c = 0;
 int c2py_amd64_movbe = 0;
 int c2py_amd64_adx = 0;
@@ -1789,6 +1792,16 @@ static unsigned long long _c2py_xgetbv0(void)
 #if defined(_MSC_VER)
 #if _MSC_FULL_VER >= 160040219 /* VS2010 SP1: _xgetbv exists */
     return (unsigned long long)_xgetbv(0);
+#elif defined(_WIN32)
+    /* Older cl (e.g. the Python 2.7 toolchain) has no _xgetbv and no
+     * inline asm on x64.  Windows 7 SP1 and later report the enabled
+     * state mask (same bits as XCR0) through GetEnabledXStateFeatures. */
+    {
+        typedef unsigned __int64 (WINAPI *xstate_fn)(void);
+        HMODULE k32 = GetModuleHandleA("kernel32.dll");
+        xstate_fn fn = k32 ? (xstate_fn)GetProcAddress(k32, "GetEnabledXStateFeatures") : 0;
+        return fn ? (unsigned long long)fn() : 0;
+    }
 #else
     return 0;
 #endif
@@ -1819,6 +1832,11 @@ static void _c2py_probe_cpu_features(void)
             goto x86_done; /* no usable cpuid: all flags stay 0 */
         }
         max_std = r[0];
+        /* vendor string is in ebx, edx, ecx of leaf 0 */
+        c2py_amd64_vendor_intel = (r[1] == 0x756e6547u && r[3] == 0x49656e69u
+                                   && r[2] == 0x6c65746eu); /* GenuineIntel */
+        c2py_amd64_vendor_amd   = (r[1] == 0x68747541u && r[3] == 0x69746e65u
+                                   && r[2] == 0x444d4163u); /* AuthenticAMD */
         if (max_std >= 1) {
             unsigned int edx1;
             _c2py_cpuid(1, 0, r);
@@ -1981,6 +1999,80 @@ x86_done:
 #elif defined(__GNUC__) || defined(__clang__)
         unsigned int eax, ebx, ecx, edx;
         unsigned int max_std;
+        int got_freq = 0;
+        __asm__ __volatile__("cpuid" : "=a"(max_std) : "a"(0) : "ebx", "ecx", "edx");
+        if (max_std >= 0x15) {
+            __asm__ __volatile__("cpuid"
+                : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                : "a"(0x15));
+            if (ebx != 0 && eax != 0 && ecx != 0) {
+                c2py_cycle_counter_frequency_hz =
+                    (uint64_t)ecx * (uint64_t)ebx / (uint64_t)eax;
+                got_freq = 1;
+            }
+        }
+        if (!got_freq) {
+            FILE *f = fopen("/proc/cpuinfo", "r");
+            if (f) {
+                char line[256];
+                while (fgets(line, sizeof(line), f)) {
+                    double mhz;
+                    if (sscanf(line, "cpu MHz : %lf", &mhz) == 1) {
+                        c2py_cycle_counter_frequency_hz =
+                            (uint64_t)(mhz * 1000000.0 + 0.5);
+                        break;
+                    }
+                }
+                fclose(f);
+            }
+        }
+#else
+        /* no inline assembly  --  cycle counter frequency stays 0 */
+#endif /* _MSC_VER / __GNUC__ */
+    }
+#elif (defined(__aarch64__) || defined(__arm64__)) && !defined(_MSC_VER) \
+      && (defined(__GNUC__) || defined(__clang__))
+    {
+        uint64_t freq;
+        __asm__ __volatile__("mrs %0, CNTFRQ_EL0" : "=r"(freq));
+        if (freq != 0) {
+            c2py_cycle_counter_frequency_hz = freq;
+        }
+    }
+#elif defined(__powerpc64__) || defined(__powerpc__)
+    {
+#ifdef _WIN32
+        c2py_cycle_counter_frequency_hz = 0;
+#else
+        FILE *f = fopen("/proc/device-tree/cpus/timebase-frequency", "r");
+        if (f) {
+            unsigned char buf[8] = {0};
+            size_t r = fread(buf, 1, 8, f);
+            fclose(f);
+            if (r == 4) {
+                c2py_cycle_counter_frequency_hz =
+                    ((uint64_t)buf[0] << 24) |
+                    ((uint64_t)buf[1] << 16) |
+                    ((uint64_t)buf[2] << 8)  |
+                     (uint64_t)buf[3];
+            } else if (r >= 8) {
+                c2py_cycle_counter_frequency_hz =
+                    ((uint64_t)buf[0] << 56) |
+                    ((uint64_t)buf[1] << 48) |
+                    ((uint64_t)buf[2] << 40) |
+                    ((uint64_t)buf[3] << 32) |
+                    ((uint64_t)buf[4] << 24) |
+                    ((uint64_t)buf[5] << 16) |
+                    ((uint64_t)buf[6] << 8)  |
+                     (uint64_t)buf[7];
+            }
+        }
+#endif /* _WIN32 */
+    }
+#endif
+    /* If detection failed, c2py_cycle_counter_frequency_hz remains 0. */
+}
+
 #ifdef C2PY_USE_PYTHON_H
 
 /* c2py_pythonh.c - pythonh backend (runtime init)
