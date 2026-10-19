@@ -33,6 +33,30 @@ from c2py23.parser import (
 )
 from c2py23.invariant_checker import verify_c_invariants
 
+# C receiving-parameter base types that are *narrower* than Py_ssize_t on at
+# least one supported platform.  For these we keep the INT_MAX overflow guard
+# on `.len` / `.n` map expressions: an oversized Py_buffer.len (> 2 GiB) must
+# not be silently truncated when cast to a narrow C integer parameter.
+#
+# Pointer-width types (size_t, intptr_t, ptrdiff_t) and the 64-bit fixed-width
+# types (int64_t, uint64_t) are as wide as, or wider than, Py_ssize_t on every
+# platform -- including LLP64 (32-bit Windows), where Py_ssize_t itself tops out
+# at 2 GiB and is exactly representable.  For those we emit no guard, so a
+# single contiguous mmap up to Py_ssize_t max can be passed in one go.
+_GUARD_INT_MAX_COUNT_TYPES = frozenset(
+    {
+        "int",
+        "int8_t",
+        "int16_t",
+        "int32_t",
+        "uint8_t",
+        "uint16_t",
+        "uint32_t",
+        "char",
+        "_Bool",
+    }
+)
+
 
 class CBuilder:
     """Stateful builder for generating C wrapper code.
@@ -779,8 +803,11 @@ def _emit_c_call(
             arg_c = "(float)(" + arg_c + ")"
         elif not p.is_pointer and p.base_type not in ("int", "double", "void", "float"):
             arg_c = "(" + p.ctype + ")(" + arg_c + ")"
-        # Check for INT_MAX overflow (use raw Py_ssize_t expression, not casted)
-        if not _expr_is_count_or_len(expr):
+        # Check for INT_MAX overflow (use raw Py_ssize_t expression, not casted).
+        # Only narrow C receivers can truncate a Py_ssize_t; pointer-width and
+        # 64-bit receivers can hold a full Py_ssize_t on every platform, so for
+        # those no guard is needed (they may accept a > 2 GiB buffer in one go).
+        if not _expr_is_count_or_len(expr) or p.base_type not in _GUARD_INT_MAX_COUNT_TYPES:
             args.append(arg_c)
         else:
             emitl("if (({0}) > (Py_ssize_t)INT_MAX) {{".format(raw_c))

@@ -274,6 +274,79 @@ def test_INT_MAX_check_absent_when_no_int_n():
     _pass()
 
 
+def _module_for_receiver(base_type, ctype):
+    """Return generated C for a single .len-derived scalar receiver of `ctype`."""
+    n_expr = parse_expr("buf.len")
+    mod = ModuleDef(
+        name="widthcheck",
+        sources=["test.c"],
+        headers=[],
+        functions=[
+            FuncDef(
+                name="process",
+                py_params=[PyParam("buf", "buffer", None)],
+                return_type="void",
+                checks=[],
+                overloads=[
+                    COverload(
+                        sig_str="void process(char *buf, {0} n)".format(ctype),
+                        params=[
+                            CParam("buf", "char *", "char", True, True),
+                            CParam("n", ctype, base_type, False, False),
+                        ],
+                        return_type="void",
+                        map_exprs={"buf": parse_expr("buf.ptr"), "n": n_expr},
+                        when_expr=None,
+                    )
+                ],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    return generate(mod)
+
+
+def test_INT_MAX_guard_narrow_receivers():
+    """INT_MAX guard kept for narrow C receivers (they can truncate Py_ssize_t)."""
+    for base_type, ctype in [
+        ("int", "int"),
+        ("int8_t", "int8_t"),
+        ("int16_t", "int16_t"),
+        ("int32_t", "int32_t"),
+        ("uint8_t", "uint8_t"),
+        ("uint16_t", "uint16_t"),
+        ("uint32_t", "uint32_t"),
+        ("char", "char"),
+        ("_Bool", "_Bool"),
+    ]:
+        code = _module_for_receiver(base_type, ctype)
+        assert "INT_MAX" in code, "narrow <{0}> must keep the INT_MAX guard".format(ctype)
+        assert "buffer too large" in code, "narrow <{0}> must keep the overflow error".format(ctype)
+    _pass()
+
+
+def test_INT_MAX_guard_dropped_for_wide_receivers():
+    """Wide/pointer-width receivers need no INT_MAX guard (full Py_ssize_t fits)."""
+    for base_type, ctype in [
+        ("size_t", "size_t"),
+        ("intptr_t", "intptr_t"),
+        ("ptrdiff_t", "ptrdiff_t"),
+        ("int64_t", "int64_t"),
+        ("uint64_t", "uint64_t"),
+    ]:
+        code = _module_for_receiver(base_type, ctype)
+        assert "INT_MAX" not in code, "wide <{0}> must NOT emit the INT_MAX guard".format(ctype)
+        assert "buffer too large" not in code, "wide <{0}> must NOT emit the overflow error".format(ctype)
+        # The value is still cast to the receiver type (no truncation, so cast-only).
+        assert "({0})(".format(ctype) in code, "wide <{0}> should still cast to its type".format(ctype)
+    _pass()
+
+
 def test_empty_expand():
     """expand with zero-length list: should produce no functions, no crash."""
     from c2py23.parser import _expand_func_template, _parse_func
