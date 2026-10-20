@@ -340,6 +340,57 @@ typedef struct {
     Py_ssize_t *strides;      /* per-dimension strides (may be NULL) */
 } c2py_ptr_info;
 
+/* Overflow-checked long long arithmetic for integer check:, when: and map:
+ * expressions.  Buffer sizes are Py_ssize_t, which is 32-bit on ILP32, so
+ * a.n * 8 or a.n + b.n can wrap there; evaluating in long long fixes that,
+ * and these helpers also catch what long long cannot hold (a.n * b.n for
+ * two 4 GiB buffers on a 64-bit build) and division by zero.  On failure
+ * they set *ovf and return 0; the wrapper then raises ValueError instead
+ * of acting on a wrapped value.  No compiler builtins: plain C99. */
+static inline long long
+c2py_add_ll(long long a, long long b, int *ovf)
+{
+    if ((b > 0 && a > LLONG_MAX - b) || (b < 0 && a < LLONG_MIN - b)) { *ovf = 1; return 0; }
+    return a + b;
+}
+
+static inline long long
+c2py_sub_ll(long long a, long long b, int *ovf)
+{
+    if ((b < 0 && a > LLONG_MAX + b) || (b > 0 && a < LLONG_MIN + b)) { *ovf = 1; return 0; }
+    return a - b;
+}
+
+static inline long long
+c2py_mul_ll(long long a, long long b, int *ovf)
+{
+    if (a == 0 || b == 0) return 0;
+    if (a > 0 ? (b > 0 ? a > LLONG_MAX / b : b < LLONG_MIN / a)
+              : (b > 0 ? a < LLONG_MIN / b : a < LLONG_MAX / b)) { *ovf = 1; return 0; }
+    return a * b;
+}
+
+static inline long long
+c2py_div_ll(long long a, long long b, int *ovf)
+{
+    if (b == 0 || (a == LLONG_MIN && b == -1)) { *ovf = 1; return 0; }
+    return a / b;
+}
+
+static inline long long
+c2py_mod_ll(long long a, long long b, int *ovf)
+{
+    if (b == 0 || (a == LLONG_MIN && b == -1)) { *ovf = 1; return 0; }
+    return a % b;
+}
+
+static inline long long
+c2py_neg_ll(long long a, int *ovf)
+{
+    if (a == LLONG_MIN) { *ovf = 1; return 0; }
+    return -a;
+}
+
 /* Runtime enforcement of the no-alias contract generated wrappers rely
  * on when passing buffer pointers to C functions as restrict.
  *

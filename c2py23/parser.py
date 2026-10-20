@@ -1681,8 +1681,72 @@ def _expr_to_source(expr):
 # ---- Expression transpilation ----
 
 
+# Integer-valued buffer attributes (Py_ssize_t or int in c2py_ptr_info).
+_INT_ATTRS = frozenset(["len", "n", "itemsize", "ndim", "slow_dim", "fast_dim", "slow_axis", "fast_axis"])
+
+_LL_HELPERS = {"+": "c2py_add_ll", "-": "c2py_sub_ll", "*": "c2py_mul_ll", "/": "c2py_div_ll", "%": "c2py_mod_ll"}
+
+
+def _expr_is_int(expr, scalar_params):
+    """True if an expression is integer-valued (buffer sizes, int scalars, int literals)."""
+    if isinstance(expr, IntLit):
+        return True
+    if isinstance(expr, Var):
+        for p in scalar_params:
+            if p.name == expr.name:
+                return p.pytype == "int"
+        return False
+    if isinstance(expr, Attr):
+        return expr.attr in _INT_ATTRS
+    if isinstance(expr, Subscript):
+        return True
+    if isinstance(expr, UnaryOp):
+        return expr.op in ("-", "+") and _expr_is_int(expr.operand, scalar_params)
+    if isinstance(expr, BinOp):
+        return (
+            expr.op in _LL_HELPERS
+            and _expr_is_int(expr.left, scalar_params)
+            and _expr_is_int(expr.right, scalar_params)
+        )
+    return False
+
+
+def _is_checked_arith(expr, scalar_params):
+    """True if this node is integer arithmetic evaluated by a c2py_*_ll helper.
+
+    Literal-only arithmetic is folded by the compiler and left plain.
+    """
+    if isinstance(expr, BinOp) and expr.op in _LL_HELPERS:
+        operands = (expr.left, expr.right)
+    elif isinstance(expr, UnaryOp) and expr.op == "-":
+        operands = (expr.operand,)
+    else:
+        return False
+    if not all(_expr_is_int(e, scalar_params) for e in operands):
+        return False
+    return not all(isinstance(e, IntLit) for e in operands)
+
+
+def expr_has_checked_arith(expr, scalar_params):
+    """True if the C for `expr` reads or sets the wrapper's _c2py_ovf flag."""
+    if expr is None:
+        return False
+    if _is_checked_arith(expr, scalar_params):
+        return True
+    if isinstance(expr, (BinOp, Compare)):
+        return expr_has_checked_arith(expr.left, scalar_params) or expr_has_checked_arith(expr.right, scalar_params)
+    if isinstance(expr, UnaryOp):
+        return expr_has_checked_arith(expr.operand, scalar_params)
+    return False
+
+
 def _expr_to_c(expr, buf_params, scalar_params, current_ol):
-    """Transpile an expression AST node to a C expression string."""
+    """Transpile an expression AST node to a C expression string.
+
+    Integer arithmetic on buffer sizes and int scalars is evaluated in long
+    long by the overflow-checked c2py_*_ll helpers, which set the wrapper's
+    _c2py_ovf flag instead of wrapping (see expr_has_checked_arith).
+    """
     if expr is None:
         return "1"  # No condition = always true
 
@@ -1817,7 +1881,9 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return "({}) && ({})".format(left, right)
         elif expr.op == "or":
             return "({}) || ({})".format(left, right)
-        elif expr.op in ("+", "-", "*", "/", "%"):
+        elif expr.op in _LL_HELPERS:
+            if _is_checked_arith(expr, scalar_params):
+                return "{0}({1}, {2}, &_c2py_ovf)".format(_LL_HELPERS[expr.op], left, right)
             return "({} {} {})".format(left, expr.op, right)
         else:
             raise ValueError("Unknown binop: {}".format(expr.op))
@@ -1827,6 +1893,8 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         if expr.op == "not":
             return "!({})".format(operand)
         elif expr.op == "-":
+            if _is_checked_arith(expr, scalar_params):
+                return "c2py_neg_ll({0}, &_c2py_ovf)".format(operand)
             return "-({})".format(operand)
         elif expr.op == "+":
             return "+({})".format(operand)

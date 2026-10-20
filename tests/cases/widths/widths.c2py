@@ -60,5 +60,75 @@
                 },
             ],
         },
+        {
+            "py_sig": "echo_size(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_size(size_t v, size_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "size_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "echo_iptr(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_iptr(intptr_t v, intptr_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "intptr_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "echo_pdiff(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_pdiff(ptrdiff_t v, ptrdiff_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "ptrdiff_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "fill_grid(out: buffer, rows: int, cols: int) -> void",
+            "checks": ["out.format == 'B'", "rows >= 0", "cols >= 0", "out.n >= rows * cols"],
+            "c_overloads": [
+                {
+                    "sig": "fill_grid(uint8_t *out, int64_t n)",
+                    "map": {"out": "out.ptr", "n": "rows * cols"},
+                },
+            ],
+        },
+        {
+            "py_sig": "chunk_len(data: buffer, k: int) -> void",
+            "checks": ["data.format == 'B'"],
+            "c_overloads": [
+                {
+                    "sig": "chunk_len(const uint8_t *data, int64_t n, int64_t *out)",
+                    "map": {"data": "data.ptr", "n": "data.len / k"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "pick_half(data: buffer, k: int) -> void",
+            "checks": ["data.format == 'B'"],
+            "c_overloads": [
+                {
+                    "sig": "pick_half(const uint8_t *data, int32_t *out)",
+                    "when": "data.len * k > 100",
+                    "map": {"data": "data.ptr"},
+                    "outputs": {"out": "int32_t"},
+                    "name": "big",
+                },
+                {
+                    "sig": "pick_none(const uint8_t *data, int32_t *out)",
+                    "map": {"data": "data.ptr"},
+                    "outputs": {"out": "int32_t"},
+                    "name": "small",
+                },
+            ],
+        },
     ],
 }
