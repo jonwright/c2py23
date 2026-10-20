@@ -873,8 +873,10 @@ fill:
     flags = *(int*)(base + L->data_off + C2PY_NDARR_OFF_FLAGS);
 
     if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
-        PyErr_SetString(PyExc_TypeError,
-                        "numpy array is not writeable");
+        /* ValueError, as numpy raises through PEP 3118, so the error is
+         * the same whichever backend (or free-threaded build) ran. */
+        PyErr_SetString(PyExc_ValueError,
+                        "numpy array is read-only");
         return -1;
     }
 
@@ -1003,7 +1005,7 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     }
 
     if (want_writable && read_only == 1) {
-        PyErr_SetString(PyExc_TypeError, "DLPack tensor is read-only");
+        PyErr_SetString(PyExc_ValueError, "DLPack tensor is read-only");
         goto fail;
     }
     if (want_writable && read_only == -1)

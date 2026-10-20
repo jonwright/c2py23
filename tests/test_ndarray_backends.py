@@ -85,13 +85,14 @@ class TestNdarrayFastPath:
         c2py_vnorm.vnorm(arr, mods)
 
     def test_read_only_rejected(self):
-        """Writable request on read-only ndarray is rejected by
-        the flags check in c2py_pin_ndarray, then buffer fallback
-        also rejects it."""
+        """Writable request on read-only ndarray: ValueError mentioning
+        read-only, from the fast path's flags check or (free-threaded,
+        PyPy) from numpy's PEP 3118 export -- the same on every build."""
         mods_ro = make_mods()
         mods_ro.setflags(write=False)
-        with pytest.raises((TypeError, ValueError)):
+        with pytest.raises(ValueError) as e:
             c2py_vnorm.vnorm(make_vec(), mods_ro)
+        assert "read-only" in str(e.value), e.value
 
     def test_dtype_rejected(self):
         """float32 numpy arrays are rejected by the format check."""
@@ -137,12 +138,9 @@ class TestBackendSpecific:
     def test_dlpack(self):
         """DLPACK backend: verify basic import and function signature.
 
-        DLPack has no writable/read-only distinction in its protocol
-        (the tensor data pointer is always writable from C's perspective).
-        The auto-dispatch path [ndarray, dlpack, buffer] handles this
-        correctly by trying ndarray first (which enforces writability).
-        A DLPack-only backend cannot reject writable requests because
-        the DLPack capsule carries no access-permission metadata.
+        Writability is covered by TestDLPackValidation: a DLPack 1.0
+        capsule carries a read-only flag, which is honoured; a legacy
+        capsule carries none and is never written through.
         """
         import c2py_vnorm_dlpack as m
 
@@ -265,14 +263,27 @@ class TestUnknownItemsize:
         msg = str(e.value)
         assert "format" in msg and "contiguous" not in msg, msg
 
-    def test_datetime_not_acquired(self):
-        """numpy datetimes export no PEP 3118 buffer: numpy's own reason
-        is reported (not "all backends exhausted", not "contiguous")."""
+    def test_datetime_rejected(self):
+        """numpy datetimes are rejected, never as "not contiguous".  On 3.x
+        numpy refuses the PEP 3118 export ("cannot include dtype 'M'");
+        on 2.7 the old buffer API exports raw bytes and vec.ndim == 2
+        rejects them."""
         vec = np.zeros((2, 3), dtype="M8[s]")
         with pytest.raises(ValueError) as e:
             c2py_vnorm.vnorm(vec, make_mods())
         msg = str(e.value)
-        assert "dtype 'M'" in msg, msg
+        assert "contiguous" not in msg, msg
+
+    def test_backend_error_is_reported(self):
+        """A backend that finds a real problem stops the search: its
+        reason reaches the caller instead of being replaced by "all
+        backends exhausted" (which a DLPack-only module gave for a
+        read-only output)."""
+        mods = make_mods()
+        mods.flags.writeable = False
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+        assert "read-only" in str(e.value), e.value
 
 
 class _LegacyDLPack(object):
@@ -348,7 +359,7 @@ class TestDLPackValidation:
     def test_read_only_output_rejected(self):
         mods = make_mods()
         mods.flags.writeable = False
-        with pytest.raises(TypeError) as e:
+        with pytest.raises(ValueError) as e:
             c2py_vnorm_dlpack.vnorm(make_vec(), mods)
         assert "read-only" in str(e.value), e.value
 
