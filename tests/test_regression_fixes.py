@@ -226,37 +226,28 @@ def test_INT_MAX_check_in_generated_code():
     code = generate(mod)
     # Must contain the INT_MAX guard
     assert "INT_MAX" in code, "Generated code must include INT_MAX overflow guard"
-    assert "buffer too large for int n" in code, "Generated code must have overflow error message"
+    assert "arr.n out of range for C int n" in code, "Generated code must have overflow error message"
     _pass()
 
 
-def test_INT_MAX_check_absent_when_no_int_n():
-    """INT_MAX guard should NOT be emitted when no int param maps from .n or .len."""
+def _module_for_map(py_params, sig_str, params, map_exprs):
+    """Return generated C for one function with a single overload."""
     mod = ModuleDef(
-        name="nointn",
+        name="rangecheck",
         sources=["test.c"],
         headers=[],
         functions=[
             FuncDef(
                 name="proc",
-                py_params=[
-                    PyParam("arr", "buffer", None),
-                    PyParam("count", "int", None),
-                ],
+                py_params=py_params,
                 return_type="void",
                 checks=[],
                 overloads=[
                     COverload(
-                        sig_str="void proc(float *arr, int count)",
-                        params=[
-                            CParam("arr", "const float *", "float", True, True),
-                            CParam("count", "int", "int", False, False),
-                        ],
+                        sig_str=sig_str,
+                        params=params,
                         return_type="void",
-                        map_exprs={
-                            "arr": parse_expr("arr.ptr"),
-                            "count": parse_expr("count"),
-                        },
+                        map_exprs=dict((k, parse_expr(v)) for k, v in map_exprs.items()),
                         when_expr=None,
                     )
                 ],
@@ -269,8 +260,129 @@ def test_INT_MAX_check_absent_when_no_int_n():
         timing=False,
         free_threading=False,
     )
-    code = generate(mod)
-    assert "buffer too large" not in code, "INT_MAX guard must not appear when no n/length-derived int params"
+    return generate(mod)
+
+
+def test_INT_MAX_check_absent_for_literal_and_ndim():
+    """No range check when the int receiver gets a literal or .ndim."""
+    for src in ("7", "arr.ndim", "arr.ndim + 1"):
+        code = _module_for_map(
+            [PyParam("arr", "buffer", None)],
+            "void proc(float *arr, int count)",
+            [
+                CParam("arr", "const float *", "float", True, True),
+                CParam("count", "int", "int", False, False),
+            ],
+            {"arr": "arr.ptr", "count": src},
+        )
+        assert "out of range for C" not in code, "no range check expected for count = {0}".format(src)
+    _pass()
+
+
+def test_range_check_on_derived_expressions():
+    """shape[i], arithmetic on .len and scalar ints are range-checked for int receivers."""
+    for src in ("arr.shape[0]", "arr.len / 4", "arr.n - 1", "count", "count * 2"):
+        code = _module_for_map(
+            [PyParam("arr", "buffer", None), PyParam("count", "int", None)],
+            "void proc(float *arr, int n)",
+            [
+                CParam("arr", "const float *", "float", True, True),
+                CParam("n", "int", "int", False, False),
+            ],
+            {"arr": "arr.ptr", "n": src},
+        )
+        assert "out of range for C int n" in code, "range check expected for n = {0}".format(src)
+    _pass()
+
+
+def test_scalar_int_held_as_long_long():
+    """Scalar ints are read with PyLong_AsLongLong and reach an int64_t receiver unchecked."""
+    code = _module_for_map(
+        [PyParam("arr", "buffer", None), PyParam("offset", "int", None)],
+        "void proc(float *arr, int64_t offset)",
+        [
+            CParam("arr", "const float *", "float", True, True),
+            CParam("offset", "int64_t", "int64_t", False, False),
+        ],
+        {"arr": "arr.ptr", "offset": "offset"},
+    )
+    assert "long long c_offset" in code
+    assert "PyLong_AsLongLong" in code
+    assert "PyLong_AsLong(" not in code
+    assert "out of range" not in code
+    assert "(int64_t)(c_offset)" in code
+    _pass()
+
+
+def _module_for_receiver(base_type, ctype):
+    """Return generated C for a single .len-derived scalar receiver of `ctype`."""
+    n_expr = parse_expr("buf.len")
+    mod = ModuleDef(
+        name="widthcheck",
+        sources=["test.c"],
+        headers=[],
+        functions=[
+            FuncDef(
+                name="process",
+                py_params=[PyParam("buf", "buffer", None)],
+                return_type="void",
+                checks=[],
+                overloads=[
+                    COverload(
+                        sig_str="void process(char *buf, {0} n)".format(ctype),
+                        params=[
+                            CParam("buf", "char *", "char", True, True),
+                            CParam("n", ctype, base_type, False, False),
+                        ],
+                        return_type="void",
+                        map_exprs={"buf": parse_expr("buf.ptr"), "n": n_expr},
+                        when_expr=None,
+                    )
+                ],
+                default_raise=None,
+                doc=None,
+                gil_release=False,
+            )
+        ],
+        constants={},
+        timing=False,
+        free_threading=False,
+    )
+    return generate(mod)
+
+
+def test_INT_MAX_guard_narrow_receivers():
+    """Narrow C receivers are range-checked against their own bounds."""
+    for ctype, lo, hi in [
+        ("int", "INT_MIN", "INT_MAX"),
+        ("int8_t", "-128", "127"),
+        ("int16_t", "-32768", "32767"),
+        ("int32_t", "INT_MIN", "INT_MAX"),
+        ("uint8_t", "0", "255"),
+        ("uint16_t", "0", "65535"),
+        ("uint32_t", "0", "4294967295"),
+        ("char", "CHAR_MIN", "CHAR_MAX"),
+    ]:
+        code = _module_for_receiver(ctype, ctype)
+        assert "< (long long){0} ||".format(lo) in code, "<{0}> lower bound".format(ctype)
+        assert "> (long long){0})".format(hi) in code, "<{0}> upper bound".format(ctype)
+        assert "buf.len out of range for C {0} n".format(ctype) in code, "<{0}> error message".format(ctype)
+    _pass()
+
+
+def test_INT_MAX_guard_dropped_for_wide_receivers():
+    """Wide/pointer-width receivers need no INT_MAX guard (full Py_ssize_t fits)."""
+    for base_type, ctype in [
+        ("size_t", "size_t"),
+        ("intptr_t", "intptr_t"),
+        ("ptrdiff_t", "ptrdiff_t"),
+        ("int64_t", "int64_t"),
+        ("uint64_t", "uint64_t"),
+    ]:
+        code = _module_for_receiver(base_type, ctype)
+        assert "out of range" not in code, "wide <{0}> must NOT emit a range check".format(ctype)
+        # The value is still cast to the receiver type (no truncation, so cast-only).
+        assert "({0})(".format(ctype) in code, "wide <{0}> should still cast to its type".format(ctype)
     _pass()
 
 
@@ -430,8 +542,8 @@ def test_optional_int_default_zero():
     )
     code = generate(mod)
     # Verify default=0 appears in the C code for local var initialization
-    assert "int c_flags = 0;" in code, (
-        "Optional int=0 must emit 'int c_flags = 0;', got: %s" % code[code.find("c_flags") :][:50]
+    assert "long long c_flags = 0;" in code, (
+        "Optional int=0 must emit 'long long c_flags = 0;', got: %s" % code[code.find("c_flags") :][:50]
         if "c_flags" in code
         else "no c_flags"
     )

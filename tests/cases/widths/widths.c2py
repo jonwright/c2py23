@@ -1,0 +1,64 @@
+# Integer width coverage: > 2 GiB buffers, narrow receivers, 64-bit outputs.
+{
+    "module": "widthmod",
+    "source": ["widths.c"],
+    "constants": {
+        "BIG": 1099511627776,
+        "INT64_MIN": -9223372036854775808,
+        "INT64_MAX": 9223372036854775807,
+    },
+    "functions": [
+        {
+            "py_sig": "last_byte(data: buffer) -> void",
+            "checks": ["data.format == 'B'"],
+            "c_overloads": [
+                {
+                    "sig": "last_byte(const uint8_t *data, size_t n, int64_t *nbytes, uint8_t *last)",
+                    "map": {"data": "data.ptr", "n": "data.len"},
+                    "outputs": {"nbytes": "int64_t", "last": "uint8_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "small_len(data: buffer) -> void",
+            "checks": ["data.format == 'B'"],
+            "c_overloads": [
+                {
+                    "sig": "small_len(const uint8_t *data, uint8_t n, int32_t *got)",
+                    "map": {"data": "data.ptr", "n": "data.len"},
+                    "outputs": {"got": "int32_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "echo_u32(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_u32(uint32_t v, uint32_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "uint32_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "echo_i64(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_i64(int64_t v, int64_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "echo_u64(v: int) -> void",
+            "c_overloads": [
+                {
+                    "sig": "echo_u64(uint64_t v, uint64_t *out)",
+                    "map": {"v": "v"},
+                    "outputs": {"out": "uint64_t"},
+                },
+            ],
+        },
+    ],
+}

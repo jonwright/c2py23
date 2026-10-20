@@ -27,6 +27,15 @@ if sys.version_info[0] >= 3:
 else:
     _STRING_TYPES = (str, unicode)  # noqa: F821
 
+if sys.version_info[0] >= 3:
+    _INTEGER_TYPES = (int,)
+else:
+    _INTEGER_TYPES = (int, long)  # noqa: F821
+
+# Integer constants and int defaults are emitted as C long long.
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
+
 # ---------------------------------------------------------------------------
 # 7-bit ASCII validation
 # ---------------------------------------------------------------------------
@@ -326,8 +335,10 @@ def from_c2py_dict(raw_dict, path="<dict>"):
     if not isinstance(constants, dict):
         raise ValueError("'constants' must be a dict in {}".format(path))
     for k, v in constants.items():
-        if not isinstance(v, int):
+        if not isinstance(v, _INTEGER_TYPES) or isinstance(v, bool):
             raise ValueError("Constant '{}' in {} must be an integer, got {}".format(k, path, type(v)))
+        if not _INT64_MIN <= v <= _INT64_MAX:
+            raise ValueError("Constant '{}' in {} is out of the int64 range: {}".format(k, path, v))
 
     timing = bool(raw_dict.get("timing", False))
     free_threading = bool(raw_dict.get("free_threading", False))
@@ -443,6 +454,11 @@ def _parse_py_sig(sig_str, path):
                             "in '{}'".format(pname, default_str, sig_str)
                         )
                     default = int(default_str)
+                    if not _INT64_MIN <= default <= _INT64_MAX:
+                        raise ValueError(
+                            "Integer param '{}' default '{}' is out of the int64 range "
+                            "in '{}'".format(pname, default_str, sig_str)
+                        )
                 else:
                     default = float(default_str)
                 seen_optional = True
@@ -565,6 +581,27 @@ def _parse_c_sig(sig_str, path):
     params = _parse_c_params(params_str)
 
     return name, params, return_type
+
+
+def _check_outputs(outputs, c_params, sig_str, path):
+    """Each output must name a non-const scalar pointer param of the same type.
+
+    The wrapper declares the output local with this type and passes its
+    address, so a mismatch would let the callee write past the local.
+    """
+    by_name = dict((p.name, p) for p in c_params)
+    for oname, otype in (outputs or {}).items():
+        cp = by_name.get(oname)
+        if cp is None or not cp.is_pointer or cp.array_dims or cp.is_const:
+            raise ValueError(
+                "output '{}' must be a non-const scalar pointer parameter of '{}' in {}".format(oname, sig_str, path)
+            )
+        if otype != cp.base_type or otype == "void":
+            raise ValueError(
+                "output '{}' is declared '{}' but '{}' takes {} * in {}".format(
+                    oname, otype, sig_str, cp.base_type, path
+                )
+            )
 
 
 def _parse_c_params(params_str):
@@ -1103,6 +1140,7 @@ def _parse_func(raw, path):
                 v_outputs = v.get("outputs", {})
                 if v_outputs and not isinstance(v_outputs, dict):
                     raise ValueError("'outputs' must be a dict in {}".format(path))
+                _check_outputs(v_outputs, v_params, v_sig_str, path)
                 v_doc = v.get("doc")
                 if v_doc is not None:
                     v_doc = _check_ascii(v_doc, "variant.doc", path)
@@ -1200,6 +1238,7 @@ def _parse_func(raw, path):
             outputs = ol.get("outputs", {})
             if outputs and not isinstance(outputs, dict):
                 raise ValueError("'outputs' must be a dict in {}".format(path))
+            _check_outputs(outputs, c_params, sig_str, path)
             oname = ol.get("name")
             if oname is not None and not isinstance(oname, _STRING_TYPES):
                 oname = str(oname)

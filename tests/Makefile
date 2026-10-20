@@ -127,6 +127,7 @@ MODULES := \
 	tests/cases/freethreading/freethreadmod$(EXT) \
 	tests/cases/simd_dispatch/simd_fillmod$(EXT) \
 	tests/cases/variants/varcmod$(EXT) \
+	tests/cases/widths/widthmod$(EXT) \
 	examples/kissfft_wrap/kissfftmod$(EXT) \
 	examples/lz4_wrap/lz4mod$(EXT) \
 	$(BENCH_TARGETS)
