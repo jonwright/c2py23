@@ -790,16 +790,18 @@ static inline int
 c2py_check_no_overlap(c2py_ptr_info *const *infos, int n_writable, int n)
 {
     int i, j;
+    uintptr_t a, b;
     for (i = 0; i < n_writable; i++) {
+        /* An empty buffer occupies no bytes: nothing can be written
+         * through it, so it overlaps nothing (a[5:5] inside a). */
+        if (infos[i]->len <= 0) continue;
+        a = (uintptr_t)infos[i]->ptr;
         for (j = 0; j < n; j++) {
-            if (i == j) continue;
-            if ((char*)infos[i]->ptr >= (char*)infos[j]->ptr &&
-                (char*)infos[i]->ptr < (char*)infos[j]->ptr + infos[j]->len) {
-                PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
-                return -1;
-            }
-            if ((char*)infos[j]->ptr >= (char*)infos[i]->ptr &&
-                (char*)infos[j]->ptr < (char*)infos[i]->ptr + infos[i]->len) {
+            if (i == j || infos[j]->len <= 0) continue;
+            b = (uintptr_t)infos[j]->ptr;
+            /* Integer compare: relational comparison of pointers into
+             * different objects is undefined in C. */
+            if (a < b + (uintptr_t)infos[j]->len && b < a + (uintptr_t)infos[i]->len) {
                 PyErr_SetString(PyExc_ValueError, "buffer aliasing forbidden");
                 return -1;
             }
