@@ -23,7 +23,6 @@ from c2py23.parser import (
     _escape_c_str,
     _float_literal,
     _is_ptr_expr,
-    _expr_is_count_or_len,
     _is_simple_expr,
     _expr_refers_to,
     _expr_to_c,
@@ -33,29 +32,97 @@ from c2py23.parser import (
 )
 from c2py23.invariant_checker import verify_c_invariants
 
-# C receiving-parameter base types that are *narrower* than Py_ssize_t on at
-# least one supported platform.  For these we keep the INT_MAX overflow guard
-# on `.len` / `.n` map expressions: an oversized Py_buffer.len (> 2 GiB) must
-# not be silently truncated when cast to a narrow C integer parameter.
+# Value range of each C integer receiver narrower than 64 bits.  A map
+# expression built from Py_ssize_t buffer attributes (.len, .n, .shape[i], ...)
+# or from a scalar int (held as long long) is range-checked against these
+# bounds before the call, so an oversized value raises ValueError instead of
+# being silently truncated.  Bounds are C expressions compared as long long;
+# MSVC < 2010 has no <stdint.h> limit macros, so fixed-width bounds are
+# literals.
 #
-# Pointer-width types (size_t, intptr_t, ptrdiff_t) and the 64-bit fixed-width
-# types (int64_t, uint64_t) are as wide as, or wider than, Py_ssize_t on every
-# platform -- including LLP64 (32-bit Windows), where Py_ssize_t itself tops out
-# at 2 GiB and is exactly representable.  For those we emit no guard, so a
-# single contiguous mmap up to Py_ssize_t max can be passed in one go.
-_GUARD_INT_MAX_COUNT_TYPES = frozenset(
-    {
-        "int",
-        "int8_t",
-        "int16_t",
-        "int32_t",
-        "uint8_t",
-        "uint16_t",
-        "uint32_t",
-        "char",
-        "_Bool",
-    }
-)
+# Receivers absent from this table need no check: size_t, intptr_t, ptrdiff_t,
+# int64_t and uint64_t hold every Py_ssize_t value on every platform (Py_ssize_t
+# is 32-bit on ILP32 and 64-bit on LP64 and LLP64), so a buffer larger than
+# 2 GiB can be passed in one go.  _Bool, float and double convert by value, not
+# by truncation.
+_NARROW_INT_RANGE = {
+    "int": ("INT_MIN", "INT_MAX"),
+    "int32_t": ("INT_MIN", "INT_MAX"),
+    "int16_t": ("-32768", "32767"),
+    "int8_t": ("-128", "127"),
+    "char": ("CHAR_MIN", "CHAR_MAX"),
+    "uint32_t": ("0", "4294967295"),
+    "uint16_t": ("0", "65535"),
+    "uint8_t": ("0", "255"),
+}
+
+# Python conversion for each C scalar output type.
+_OUTPUT_FROM_C = {
+    "int": "PyLong_FromLong((long){0})",
+    "int8_t": "PyLong_FromLong((long){0})",
+    "int16_t": "PyLong_FromLong((long){0})",
+    "int32_t": "PyLong_FromLong((long){0})",
+    "uint8_t": "PyLong_FromLong((long){0})",
+    "uint16_t": "PyLong_FromLong((long){0})",
+    "char": "PyLong_FromLong((long){0})",
+    "_Bool": "PyLong_FromLong((long){0})",
+    "uint32_t": "PyLong_FromUnsignedLongLong((unsigned long long){0})",
+    "int64_t": "PyLong_FromLongLong((long long){0})",
+    "intptr_t": "PyLong_FromLongLong((long long){0})",
+    "ptrdiff_t": "PyLong_FromLongLong((long long){0})",
+    "uint64_t": "PyLong_FromUnsignedLongLong((unsigned long long){0})",
+    "size_t": "PyLong_FromUnsignedLongLong((unsigned long long){0})",
+    "float": "PyFloat_FromDouble((double){0})",
+    "double": "PyFloat_FromDouble((double){0})",
+}
+
+
+def _int_literal(value):
+    """C literal for a Python int in the int64 range (C89-safe, no suffix)."""
+    value = int(value)
+    if -2147483648 <= value <= 2147483647:
+        return str(value)
+    if value == -9223372036854775808:
+        return "(-(long long)9223372036854775807 - 1)"
+    return "((long long){0})".format(value) if value > 0 else "(-(long long){0})".format(-value)
+
+
+def _expr_needs_range_check(expr, scalar_params):
+    """True if a map expression is integer-valued and may exceed a narrow C int.
+
+    Buffer lengths, shapes and strides are Py_ssize_t and int scalars are long
+    long, so any of them can overflow a narrow receiver.  ndim, axis numbers
+    and literals cannot.  Pointers and float-valued expressions are not
+    integer counts and are never range-checked.
+    """
+    scalar_types = dict((p.name, p.pytype) for p in scalar_params)
+
+    def walk(e):
+        # Returns (wide, non_int).
+        if isinstance(e, Var):
+            if scalar_types.get(e.name) == "int":
+                return True, False
+            return False, e.name in scalar_types
+        if isinstance(e, Attr):
+            if e.attr in ("len", "n", "itemsize", "slow_dim", "fast_dim"):
+                return True, False
+            if e.attr in ("ndim", "slow_axis", "fast_axis"):
+                return False, False
+            return False, True
+        if isinstance(e, Subscript):
+            return True, False
+        if isinstance(e, IntLit):
+            return False, False
+        if isinstance(e, UnaryOp):
+            return walk(e.operand)
+        if isinstance(e, BinOp):
+            lw, ln = walk(e.left)
+            rw, rn = walk(e.right)
+            return lw or rw, ln or rn
+        return False, True
+
+    wide, non_int = walk(expr)
+    return wide and not non_int
 
 
 class CBuilder:
@@ -173,20 +240,10 @@ class CBuilder:
         self.emit(indent + "_c2py_tup = PyTuple_New({0});".format(n))
         self.emit(indent + "if (_c2py_tup == NULL) return NULL;")
 
-    def emit_output_long(self, index, val, ctype="int", indent="    "):
-        if ctype in ("int64_t",):
-            self.emit(indent + "_c2py_obj{0} = PyLong_FromLongLong((long long){1});".format(index, val))
-        elif ctype in ("uint64_t",):
-            self.emit(indent + "_c2py_obj{0} = PyLong_FromUnsignedLongLong({1});".format(index, val))
-        else:
-            self.emit(indent + "_c2py_obj{0} = PyLong_FromLong((long){1});".format(index, val))
+    def emit_output(self, index, val, ctype, indent="    "):
+        self.emit(indent + "_c2py_obj{0} = {1};".format(index, _OUTPUT_FROM_C[ctype].format(val)))
         self._check_output_obj("_c2py_obj{0}".format(index), indent)
         self.emit(indent + "PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});".format(index))
-
-    def emit_output_double(self, index, val, indent="    "):
-        self.emit(indent + "_c2py_obj{0} = PyFloat_FromDouble((double){1});".format(index, val))
-        self._check_output_obj("_c2py_obj{0}".format(index), indent)
-        self.emit("    PyTuple_SetItem(_c2py_tup, {0}, _c2py_obj{0});".format(index))
 
     # -- Restrict and contiguity checks --
 
@@ -568,7 +625,7 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
             if p.name in void_ptr_names:
                 params_c.append("intptr_t c_{0}".format(p.name))
             else:
-                params_c.append("int c_{0}".format(p.name))
+                params_c.append("long long c_{0}".format(p.name))
         else:
             params_c.append("double c_{0}".format(p.name))
 
@@ -760,22 +817,10 @@ def _emit_c_call(
         if p.name in outputs:
             ctype = outputs[p.name]
             var_name = "_out_{0}".format(p.name)
-            if ctype in (
-                "int",
-                "int8_t",
-                "int16_t",
-                "int32_t",
-                "uint8_t",
-                "uint16_t",
-                "uint32_t",
-                "int64_t",
-                "uint64_t",
-            ):
-                emitl("int {0} = 0;".format(var_name))
-            elif ctype in ("float",):
-                emitl("float {0} = 0.0f;".format(var_name))
-            else:
-                emitl("double {0} = 0.0;".format(var_name))
+            # Declare with the exact C type the callee writes through.
+            if ctype not in _OUTPUT_FROM_C:
+                raise ValueError("unsupported output type '{0}' for param '{1}'".format(ctype, p.name))
+            emitl("{0} {1} = 0;".format(ctype, var_name))
 
     # Build args
     args = []
@@ -787,9 +832,8 @@ def _emit_c_call(
         if expr is None:
             continue
         arg_c = _expr_to_c(expr, buf_params, scalar_params, ol)
-        # Add casts for void* / type conversion.
-        # IMPORTANT: save pre-cast expression for INT_MAX comparison
-        # (comparison must use raw Py_ssize_t, not truncated int).
+        # Add casts for void* / type conversion.  raw_c keeps the pre-cast
+        # value for the range check below.
         raw_c = arg_c
         if p.is_pointer and _is_ptr_expr(expr):
             raw_c = "(" + p.ctype + ")" + raw_c
@@ -797,25 +841,21 @@ def _emit_c_call(
         elif p.is_pointer and p.base_type == "void":
             raw_c = "(void *)(intptr_t)" + raw_c
             arg_c = raw_c
-        elif not p.is_pointer and p.base_type == "int" and _expr_is_count_or_len(expr):
-            arg_c = "(int)(" + arg_c + ")"
-        elif not p.is_pointer and p.base_type == "float":
-            arg_c = "(float)(" + arg_c + ")"
-        elif not p.is_pointer and p.base_type not in ("int", "double", "void", "float"):
+        elif not p.is_pointer and p.base_type not in ("double", "void"):
             arg_c = "(" + p.ctype + ")(" + arg_c + ")"
-        # Check for INT_MAX overflow (use raw Py_ssize_t expression, not casted).
-        # Only narrow C receivers can truncate a Py_ssize_t; pointer-width and
-        # 64-bit receivers can hold a full Py_ssize_t on every platform, so for
-        # those no guard is needed (they may accept a > 2 GiB buffer in one go).
-        if not _expr_is_count_or_len(expr) or p.base_type not in _GUARD_INT_MAX_COUNT_TYPES:
-            args.append(arg_c)
-        else:
-            emitl("if (({0}) > (Py_ssize_t)INT_MAX) {{".format(raw_c))
+        # Range check before narrowing (see _NARROW_INT_RANGE).
+        if not p.is_pointer and p.base_type in _NARROW_INT_RANGE and _expr_needs_range_check(expr, scalar_params):
+            lo, hi = _NARROW_INT_RANGE[p.base_type]
+            emitl("if ((long long)({0}) < (long long){1} || (long long)({0}) > (long long){2}) {{".format(raw_c, lo, hi))
             emitl("    PyErr_SetString(PyExc_ValueError,")
-            emitl('        "buffer too large for int n (> INT_MAX elements)");')
+            emitl(
+                '        "{0} out of range for C {1} {2}");'.format(
+                    _escape_c_str(_expr_to_source(expr)), p.base_type, p.name
+                )
+            )
             emitl("    return NULL;")
             emitl("}")
-            args.append(arg_c)
+        args.append(arg_c)
 
     call_str = c_name + "(" + ", ".join(args) + ")"
 
@@ -912,45 +952,11 @@ def _emit_c_call(
     if n == 1:
         ctype = out_items[0][1]
         val = out_items[0][2]
-        if ctype in (
-            "int",
-            "int8_t",
-            "int16_t",
-            "int32_t",
-            "uint8_t",
-            "uint16_t",
-            "uint32_t",
-        ):
-            emitl("return PyLong_FromLong((long){0});".format(val))
-        elif ctype == "int64_t":
-            emitl("return PyLong_FromLongLong((long long){0});".format(val))
-        elif ctype == "uint64_t":
-            emitl("return PyLong_FromUnsignedLongLong({0});".format(val))
-        elif ctype in ("float", "double"):
-            emitl("return PyFloat_FromDouble((double){0});".format(val))
-        else:
-            emitl("return PyFloat_FromDouble((double){0});".format(val))
+        emitl("return {0};".format(_OUTPUT_FROM_C[ctype].format(val)))
     else:
         b.emit_tuple_new(n, indent)
         for i, (name, ctype, val) in enumerate(out_items):
-            if ctype in (
-                "int",
-                "int8_t",
-                "int16_t",
-                "int32_t",
-                "uint8_t",
-                "uint16_t",
-                "uint32_t",
-            ):
-                b.emit_output_long(i, val, "int", indent)
-            elif ctype == "int64_t":
-                b.emit_output_long(i, val, "int64_t", indent)
-            elif ctype == "uint64_t":
-                b.emit_output_long(i, val, "uint64_t", indent)
-            elif ctype in ("float", "double"):
-                b.emit_output_double(i, val, indent)
-            else:
-                b.emit_output_double(i, val, indent)
+            b.emit_output(i, val, ctype, indent)
         emitl("return _c2py_tup;")
     emitl("}")
 
@@ -1284,16 +1290,16 @@ def _make_compare_diag(compare, buf_params, scalar_params, name):
             lines = [
                 "char _c2py_err[256];",
                 "snprintf(_c2py_err, sizeof(_c2py_err), "
-                '"{0}{1} (got %ld). '
+                '"{0}{1} (got " C2PY_LLD "). '
                 'Buffer must be C-contiguous (use slow_axis=0 or [][] notation).",'
-                " (long)({2}));".format(prefix, escaped_src, left_c),
+                " (long long)({2}));".format(prefix, escaped_src, left_c),
             ]
         else:
             lines = [
                 "char _c2py_err[256];",
                 "snprintf(_c2py_err, sizeof(_c2py_err), "
-                '"{0}{1} (got %ld vs %ld)",'
-                " (long)({2}), (long)({3}));".format(prefix, escaped_src, left_c, right_c),
+                '"{0}{1} (got " C2PY_LLD " vs " C2PY_LLD ")",'
+                " (long long)({2}), (long long)({3}));".format(prefix, escaped_src, left_c, right_c),
             ]
         return lines
 
@@ -1403,12 +1409,12 @@ def _emit_wrapper_locals(b, buf_params, scalar_params, func, timing=False):
                 if default_val is None:
                     b.emit("    intptr_t c_%s = 0;" % p.name)
                 else:
-                    b.emit("    intptr_t c_%s = %ld;" % (p.name, int(default_val)))
+                    b.emit("    intptr_t c_%s = %s;" % (p.name, _int_literal(default_val)))
             else:
                 if default_val is None:
-                    b.emit("    int c_%s = 0;" % p.name)
+                    b.emit("    long long c_%s = 0;" % p.name)
                 else:
-                    b.emit("    int c_%s = %d;" % (p.name, int(default_val)))
+                    b.emit("    long long c_%s = %s;" % (p.name, _int_literal(default_val)))
         else:
             if default_val is None:
                 b.emit("    double c_%s = 0.0;" % p.name)
@@ -1667,14 +1673,11 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
                 b.emit("        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;")
                 b.emit("        c_{0} = (intptr_t)_c2py_tmp;".format(p.name))
             else:
-                b.emit("        long _c2py_tmp = PyLong_AsLong(args[{0}]);".format(idx))
+                # Held as long long; each narrow C receiver is range-checked
+                # at its call site (see _NARROW_INT_RANGE).
+                b.emit("        long long _c2py_tmp = PyLong_AsLongLong(args[{0}]);".format(idx))
                 b.emit("        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;")
-                b.emit("        if (_c2py_tmp < (long)INT_MIN || _c2py_tmp > (long)INT_MAX) {{".format())
-                b.emit("            PyErr_SetString(PyExc_ValueError,")
-                b.emit('                "int parameter {0} out of range (must fit in C int)");'.format(p.name))
-                b.emit("            return NULL;")
-                b.emit("        }")
-                b.emit("        c_{0} = (int)_c2py_tmp;".format(p.name))
+                b.emit("        c_{0} = _c2py_tmp;".format(p.name))
             b.emit("    }")
         else:
             b.emit(
@@ -1832,7 +1835,7 @@ def _emit_constants(b, mod):
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
             b.emit('        c2py_set_module_attr(module, "{}",'.format(_escape_c_str(cname)))
-            b.emit("            PyLong_FromLong({}));".format(cvalue))
+            b.emit("            PyLong_FromLongLong({}));".format(_int_literal(cvalue)))
     if mod.timing:
         b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
         b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")

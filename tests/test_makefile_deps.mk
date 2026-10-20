@@ -309,3 +309,20 @@ tests/cases/variants/varcmod$(EXT): tests/cases/variants/varcmod_wrapper.c tests
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/widths/widthmod_wrapper.c: tests/cases/widths/widths.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/widths/widths.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/widths/widthmod$(EXT): tests/cases/widths/widthmod_wrapper.c tests/cases/widths/widths.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/widths \
+		tests/cases/widths/widthmod_wrapper.c tests/cases/widths/widths.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/widths/widthmod$(EXT): tests/cases/widths/widthmod_wrapper.c tests/cases/widths/widths.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/widths \
+		tests/cases/widths/widthmod_wrapper.c tests/cases/widths/widths.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+

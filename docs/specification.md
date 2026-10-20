@@ -291,6 +291,11 @@ minval, maxval = statmod.stats(data)
 
 If there is also a C return value, it comes first in the tuple.
 
+Each output type must equal the C parameter's pointee type (`"int64_t"` for
+`int64_t *`); the parser rejects a mismatch, since the wrapper declares the
+stack variable with that type.  Integer outputs convert to Python `int` with
+their full range (`uint32_t`, `int64_t`, `uint64_t`, `size_t` included).
+
 **Tuple order**: The order of values in the returned tuple always follows the C
 function parameter order (left to right in the C signature), not the
 dictionary insertion order. If the function also has a C return value, it
@@ -316,7 +321,8 @@ Parameters:
   (shape, strides, dtype). Acquired via one of three backends, tried in the order
   specified by the `acquire:` key (default: ndarray struct-cast, then PEP 3118
   buffer protocol). Const pointers are read-only; non-const pointers are read-write.
-- `int` -- Python int, converted to C `int`
+- `int` -- Python int, held as C `long long` (int64 range; values outside it
+  raise `OverflowError`).  See "Integer receivers" for narrowing to the C type.
 - `float` -- Python float, converted to C `double`
 
 Returns:
@@ -451,6 +457,19 @@ Buffer attribute reference:
 
 For scalar Python parameters (`int`, `float`), the expression is simply the
 parameter name. The generated code uses the local C variable (`c_name`).
+
+#### Integer receivers
+
+Buffer lengths, shapes and strides are `Py_ssize_t` and `int` scalars are
+`long long`.  When such a map expression feeds a C integer parameter narrower
+than 64 bits (`int`, `int8_t` ... `int32_t`, `uint8_t` ... `uint32_t`, `char`),
+the wrapper checks the value against that type's range before the call and
+raises `ValueError` ("`<expr>` out of range for C `<type>` `<name>`") instead of
+truncating.  `size_t`, `intptr_t`, `ptrdiff_t`, `int64_t` and `uint64_t`
+receivers hold every `Py_ssize_t` on every platform and are passed unchecked,
+so a buffer larger than 2 GiB reaches them in one call.  Literals, `ndim` and
+the axis attributes are never checked.  Use a 64-bit or pointer-width
+receiver for lengths of large buffers.
 
 ### When Expressions
 
