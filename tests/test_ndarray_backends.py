@@ -225,6 +225,33 @@ class TestByteOrderRejection:
 
 
 @needs_modules
+class TestSizeOneDims:
+    """numpy leaves the stride of a length-1 axis raw (a[None, :] has
+    strides (0, 8)) and only normalises it in its PEP 3118 export.  The
+    contiguity check must ignore it, so every backend accepts the array."""
+
+    def _vec(self):
+        v = np.array([1.0, 2.0, 3.0])[None, :]
+        assert v.strides[0] == 0, v.strides
+        return v
+
+    def test_ndarray_backend(self):
+        mods = np.zeros(1)
+        c2py_vnorm_ndarray.vnorm(self._vec(), mods)
+        assert np.allclose(mods, [np.sqrt(14.0)])
+
+    def test_default_backend(self):
+        mods = np.zeros(1)
+        c2py_vnorm.vnorm(self._vec(), mods)
+        assert np.allclose(mods, [np.sqrt(14.0)])
+
+    def test_buffer_backend(self):
+        mods = np.zeros(1)
+        c2py_vnorm_buffer.vnorm(self._vec(), mods)
+        assert np.allclose(mods, [np.sqrt(14.0)])
+
+
+@needs_modules
 class TestComplexRejection:
     """Complex types are intentionally unsupported (docs/design.md #53).
     numpy exports complex128 as PEP 3118 "Zd"; a last-character format

@@ -835,23 +835,16 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
         *fast_axis = (int)(info->ndim - 1);
         return 0;
     }
+    /* An axis of length 1 is never stepped along, so its stride is
+     * irrelevant: numpy leaves it raw (0 for a[None, :], junk under
+     * NPY_RELAXED_STRIDES_DEBUG) and only normalises it in its PEP 3118
+     * export.  C order is tested first so that an array that is both
+     * (e.g. (1, N) or (N, 1)) reports the same axes on every backend. */
     if (info->ndim >= 1) {
-        _expected = info->itemsize;
-        /* check F-contiguous (column-major): first dim varies fastest */
-        for (_d = 0; _d < info->ndim; _d++) {
-            if (info->strides[_d] < 0) { _ok = 0; break; }
-            if (info->strides[_d] != _expected) { _ok = 0; break; }
-            _expected *= info->shape[_d];
-        }
-        if (_ok) {
-            *slow_axis = (int)(info->ndim - 1);
-            *fast_axis = 0;
-            return 0;
-        }
         /* check C-contiguous (row-major): last dim varies fastest */
-        _ok = 1;
         _expected = info->itemsize;
         for (_d = info->ndim - 1; _d >= 0; _d--) {
+            if (info->shape[_d] == 1) continue;
             if (info->strides[_d] < 0) { _ok = 0; break; }
             if (info->strides[_d] != _expected) { _ok = 0; break; }
             _expected *= info->shape[_d];
@@ -859,6 +852,20 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
         if (_ok) {
             *slow_axis = 0;
             *fast_axis = (int)(info->ndim - 1);
+            return 0;
+        }
+        /* check F-contiguous (column-major): first dim varies fastest */
+        _ok = 1;
+        _expected = info->itemsize;
+        for (_d = 0; _d < info->ndim; _d++) {
+            if (info->shape[_d] == 1) continue;
+            if (info->strides[_d] < 0) { _ok = 0; break; }
+            if (info->strides[_d] != _expected) { _ok = 0; break; }
+            _expected *= info->shape[_d];
+        }
+        if (_ok) {
+            *slow_axis = (int)(info->ndim - 1);
+            *fast_axis = 0;
             return 0;
         }
     }
