@@ -185,7 +185,7 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         return NULL;
 
     /* check: points.format == 'd' */
-    if (!((!info_points->format || (info_points->format[strlen(info_points->format) - 1] == 'd' && c2py_format_is_native(info_points->format))))) {
+    if (!((!info_points->format || c2py_format_type(info_points->format) == 'd'))) {
         char _c2py_err[256];
         const char *_fmt = info_points->format ? info_points->format : "(null)";
         snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'points' check failed: points.format == 'd' (got format='%s')", _fmt);
@@ -193,7 +193,7 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         return NULL;
     }
     /* check: out.format == 'd' */
-    if (!((!info_out->format || (info_out->format[strlen(info_out->format) - 1] == 'd' && c2py_format_is_native(info_out->format))))) {
+    if (!((!info_out->format || c2py_format_type(info_out->format) == 'd'))) {
         char _c2py_err[256];
         const char *_fmt = info_out->format ? info_out->format : "(null)";
         snprintf(_c2py_err, sizeof(_c2py_err), "transform: arg 'out' check failed: out.format == 'd' (got format='%s')", _fmt);

@@ -1365,13 +1365,6 @@ _FORMAT_TO_CTYPE = {
     "?": "uint8_t",
 }
 
-# Byte-order-sensitive format chars (itemsize > 1).  c2py23 only
-# supports native byte order; an explicit non-native PEP 3118 prefix
-# ('<', '>', '!') on one of these must be rejected rather than silently
-# read as native (see c2py_format_is_native in c2py_runtime.h). 1-byte
-# types (b, B, ?, c) are byte-order-invariant and skip the check.
-_ENDIAN_SENSITIVE_FORMAT_CHARS = frozenset("hHiIlLqQfdeZz")
-
 _FORMAT_CHAR_TO_NAME = {
     "b": "int8",
     "B": "uint8",
@@ -1387,8 +1380,6 @@ _FORMAT_CHAR_TO_NAME = {
     "c": "char",
     "?": "bool",
     "e": "half-float",
-    "Z": "complex64",
-    "z": "complex128",
 }
 
 _FUNC_DECL_RE = re.compile(
@@ -1811,29 +1802,19 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
         op = expr.op
 
-        # String comparison with format char: use last-char match for
-        # PEP 3118 format strings (handles "d", "<d", "=d", etc.)
+        # String comparison with a format char: c2py_format_type() accepts
+        # only a single native-order element ("d", "<d", "=d"), so complex
+        # ("Zd"), repeat counts and structs never match a plain type char.
         # On old buffers (format == NULL), treat as matching (we can't check)
         if isinstance(expr.left, StrLit) or isinstance(expr.right, StrLit):
             str_lit = expr.left if isinstance(expr.left, StrLit) else expr.right
             fmt_expr = right if isinstance(expr.left, StrLit) else left
             if len(str_lit.value) == 1:
                 ch = str_lit.value
-                endian_sensitive = ch in _ENDIAN_SENSITIVE_FORMAT_CHARS
                 if op == "==":
-                    if endian_sensitive:
-                        result = "(!{0} || ({0}[strlen({0}) - 1] == '{1}' && c2py_format_is_native({0})))".format(
-                            fmt_expr, ch
-                        )
-                    else:
-                        result = "(!{0} || {0}[strlen({0}) - 1] == '{1}')".format(fmt_expr, ch)
+                    result = "(!{0} || c2py_format_type({0}) == '{1}')".format(fmt_expr, ch)
                 elif op == "!=":
-                    if endian_sensitive:
-                        result = "({0} && ({0}[strlen({0}) - 1] != '{1}' || !c2py_format_is_native({0})))".format(
-                            fmt_expr, ch
-                        )
-                    else:
-                        result = "({0} && {0}[strlen({0}) - 1] != '{1}')".format(fmt_expr, ch)
+                    result = "({0} && c2py_format_type({0}) != '{1}')".format(fmt_expr, ch)
                 # 'l'/'L' are platform-sized in PEP 3118: sizeof(long)
                 # differs between LP64 (8) and LLP64 (4).  Add an
                 # itemsize check so the same .c2py works on both.
@@ -1847,10 +1828,11 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
                 return "strcmp({}, {}) != 0".format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for strings".format(op))
-        # Both sides are format attributes: compare the last character
-        # of each format string (handles endian prefixes like "<d", "=d").
-        # Pointer comparison is wrong -- PyPy cpyext may allocate distinct
-        # format strings with identical content.
+        # Both sides are format attributes: compare the element type of
+        # each format string (c2py_format_type handles "<d", "=d", and
+        # rejects complex/struct formats).  Pointer comparison is wrong --
+        # PyPy cpyext may allocate distinct format strings with identical
+        # content.
         elif (
             isinstance(expr.left, Attr)
             and expr.left.attr == "format"
@@ -1860,14 +1842,12 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             if op == "==":
                 return (
                     "((!{0} && !{1}) || ({0} && {1} && "
-                    "{0}[strlen({0}) - 1] == {1}[strlen({1}) - 1] && "
-                    "c2py_format_is_native({0}) && c2py_format_is_native({1})))"
+                    "c2py_format_type({0}) != '\\0' && c2py_format_type({0}) == c2py_format_type({1})))"
                 ).format(left, right)
             elif op == "!=":
                 return (
                     "({0} && {1} && ("
-                    "{0}[strlen({0}) - 1] != {1}[strlen({1}) - 1] || "
-                    "!c2py_format_is_native({0}) || !c2py_format_is_native({1})))"
+                    "c2py_format_type({0}) == '\\0' || c2py_format_type({0}) != c2py_format_type({1})))"
                 ).format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for format attributes".format(op))

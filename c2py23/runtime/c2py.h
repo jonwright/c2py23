@@ -963,6 +963,31 @@ c2py_format_is_native(const char *fmt)
 #endif
 }
 
+/* Type character of a single-element, native-order PEP 3118 format, or
+ * '\0' for anything else.  Accepted: one type char with an optional
+ * byte-order prefix ("d", "<d", "=d", "@d"), the prefix being non-native
+ * only for 1-byte types.  Rejected: complex ("Zd": no complex type, see
+ * docs/design.md #53), repeat counts ("2d"), structs ("T{...}") and
+ * non-native order.  Comparing only the last character let all of these
+ * through as plain 'd'.  Callers treat a NULL format (old buffer API) as
+ * unknown-but-allowed before calling this. */
+static inline char
+c2py_format_type(const char *fmt)
+{
+    char c;
+
+    if (fmt[0] == '@' || fmt[0] == '=' || fmt[0] == '<' || fmt[0] == '>' || fmt[0] == '!') {
+        if (!c2py_format_is_native(fmt) && fmt[1] != 'b' && fmt[1] != 'B'
+            && fmt[1] != 'c' && fmt[1] != '?')
+            return '\0';
+        fmt++;
+    }
+    c = fmt[0];
+    if (c == '\0' || fmt[1] != '\0') return '\0';
+    if ((c >= '0' && c <= '9') || c == 'Z' || c == 'T' || c == '{' || c == '(') return '\0';
+    return c;
+}
+
 /* Map a PEP 3118 type character to itemsize.
  * Excludes 'l'/'L' (platform-sized -- callers use sizeof(long) at
  * the expression level).  Used by both ndarray and DLPack backends. */

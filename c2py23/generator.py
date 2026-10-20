@@ -1597,7 +1597,8 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     argument at a time, so an unsupported type is reported naming the
     argument, its 1-based position in the call, and the received PEP 3118
     format string -- instead of an opaque SystemError from a later
-    dispatch failure. Uses c2py_format_is_native for byte-order safety.
+    dispatch failure. Uses c2py_format_type, which rejects non-native byte
+    order and complex/struct formats.
 
     `supported_itemsizes` comes from `<buf>.itemsize == N` fallback
     alternatives in the `when:` condition -- these accept any format char
@@ -1622,8 +1623,8 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     b.emit("    /* decode-time dtype check: {0} */".format(p.name))
     b.emit("    {")
     b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
-    b.emit("        char _last = _fmt[0] ? _fmt[strlen(_fmt) - 1] : 0;")
-    b.emit("        if (_fmt[0] && !(({0}) && c2py_format_is_native(info_{1}.format))) {{".format(last_cmp, p.name))
+    b.emit("        char _last = _fmt[0] ? c2py_format_type(_fmt) : 0;")
+    b.emit("        if (_fmt[0] && !(_last && ({0}))) {{".format(last_cmp))
     b.emit("            PyErr_Format(PyExc_TypeError,")
     b.emit(
         "                \"{0}: argument {1} ({2}) has unsupported format '%s'; expected formats: {3}\",".format(

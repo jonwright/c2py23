@@ -224,6 +224,36 @@ class TestByteOrderRejection:
         assert np.allclose(mods, np.linalg.norm(vec, axis=1))
 
 
+@needs_modules
+class TestComplexRejection:
+    """Complex types are intentionally unsupported (docs/design.md #53).
+    numpy exports complex128 as PEP 3118 "Zd"; a last-character format
+    match accepted it as 'd' and read half the data.  Every backend must
+    reject it; callers pass interleaved pairs via .view(np.float64)."""
+
+    def _vec(self):
+        return make_vec().astype("c16")
+
+    def test_buffer_backend_rejects_complex(self):
+        with pytest.raises(ValueError):
+            c2py_vnorm_buffer.vnorm(self._vec(), make_mods())
+
+    def test_ndarray_backend_rejects_complex(self):
+        with pytest.raises(Exception):
+            c2py_vnorm_ndarray.vnorm(self._vec(), make_mods())
+
+    def test_default_backend_rejects_complex(self):
+        with pytest.raises(ValueError):
+            c2py_vnorm.vnorm(self._vec(), make_mods())
+
+    def test_struct_and_repeat_formats_rejected(self):
+        """A structured dtype of two doubles exports "T{d:a:d:b:}"-style
+        formats; it must not match 'd' either."""
+        rec = np.zeros((2, 3), dtype=[("re", "f8"), ("im", "f8")])
+        with pytest.raises(ValueError):
+            c2py_vnorm_buffer.vnorm(rec, make_mods())
+
+
 def test_dlpack_abi():
     """Verify DLPack struct layouts match expectations (compile-time)."""
     import subprocess
