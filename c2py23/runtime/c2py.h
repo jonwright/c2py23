@@ -995,22 +995,25 @@ c2py_format_type(const char *fmt)
     return c;
 }
 
-/* Map a PEP 3118 type character to itemsize.
- * Excludes 'l'/'L' (platform-sized -- callers use sizeof(long) at
- * the expression level).  Used by both ndarray and DLPack backends. */
+/* Map a numpy type character to itemsize for the ndarray fast path, or
+ * 0 when the size is not known here: complex ('F', 'D', 'G'), datetime,
+ * string, void and object dtypes, and 'g' (long double is 8, 12 or 16
+ * bytes depending on the compiler numpy was built with, which need not
+ * be ours, e.g. MinGW against an MSVC numpy).  On 0 the fast path
+ * declines and the PEP 3118 backend, which reports numpy's own
+ * itemsize, takes over.  'l'/'L' are sizeof(long) on both sides. */
 static inline int
 c2py_format_itemsize(char type_char)
 {
     switch (type_char) {
     case 'b': case 'B': case '?': return 1;
-    case 'h': case 'H':          return 2;
+    case 'h': case 'H': case 'e': return 2;
     case 'i': case 'I':          return 4;
     case 'l': case 'L':          return (int)sizeof(long);
     case 'q': case 'Q':          return 8;
     case 'f':                    return 4;
     case 'd':                    return 8;
-    case 'g':                    return (int)sizeof(long double);
-    default:                     return 1;
+    default:                     return 0;
     }
 }
 
@@ -1253,9 +1256,10 @@ fill:
         pin->format_buf[1] = '\0';
         info->format = pin->format_buf;
         info->itemsize = c2py_format_itemsize(type_char);
+        /* Unknown size: fall through to the buffer protocol backend. */
+        if (info->itemsize == 0) return -1;
     } else {
-        info->format = NULL;
-        info->itemsize = 1;
+        return -1;
     }
 
     info->ptr     = dptr;
@@ -1268,7 +1272,7 @@ fill:
         for (i = 0; i < nd && info->shape[i] >= 0; i++)
             nelem *= info->shape[i];
     }
-    info->len = nelem * (Py_ssize_t)(info->itemsize > 0 ? info->itemsize : 1);
+    info->len = nelem * (Py_ssize_t)info->itemsize;
 
     /* Hold a reference on the ndarray: we skipped PyObject_GetBuffer
      * which normally INCREFs the exporter.  Store it in buf.obj so

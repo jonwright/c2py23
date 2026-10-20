@@ -252,6 +252,29 @@ class TestSizeOneDims:
 
 
 @needs_modules
+class TestUnknownItemsize:
+    """The ndarray fast path gave every type char it did not list (float16
+    'e', complex 'D', datetime, ...) itemsize 1, so a contiguous array was
+    rejected as "not contiguous".  It must decline instead, so the buffer
+    backend reports the real format."""
+
+    def test_float16_reports_format(self):
+        vec = make_vec().astype("f2")
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm.vnorm(vec, make_mods())
+        msg = str(e.value)
+        assert "format" in msg and "contiguous" not in msg, msg
+
+    def test_datetime_not_acquired(self):
+        """numpy datetimes export no PEP 3118 buffer: acquisition fails."""
+        vec = np.zeros((2, 3), dtype="M8[s]")
+        with pytest.raises(TypeError) as e:
+            c2py_vnorm.vnorm(vec, make_mods())
+        msg = str(e.value)
+        assert "contiguous" not in msg, msg
+
+
+@needs_modules
 class TestComplexRejection:
     """Complex types are intentionally unsupported (docs/design.md #53).
     numpy exports complex128 as PEP 3118 "Zd"; a last-character format
