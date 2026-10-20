@@ -111,6 +111,9 @@ typedef struct {
 
     /* General call support (optional, used by DLPack) */
     PyObject* (*CallObject)(PyObject*, PyObject*);
+    /* Keyword call, for __dlpack__(max_version=...) (optional) */
+    PyObject* (*Call)(PyObject*, PyObject*, PyObject*);
+    PyObject* (*Dict_New)(void);
 
     /* Capsule API (optional, used by DLPack) */
     void* (*Capsule_GetPointer)(PyObject*, const char*);
@@ -671,6 +674,25 @@ typedef struct c2py_dl_managed_tensor {
     void (*deleter)(struct c2py_dl_managed_tensor *);
 } c2py_dl_managed_tensor;
 
+/* DLPack >= 1.0 ("dltensor_versioned" capsule): the tensor comes after
+ * the version, context, deleter and flags, and the flags say whether
+ * the producer allows writes.  The legacy struct above has no such
+ * flag. */
+typedef struct {
+    uint32_t major;
+    uint32_t minor;
+} c2py_dl_version_t;
+
+typedef struct c2py_dl_managed_tensor_versioned {
+    c2py_dl_version_t version;
+    void *manager_ctx;
+    void (*deleter)(struct c2py_dl_managed_tensor_versioned *);
+    uint64_t flags;
+    c2py_dl_tensor_t dl_tensor;
+} c2py_dl_managed_tensor_versioned;
+
+#define C2PY_DL_FLAG_READ_ONLY ((uint64_t)1)
+
 /* DLPack type codes */
 #define C2PY_DL_INT    0
 #define C2PY_DL_UINT   1
@@ -904,12 +926,19 @@ fill:
 }
 
 /* Acquire via DLPack capsule extraction.
- * Calls obj.__dlpack__() to get the capsule, then reads the DLTensor
- * struct fields directly.  CPU-only; GPU tensors are rejected.
- * All DLPack API symbols (CallObject, Capsule_GetPointer)
- * are optional: if any is NULL, this function returns -1 immediately,
- * falling through to the next backend.
- * Returns 0 on success, -1 to fall through to next backend. */
+ * Calls obj.__dlpack__(max_version=(1, 0)) -- falling back to a plain
+ * obj.__dlpack__() for producers that predate DLPack 1.0 -- and reads
+ * the DLTensor fields directly.  CPU-only.  Every field is validated
+ * before use: a producer is foreign code and its tensor may be
+ * malformed.
+ *
+ * Writability: a versioned capsule carries a read-only flag, which is
+ * honoured.  A legacy capsule carries none, so a writable request
+ * declines it (the PEP 3118 backend, which knows, gets to try): JAX,
+ * for one, exports immutable buffers through it.
+ *
+ * Returns 0 on success.  Returns -1 with no exception set to decline
+ * (next backend), or -1 with an exception set for a hard failure. */
 static inline int
 c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                 int want_writable)
@@ -917,12 +946,11 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     PyObject *dl_method = NULL;
     PyObject *dl_args = NULL;
     PyObject *capsule = NULL;
-    c2py_dl_managed_tensor *managed;
     c2py_dl_tensor_t *t;
+    void *ctx;
+    int read_only;  /* 1 read-only, 0 writable, -1 unknown (legacy) */
     char format_char;
     Py_ssize_t nelem;
-
-    (void)want_writable;
 
     /* DLPack symbols are optional; if not resolved, skip this backend. */
     if (!C2PY.CallObject || !C2PY.Capsule_GetPointer)
@@ -934,17 +962,52 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     dl_args = PyTuple_New(0);
     if (!dl_args) goto fail;
 
-    capsule = PyObject_CallObject(dl_method, dl_args);
-    if (!capsule) { PyErr_Clear(); goto fail; }
-
-    managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor");
-    if (!managed) {
-        PyErr_Clear();
-        managed = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor_versioned");
+    if (C2PY.Call && C2PY.Dict_New && C2PY._ds_set_item_string) {
+        typedef int (*dset_fn)(PyObject *, const char *, PyObject *);
+        PyObject *kw = C2PY.Dict_New();
+        PyObject *ver = PyTuple_New(2);
+        if (kw && ver) {
+            PyTuple_SetItem(ver, 0, PyLong_FromLong(1));
+            PyTuple_SetItem(ver, 1, PyLong_FromLong(0));
+            if (((dset_fn)C2PY._ds_set_item_string)(kw, "max_version", ver) == 0)
+                capsule = C2PY.Call(dl_method, dl_args, kw);
+        }
+        if (kw) Py_DECREF(kw);
+        if (ver) Py_DECREF(ver);
+        /* TypeError from a producer without max_version: retry plainly */
+        if (!capsule) PyErr_Clear();
     }
-    if (!managed) { PyErr_Clear(); goto fail; }
+    if (!capsule) {
+        capsule = PyObject_CallObject(dl_method, dl_args);
+        if (!capsule) { PyErr_Clear(); goto decline; }
+    }
 
-    t = &managed->dl_tensor;
+    {
+        c2py_dl_managed_tensor_versioned *vm = (c2py_dl_managed_tensor_versioned*)
+            PyCapsule_GetPointer(capsule, "dltensor_versioned");
+        if (vm) {
+            /* Only the major version fixes the layout. */
+            if (vm->version.major != 1) goto decline;
+            t = &vm->dl_tensor;
+            ctx = vm;
+            read_only = (vm->flags & C2PY_DL_FLAG_READ_ONLY) ? 1 : 0;
+        } else {
+            c2py_dl_managed_tensor *m;
+            PyErr_Clear();
+            m = (c2py_dl_managed_tensor*)PyCapsule_GetPointer(capsule, "dltensor");
+            if (!m) { PyErr_Clear(); goto decline; }
+            t = &m->dl_tensor;
+            ctx = m;
+            read_only = -1;
+        }
+    }
+
+    if (want_writable && read_only == 1) {
+        PyErr_SetString(PyExc_TypeError, "DLPack tensor is read-only");
+        goto fail;
+    }
+    if (want_writable && read_only == -1)
+        goto decline;
 
     if (t->device.device_type != C2PY_DLCPU) {
         PyErr_SetString(PyExc_TypeError,
@@ -952,32 +1015,40 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         goto fail;
     }
 
+    /* Unsupported dtype (e.g. float16): decline, PEP 3118 may know it. */
     format_char = c2py_dl_format_char(&t->dtype);
-    if (!format_char) {
-        PyErr_SetString(PyExc_TypeError,
-            "DLPack: unsupported dtype");
+    if (!format_char)
+        goto decline;
+
+    if (t->ndim < 0 || t->ndim > C2PY_MAX_NDIM) {
+        PyErr_SetString(PyExc_ValueError,
+            "DLPack: ndim out of range (0 to C2PY_MAX_NDIM)");
         goto fail;
     }
+    if (t->ndim > 0 && t->shape == NULL) {
+        PyErr_SetString(PyExc_ValueError, "DLPack: ndim > 0 but shape is NULL");
+        goto fail;
+    }
+    /* byte_offset is int64: on ILP32 it must fit Py_ssize_t, and the
+     * offset pointer must not wrap. */
+    if (t->byte_offset < 0 || t->byte_offset > (int64_t)C2PY_SSIZE_T_MAX ||
+        (uintptr_t)t->data > (uintptr_t)-1 - (uintptr_t)t->byte_offset)
+        goto too_large;
 
     pin->format_buf[0] = format_char;
     pin->format_buf[1] = '\0';
     info->format   = pin->format_buf;
-    info->itemsize = (t->dtype.bits / 8) * (t->dtype.lanes > 0 ? t->dtype.lanes : 1);
+    info->itemsize = t->dtype.bits / 8;  /* lanes == 1, bits in 8..64 */
     info->ptr      = (char*)t->data + t->byte_offset;
     info->ndim     = t->ndim;
 
     nelem = 1;
-    if (t->shape && t->ndim > 0) {
+    if (t->ndim > 0) {
         int d;
         /* DLPack shapes/strides are int64_t, but Py_ssize_t is only 32-bit
          * on ILP32.  Copy into the pinned buffers instead of aliasing the
-         * int64 array, otherwise multi-dimension shapes read wrong values. */
-        if (t->ndim > C2PY_MAX_NDIM) {
-            PyErr_SetString(PyExc_ValueError,
-                "DLPack: too many dimensions (exceeds C2PY_MAX_NDIM)");
-            goto fail;
-        }
-        /* Range-check in int64 before narrowing: on ILP32 a shape, stride
+         * int64 array, otherwise multi-dimension shapes read wrong values.
+         * Range-check in int64 before narrowing: on ILP32 a shape, stride
          * or byte count above 2 GiB would otherwise wrap silently.  A
          * zero-length dimension makes nelem 0 whatever the other dims. */
         for (d = 0; d < t->ndim; d++) {
@@ -993,20 +1064,18 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                     goto too_large;
                 nelem *= pin->shape_buf[d];
             }
-            if (info->itemsize > 0 && nelem > C2PY_SSIZE_T_MAX / info->itemsize)
+            if (nelem > C2PY_SSIZE_T_MAX / info->itemsize)
                 goto too_large;
         }
         info->shape = pin->shape_buf;
         if (t->strides) {
             /* DLPack strides are in elements; convert to bytes. */
-            int64_t lim = (int64_t)C2PY_SSIZE_T_MAX /
-                          (info->itemsize > 0 ? info->itemsize : 1);
+            int64_t lim = (int64_t)C2PY_SSIZE_T_MAX / info->itemsize;
             for (d = 0; d < t->ndim; d++) {
                 if (t->strides[d] > lim || t->strides[d] < -lim)
                     goto too_large;
                 pin->stride_buf[d] = (Py_ssize_t)t->strides[d] * info->itemsize;
             }
-            info->strides = pin->stride_buf;
         } else {
             /* Implied C-contiguous strides: last dim = itemsize,
              * each preceding dim = product of later dims * itemsize.
@@ -1019,20 +1088,24 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                     goto too_large;
                 st *= pin->shape_buf[d];
             }
-            info->strides = pin->stride_buf;
         }
+        info->strides = pin->stride_buf;
     } else {
         info->shape   = NULL;
         info->strides = NULL;
     }
     info->len = nelem * info->itemsize;
+    if (info->len > 0 && t->data == NULL) {
+        PyErr_SetString(PyExc_ValueError, "DLPack: non-empty tensor with NULL data");
+        goto fail;
+    }
 
-    pin->ctx  = managed;
+    pin->ctx  = ctx;
     pin->kind = C2PY_PIN_DLPACK;
 
     /* Keep the capsule alive: decref'ing it would invoke the
-     * capsule destructor, which might call managed->deleter
-     * prematurely.  Store it in buf.obj for later release. */
+     * capsule destructor, which might call the deleter prematurely.
+     * Store it in buf.obj for later release. */
     pin->buf.obj = capsule;
     capsule = NULL;  /* ownership transferred to pin */
 
@@ -1043,7 +1116,10 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 
 too_large:
     PyErr_SetString(PyExc_ValueError,
-        "DLPack: shape, stride or size does not fit in Py_ssize_t");
+        "DLPack: shape, stride, offset or size does not fit in Py_ssize_t");
+    goto fail;
+decline:
+    PyErr_Clear();
 fail:
     Py_XDECREF(dl_method);
     Py_XDECREF(dl_args);
@@ -1112,6 +1188,12 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         default:
             break;
         }
+        /* A backend that declines leaves no exception; one that set an
+         * exception found a real problem (read-only, malformed tensor).
+         * Report it rather than call the next backend with an exception
+         * pending (CPython debug builds assert on that). */
+        if (C2PY.Err_Occurred())
+            return -1;
     }
     PyErr_SetString(PyExc_TypeError,
                     "buffer acquisition failed (all backends exhausted)");

@@ -266,12 +266,131 @@ class TestUnknownItemsize:
         assert "format" in msg and "contiguous" not in msg, msg
 
     def test_datetime_not_acquired(self):
-        """numpy datetimes export no PEP 3118 buffer: acquisition fails."""
+        """numpy datetimes export no PEP 3118 buffer: numpy's own reason
+        is reported (not "all backends exhausted", not "contiguous")."""
         vec = np.zeros((2, 3), dtype="M8[s]")
-        with pytest.raises(TypeError) as e:
+        with pytest.raises(ValueError) as e:
             c2py_vnorm.vnorm(vec, make_mods())
         msg = str(e.value)
-        assert "contiguous" not in msg, msg
+        assert "dtype 'M'" in msg, msg
+
+
+class _LegacyDLPack(object):
+    """A producer that predates DLPack 1.0: __dlpack__ takes no keywords."""
+
+    def __init__(self, a):
+        self.a = a
+
+    def __dlpack__(self):
+        return self.a.__dlpack__()
+
+
+class _RawDLPack(object):
+    """A producer handing out a hand-built (possibly malformed) capsule."""
+
+    def __init__(self, ndim, shape=None, byte_offset=0, data=None):
+        import ctypes
+
+        class DLTensor(ctypes.Structure):
+            _fields_ = [
+                ("data", ctypes.c_void_p),
+                ("device_type", ctypes.c_int32),
+                ("device_id", ctypes.c_int32),
+                ("ndim", ctypes.c_int32),
+                ("code", ctypes.c_uint8),
+                ("bits", ctypes.c_uint8),
+                ("lanes", ctypes.c_uint16),
+                ("shape", ctypes.POINTER(ctypes.c_int64)),
+                ("strides", ctypes.POINTER(ctypes.c_int64)),
+                ("byte_offset", ctypes.c_int64),
+            ]
+
+        class DLManagedTensor(ctypes.Structure):
+            _fields_ = [("dl_tensor", DLTensor), ("manager_ctx", ctypes.c_void_p), ("deleter", ctypes.c_void_p)]
+
+        self.store = (ctypes.c_double * 8)()
+        self.shape = (ctypes.c_int64 * 4)(*(shape or [1, 1, 1, 1]))
+        m = DLManagedTensor()
+        m.dl_tensor.data = ctypes.addressof(self.store) if data is None else data
+        m.dl_tensor.device_type = 1
+        m.dl_tensor.ndim = ndim
+        m.dl_tensor.code, m.dl_tensor.bits, m.dl_tensor.lanes = 2, 64, 1
+        if shape is not None:
+            m.dl_tensor.shape = ctypes.cast(self.shape, ctypes.POINTER(ctypes.c_int64))
+        m.dl_tensor.byte_offset = byte_offset
+        self.m = m
+        new = ctypes.pythonapi.PyCapsule_New
+        new.restype = ctypes.py_object
+        new.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        self._new = new
+
+    def __dlpack__(self, **kw):
+        import ctypes
+
+        return self._new(ctypes.addressof(self.m), b"dltensor", None)
+
+
+@needs_modules
+@pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
+class TestDLPackValidation:
+    """DLPack is foreign data: honour the read-only flag of a versioned
+    capsule, refuse writes when a legacy capsule cannot say, and reject
+    malformed tensors before reading them."""
+
+    def test_read_only_input_accepted(self):
+        """Legacy export refuses every read-only array; versioned allows it."""
+        vec = make_vec()
+        vec.flags.writeable = False
+        mods = make_mods()
+        c2py_vnorm_dlpack.vnorm(vec, mods)
+        assert np.allclose(mods, np.linalg.norm(vec, axis=1))
+
+    def test_read_only_output_rejected(self):
+        mods = make_mods()
+        mods.flags.writeable = False
+        with pytest.raises(TypeError) as e:
+            c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+        assert "read-only" in str(e.value), e.value
+
+    def test_legacy_producer_input_ok(self):
+        mods = make_mods()
+        c2py_vnorm_dlpack.vnorm(_LegacyDLPack(make_vec()), mods)
+        assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+
+    def test_legacy_producer_never_written(self):
+        """A legacy capsule cannot say whether writes are allowed: decline."""
+        with pytest.raises(TypeError) as e:
+            c2py_vnorm_dlpack.vnorm(make_vec(), _LegacyDLPack(make_mods()))
+        assert "all backends exhausted" in str(e.value), e.value
+
+    def test_null_shape_rejected(self):
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm_dlpack.vnorm(_RawDLPack(ndim=2), make_mods())
+        assert "shape is NULL" in str(e.value), e.value
+
+    def test_negative_ndim_rejected(self):
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm_dlpack.vnorm(_RawDLPack(ndim=-1), make_mods())
+        assert "ndim out of range" in str(e.value), e.value
+
+    def test_negative_byte_offset_rejected(self):
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm_dlpack.vnorm(_RawDLPack(ndim=2, shape=[2, 3], byte_offset=-8), make_mods())
+        assert "offset" in str(e.value), e.value
+
+    def test_null_data_rejected(self):
+        with pytest.raises(ValueError) as e:
+            c2py_vnorm_dlpack.vnorm(_RawDLPack(ndim=2, shape=[2, 3], data=0), make_mods())
+        assert "NULL data" in str(e.value), e.value
+
+    def test_well_formed_raw_capsule_works(self):
+        """Control: the same hand-built capsule, well formed, is accepted."""
+        raw = _RawDLPack(ndim=2, shape=[2, 3])
+        for i, v in enumerate([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]):
+            raw.store[i] = v
+        mods = make_mods()
+        c2py_vnorm_dlpack.vnorm(raw, mods)
+        assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
 
 
 @needs_modules

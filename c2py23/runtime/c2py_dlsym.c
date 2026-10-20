@@ -477,6 +477,9 @@ static void _c2py_runtime_init_once(void)
         _resolve_raw("PyObject_CallObject");
     C2PY.Capsule_GetPointer = (void*(*)(PyObject*, const char*))
         _resolve_raw("PyCapsule_GetPointer");
+    C2PY.Call = (PyObject*(*)(PyObject*, PyObject*, PyObject*))
+        _resolve_raw("PyObject_Call");
+    C2PY.Dict_New = (PyObject*(*)(void))_resolve_raw("PyDict_New");
     C2PY.exc_BufferError = (void*)_resolve_raw("PyExc_BufferError");
 
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
