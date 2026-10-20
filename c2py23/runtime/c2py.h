@@ -981,13 +981,19 @@ c2py_format_is_native(const char *fmt)
  * only for 1-byte types.  Rejected: complex ("Zd": no complex type, see
  * docs/design.md #53), repeat counts ("2d"), structs ("T{...}") and
  * non-native order.  Comparing only the last character let all of these
- * through as plain 'd'.  Callers treat a NULL format (old buffer API) as
- * unknown-but-allowed before calling this. */
+ * through as plain 'd'.
+ *
+ * A NULL format is 'B' (unsigned bytes), as PEP 3118 defines it.  It is
+ * also exactly what the Python 2.7 old buffer API fallback hands over
+ * (itemsize 1, .n counts bytes), so a 'd' check must not accept it:
+ * array.array('d') on 2.7 has only the old API, and treating NULL as
+ * "matches anything" let .n be 8x the element count. */
 static inline char
 c2py_format_type(const char *fmt)
 {
     char c;
 
+    if (fmt == NULL) return 'B';
     if (fmt[0] == '@' || fmt[0] == '=' || fmt[0] == '<' || fmt[0] == '>' || fmt[0] == '!') {
         if (!c2py_format_is_native(fmt) && fmt[1] != 'b' && fmt[1] != 'B'
             && fmt[1] != 'c' && fmt[1] != '?')
@@ -1317,9 +1323,11 @@ fill:
  * malformed.
  *
  * Writability: a versioned capsule carries a read-only flag, which is
- * honoured.  A legacy capsule carries none, so a writable request
- * declines it (the PEP 3118 backend, which knows, gets to try): JAX,
- * for one, exports immutable buffers through it.
+ * honoured.  A legacy capsule carries none, so it is never written
+ * through: a writable request declines it and the next backend
+ * decides.  This is what numpy does as a consumer (np.from_dlpack of a
+ * legacy capsule is a read-only array); producers such as JAX export
+ * immutable buffers through legacy DLPack.
  *
  * Returns 0 on success.  Returns -1 with no exception set to decline
  * (next backend), or -1 with an exception set for a hard failure. */

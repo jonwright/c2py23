@@ -527,8 +527,12 @@ basis. The check is a compile-time-resolved host-endianness comparison
 both little-endian and big-endian builds (e.g. ppc64le and a hypothetical
 ppc64be) without extra runtime cost.
 
-When the format pointer is NULL (old buffer protocol on Python 2.7), the
-condition evaluates to true, allowing the first matching overload to proceed.
+A NULL format pointer means `'B'` (unsigned bytes), as PEP 3118 defines it.
+This is also what the Python 2.7 old buffer API fallback provides: raw bytes,
+`itemsize` 1, `.n` counting bytes.  So on 2.7 an object with only the old API
+(`array.array`, `str`, `buffer`) matches `format == 'B'` but not
+`format == 'd'`.  Accepting it as `'d'` would make `.n` eight times the
+element count.  Pass a `ctypes` array or a numpy array on 2.7 for typed data.
 
 ### Decode-time dtype validation
 
@@ -1169,9 +1173,12 @@ The backend calls `__dlpack__(max_version=(1, 0))` and falls back to a plain
 `__dlpack__()` for producers that predate DLPack 1.0.  A versioned capsule
 carries a read-only flag: writing to a read-only tensor raises `ValueError`
 (as for a read-only array on the other backends),
-and read-only inputs are accepted.  A legacy capsule cannot say whether the
-producer allows writes, so for a writable parameter the backend declines it
-and the next backend decides.  Every tensor field (`ndim`, `shape`,
+and read-only inputs are accepted.  A legacy capsule carries no flag, so it
+is never written through: for a writable parameter the backend declines it
+and the next backend decides.  numpy does the same as a consumer
+(`np.from_dlpack` of a legacy capsule is read-only).  numpy < 2.1 exports
+only legacy capsules, so an `acquire: [dlpack]`-only function cannot write to
+those arrays; include `buffer` in the list.  Every tensor field (`ndim`, `shape`,
 `byte_offset`, `data`, the int64 shape/stride ranges) is validated before
 use, and a malformed tensor raises `ValueError`.
 
@@ -1321,7 +1328,7 @@ and module creation. No other CPython APIs are exposed or used.
    `PyObject_GetBuffer` with `PyBUF_STRIDES | PyBUF_FORMAT` flags; on Python 2.7
    it tries PEP 3118 first, then falls back to `PyObject_AsReadBuffer`/
    `PyObject_AsWriteBuffer` (old buffer API). Old buffers have `format = NULL`
-   and `ndim = 1`
+   (read as `'B'`), `itemsize = 1` and `ndim = 1`
 
 ### Function Pointer Table
 

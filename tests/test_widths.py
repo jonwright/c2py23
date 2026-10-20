@@ -129,6 +129,21 @@ def test_when_arithmetic_overflow():
     assert "integer overflow or division by zero in when: (data.len * k) > 100" in msg, msg
 
 
+def test_old_buffer_is_bytes():
+    """A buffer without a format is unsigned bytes (PEP 3118).
+
+    On Python 2.7 array.array has only the old buffer API, which hands
+    over raw bytes with no format.  A format == 'B' check accepts it and
+    .len counts bytes; it must not pass as typed data (small_len checks
+    format == 'B', so bytes are exactly what it takes).  On 3.x
+    array.array exports a real 'B' format.
+    """
+    import array
+
+    assert widthmod.small_len(array.array("B", [1, 2, 3])) == 3
+    assert widthmod.small_len(bytearray(7)) == 7
+
+
 def test_int64_constants():
     assert widthmod.BIG == 2**40
     assert widthmod.INT64_MIN == -(2**63)

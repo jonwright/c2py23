@@ -1622,9 +1622,9 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     expected = "; or ".join(expected_parts)
     b.emit("    /* decode-time dtype check: {0} */".format(p.name))
     b.emit("    {")
-    b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
-    b.emit("        char _last = _fmt[0] ? c2py_format_type(_fmt) : 0;")
-    b.emit("        if (_fmt[0] && !(_last && ({0}))) {{".format(last_cmp))
+    b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "B";'.format(p.name))
+    b.emit("        char _last = c2py_format_type(_fmt);")
+    b.emit("        if (!(_last && ({0}))) {{".format(last_cmp))
     b.emit("            PyErr_Format(PyExc_TypeError,")
     b.emit(
         "                \"{0}: argument {1} ({2}) has unsupported format '%s'; expected formats: {3}\",".format(

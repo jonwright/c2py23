@@ -1805,16 +1805,16 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         # String comparison with a format char: c2py_format_type() accepts
         # only a single native-order element ("d", "<d", "=d"), so complex
         # ("Zd"), repeat counts and structs never match a plain type char.
-        # On old buffers (format == NULL), treat as matching (we can't check)
+        # A NULL format is 'B' (PEP 3118; also the 2.7 old buffer API).
         if isinstance(expr.left, StrLit) or isinstance(expr.right, StrLit):
             str_lit = expr.left if isinstance(expr.left, StrLit) else expr.right
             fmt_expr = right if isinstance(expr.left, StrLit) else left
             if len(str_lit.value) == 1:
                 ch = str_lit.value
                 if op == "==":
-                    result = "(!{0} || c2py_format_type({0}) == '{1}')".format(fmt_expr, ch)
+                    result = "(c2py_format_type({0}) == '{1}')".format(fmt_expr, ch)
                 elif op == "!=":
-                    result = "({0} && c2py_format_type({0}) != '{1}')".format(fmt_expr, ch)
+                    result = "(c2py_format_type({0}) != '{1}')".format(fmt_expr, ch)
                 # 'l'/'L' are platform-sized in PEP 3118: sizeof(long)
                 # differs between LP64 (8) and LLP64 (4).  Add an
                 # itemsize check so the same .c2py works on both.
@@ -1841,13 +1841,11 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         ):
             if op == "==":
                 return (
-                    "((!{0} && !{1}) || ({0} && {1} && "
-                    "c2py_format_type({0}) != '\\0' && c2py_format_type({0}) == c2py_format_type({1})))"
+                    "(c2py_format_type({0}) != '\\0' && c2py_format_type({0}) == c2py_format_type({1}))"
                 ).format(left, right)
             elif op == "!=":
                 return (
-                    "({0} && {1} && ("
-                    "c2py_format_type({0}) == '\\0' || c2py_format_type({0}) != c2py_format_type({1})))"
+                    "(c2py_format_type({0}) == '\\0' || c2py_format_type({0}) != c2py_format_type({1}))"
                 ).format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for format attributes".format(op))

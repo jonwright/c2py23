@@ -109,9 +109,16 @@ class TestNdarrayFastPath:
         c2py_vnorm.vnorm(mv, mods)
 
     def test_array_module(self):
-        """array.array has ob_type != numpy.ndarray, falls to buffer."""
+        """array.array has ob_type != numpy.ndarray, falls to buffer.
+
+        On 2.7 array.array has only the old buffer API: untyped bytes
+        (format 'B'), which a format == 'd' check must reject."""
         a = array.array("d", [1.0, 2.0, 3.0, 4.0, 5.0])
-        c2py_getitem.getitem(a, 2)
+        if sys.version_info[0] >= 3:
+            assert c2py_getitem.getitem(a, 2) == 3.0
+        else:
+            with pytest.raises(ValueError):
+                c2py_getitem.getitem(a, 2)
 
 
 @needs_modules
@@ -145,11 +152,16 @@ class TestBackendSpecific:
         import c2py_vnorm_dlpack as m
 
         assert hasattr(m, "vnorm")
-        # verify it can compute with a 2D input (as the interface requires)
+        # verify it can compute with a 2D input (as the interface requires);
+        # the writable output needs a DLPack 1.0 (versioned) capsule
         vec = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float64)
         mods = np.zeros(2, dtype=np.float64)
-        m.vnorm(vec, mods)
-        assert np.isclose(mods[0], np.sqrt(1 + 4 + 9), atol=0.01)
+        if _numpy_dlpack_versioned():
+            m.vnorm(vec, mods)
+            assert np.isclose(mods[0], np.sqrt(1 + 4 + 9), atol=0.01)
+        else:
+            with pytest.raises(TypeError):
+                m.vnorm(vec, mods)
 
     def test_ndarray_and_buffer_same_result(self):
         """ndarray and buffer backends produce the same result."""
@@ -166,9 +178,14 @@ class TestDlpackFallback:
 
     def test_array_array_no_dlpack(self):
         """array.array does not have __dlpack__, dlpack backend
-        fails silently, buffer fallback succeeds."""
+        fails silently, buffer fallback succeeds (3.x; on 2.7 the old
+        buffer API gives untyped bytes, rejected by format == 'd')."""
         a = array.array("d", [1.0, 2.0, 3.0, 4.0, 5.0])
-        c2py_getitem.getitem(a, 2)
+        if sys.version_info[0] >= 3:
+            assert c2py_getitem.getitem(a, 2) == 3.0
+        else:
+            with pytest.raises(ValueError):
+                c2py_getitem.getitem(a, 2)
 
 
 def _other_byteorder():
@@ -274,17 +291,6 @@ class TestUnknownItemsize:
         msg = str(e.value)
         assert "contiguous" not in msg, msg
 
-    def test_backend_error_is_reported(self):
-        """A backend that finds a real problem stops the search: its
-        reason reaches the caller instead of being replaced by "all
-        backends exhausted" (which a DLPack-only module gave for a
-        read-only output)."""
-        mods = make_mods()
-        mods.flags.writeable = False
-        with pytest.raises(ValueError) as e:
-            c2py_vnorm_dlpack.vnorm(make_vec(), mods)
-        assert "read-only" in str(e.value), e.value
-
 
 class _LegacyDLPack(object):
     """A producer that predates DLPack 1.0: __dlpack__ takes no keywords."""
@@ -341,35 +347,70 @@ class _RawDLPack(object):
         return self._new(ctypes.addressof(self.m), b"dltensor", None)
 
 
+def _numpy_dlpack_versioned():
+    """True if numpy exports DLPack 1.0 capsules (numpy >= 2.1)."""
+    try:
+        np.zeros(1).__dlpack__(max_version=(1, 0))
+        return True
+    except TypeError:
+        return False
+
+
 @needs_modules
 @pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
 class TestDLPackValidation:
     """DLPack is foreign data: honour the read-only flag of a versioned
-    capsule, refuse writes when a legacy capsule cannot say, and reject
-    malformed tensors before reading them."""
+    capsule, never write through a legacy one, and reject malformed
+    tensors before reading them.
 
-    def test_read_only_input_accepted(self):
-        """Legacy export refuses every read-only array; versioned allows it."""
+    numpy < 2.1 exports only legacy capsules (and refuses read-only arrays
+    altogether), so a DLPack-only module cannot write to its arrays: the
+    cases with a numpy output expect "all backends exhausted" there."""
+
+    def test_read_only_input(self):
+        """Versioned: a read-only input is accepted.  Legacy numpy refuses
+        the export, and a DLPack-only module has no other backend."""
         vec = make_vec()
         vec.flags.writeable = False
         mods = make_mods()
-        c2py_vnorm_dlpack.vnorm(vec, mods)
-        assert np.allclose(mods, np.linalg.norm(vec, axis=1))
+        if _numpy_dlpack_versioned():
+            c2py_vnorm_dlpack.vnorm(vec, mods)
+            assert np.allclose(mods, np.linalg.norm(vec, axis=1))
+        else:
+            with pytest.raises(TypeError) as e:
+                c2py_vnorm_dlpack.vnorm(vec, mods)
+            assert "all backends exhausted" in str(e.value), e.value
 
     def test_read_only_output_rejected(self):
+        """Versioned: the read-only flag raises ValueError, and that reason
+        reaches the caller (the backend loop used to replace it with "all
+        backends exhausted").  Legacy numpy refuses the export instead."""
         mods = make_mods()
         mods.flags.writeable = False
-        with pytest.raises(ValueError) as e:
-            c2py_vnorm_dlpack.vnorm(make_vec(), mods)
-        assert "read-only" in str(e.value), e.value
+        if _numpy_dlpack_versioned():
+            with pytest.raises(ValueError) as e:
+                c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+            assert "read-only" in str(e.value), e.value
+        else:
+            with pytest.raises(TypeError) as e:
+                c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+            assert "all backends exhausted" in str(e.value), e.value
 
     def test_legacy_producer_input_ok(self):
+        """A legacy capsule is fine as an input (the numpy output needs a
+        versioned capsule, which numpy < 2.1 cannot make)."""
         mods = make_mods()
-        c2py_vnorm_dlpack.vnorm(_LegacyDLPack(make_vec()), mods)
-        assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+        if _numpy_dlpack_versioned():
+            c2py_vnorm_dlpack.vnorm(_LegacyDLPack(make_vec()), mods)
+            assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+        else:
+            with pytest.raises(TypeError) as e:
+                c2py_vnorm_dlpack.vnorm(_LegacyDLPack(make_vec()), mods)
+            assert "all backends exhausted" in str(e.value), e.value
 
     def test_legacy_producer_never_written(self):
-        """A legacy capsule cannot say whether writes are allowed: decline."""
+        """A legacy capsule cannot say whether writes are allowed: decline
+        (as np.from_dlpack makes it read-only)."""
         with pytest.raises(TypeError) as e:
             c2py_vnorm_dlpack.vnorm(make_vec(), _LegacyDLPack(make_mods()))
         assert "all backends exhausted" in str(e.value), e.value
@@ -395,13 +436,30 @@ class TestDLPackValidation:
         assert "NULL data" in str(e.value), e.value
 
     def test_well_formed_raw_capsule_works(self):
-        """Control: the same hand-built capsule, well formed, is accepted."""
+        """Control: the same hand-built capsule, well formed, is accepted
+        as an input (the numpy output needs a versioned capsule)."""
         raw = _RawDLPack(ndim=2, shape=[2, 3])
         for i, v in enumerate([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]):
             raw.store[i] = v
         mods = make_mods()
-        c2py_vnorm_dlpack.vnorm(raw, mods)
-        assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+        if _numpy_dlpack_versioned():
+            c2py_vnorm_dlpack.vnorm(raw, mods)
+            assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+        else:
+            with pytest.raises(TypeError):
+                c2py_vnorm_dlpack.vnorm(raw, mods)
+
+    def test_versioned_output_written(self):
+        """A writable numpy output goes through a versioned capsule; numpy
+        < 2.1 has only legacy capsules, which are declined."""
+        mods = make_mods()
+        if _numpy_dlpack_versioned():
+            c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+            assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+        else:
+            with pytest.raises(TypeError) as e:
+                c2py_vnorm_dlpack.vnorm(make_vec(), mods)
+            assert "all backends exhausted" in str(e.value), e.value
 
 
 @needs_modules

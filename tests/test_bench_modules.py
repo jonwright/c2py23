@@ -35,3 +35,10 @@ def test_getitem_buffer_backend():
     arr = (ctypes.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
     assert mod.getitem(arr, 0) == 1.0
     assert mod.getitem(arr, 4) == 5.0
+    # The index is bounds-checked: get_item() reads arr[i] unguarded.
+    for i in (5, -1, 2**40):
+        try:
+            mod.getitem(arr, i)
+            raise AssertionError("getitem(arr, %d) not rejected" % i)
+        except ValueError:
+            pass

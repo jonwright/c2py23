@@ -42,7 +42,7 @@ are available, selected per-function via the `"acquire"` key:
 | Backend | C constant | Method | Overhead | When to Use |
 |---------|-----------|--------|---------|-------------|
 | `ndarray` | `C2PY_PIN_NDARRAY` | NumPy struct-cast (zero API calls) | ~75 ns | **Default.** Fastest for numpy arrays. Fails transparently for non-numpy objects. |
-| `buffer` | `C2PY_PIN_PEP3118` | PEP 3118 `PyObject_GetBuffer` | ~162 ns | ctypes, `array.array`, `memoryview`, any buffer-protocol object. Python 2.7 falls back to old buffer API. |
+| `buffer` | `C2PY_PIN_PEP3118` | PEP 3118 `PyObject_GetBuffer` | ~162 ns | ctypes, `array.array`, `memoryview`, any buffer-protocol object. Python 2.7 falls back to the old buffer API, which only provides bytes (format `'B'`): on 2.7 `array.array` passes byte checks only. |
 | `dlpack` | `C2PY_PIN_DLPACK` | `__dlpack__()` capsule extraction | ~381 ns | Non-CPython runtimes (PyPy, GraalPy); exporters without the buffer protocol. CPU tensors only. Honours the DLPack 1.0 read-only flag. |
 
 The default order is `["ndarray", "buffer"]` -- the ndarray fast-path is
