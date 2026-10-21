@@ -523,19 +523,42 @@ typedef struct {
 /* NumPy ndarray struct-cast fast path (lazy-probed, no import)       */
 /* ------------------------------------------------------------------ */
 
-/* Minimal PyTypeObject overlay to read tp_name without importing numpy.
- * Layout (GIL-only LP64): ob_refcnt(8) + ob_type(8) + ob_size(8) +
- * tp_name(8).  Free-threaded builds skip the fast path.
- * On PyPy, ob_pypy_link sits between ob_refcnt and ob_type. */
-typedef struct {
-    Py_ssize_t ob_refcnt;
-#ifdef C2PY_TARGET_PYPY
-    void     *ob_pypy_link;
+/* PyTypeObject.tp_name follows the object header and ob_size, so its
+ * offset is C2PY.pyobject_size + sizeof(Py_ssize_t) on every build:
+ * 24 on GIL LP64, 40 on free-threaded LP64, 12 / 24 on ILP32. */
+#define C2PY_TP_NAME_OFF (C2PY.pyobject_size + (Py_ssize_t)sizeof(Py_ssize_t))
+
+/* Publishing the probed ndarray layout.  On free-threaded Python two
+ * threads can meet the first ndarray at once, and a reader must never
+ * see ndarray_type set before data_off: the layout is published with a
+ * release store and read with an acquire load.  GCC/Clang (and MinGW)
+ * use __atomic builtins, MSVC the Interlocked functions (full
+ * barriers).  Without either, C2PY_HAVE_ATOMICS is 0 and the fast path
+ * stays off on free-threaded builds (GIL builds need no barrier). */
+#if defined(__clang__) || \
+    (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7)))
+#define C2PY_HAVE_ATOMICS 1
+#define c2py_load_ptr_acq(p)     __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#define c2py_store_ptr_rel(p, v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#define c2py_load_int(p)         __atomic_load_n((p), __ATOMIC_RELAXED)
+#define c2py_store_int(p, v)     __atomic_store_n((p), (v), __ATOMIC_RELAXED)
+#elif defined(_MSC_VER)
+#define C2PY_HAVE_ATOMICS 1
+#define c2py_load_ptr_acq(p) \
+    InterlockedCompareExchangePointer((PVOID volatile *)(p), NULL, NULL)
+#define c2py_store_ptr_rel(p, v) \
+    ((void)InterlockedExchangePointer((PVOID volatile *)(p), (PVOID)(v)))
+#define c2py_load_int(p) \
+    ((int)InterlockedCompareExchange((LONG volatile *)(p), 0, 0))
+#define c2py_store_int(p, v) \
+    ((void)InterlockedExchange((LONG volatile *)(p), (LONG)(v)))
+#else
+#define C2PY_HAVE_ATOMICS 0
+#define c2py_load_ptr_acq(p)     (*(p))
+#define c2py_store_ptr_rel(p, v) ((void)(*(p) = (v)))
+#define c2py_load_int(p)         (*(p))
+#define c2py_store_int(p, v)     ((void)(*(p) = (v)))
 #endif
-    void     *ob_type;
-    Py_ssize_t ob_size;
-    const char *tp_name;
-} c2py_type_min_t;
 
 /* Runtime-discovered ndarray layout cache.
  * data_off is the offset of the data pointer from the PyObject base.
@@ -547,6 +570,8 @@ typedef struct {
  *   data_off + 40: descr       (PyArray_Descr*)
  *   data_off + 48: flags       (int)      */
 typedef struct {
+    /* Accessed only through c2py_load_* / c2py_store_* (see above):
+     * data_off is stored before ndarray_type is published. */
     void *ndarray_type;     /* cached ob_type of numpy.ndarray, NULL if unknown */
     int data_off;           /* offset of data ptr from PyObject base */
     int probed;             /* 1 = layout known, 0 = probing deferred */
@@ -773,18 +798,19 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 #define C2PY_NDARR_OFF_STRIDES   24
 #define C2PY_NDARR_OFF_DESCR     40
 #define C2PY_NDARR_OFF_FLAGS     48
-#define C2PY_DESCR_TYPE_CHAR_OFF 25
 #else
 #define C2PY_NDARR_OFF_ND        4
 #define C2PY_NDARR_OFF_DIMS      8
 #define C2PY_NDARR_OFF_STRIDES   12
 #define C2PY_NDARR_OFF_DESCR     20
 #define C2PY_NDARR_OFF_FLAGS     24
-#define C2PY_DESCR_TYPE_CHAR_OFF 13
 #endif
 
-/* PyArray_Descr's 'byteorder' field ('<','>','=','|') immediately
- * follows 'type' in the struct (kind, type, byteorder, ...). */
+/* PyArray_Descr is an object header, then PyTypeObject *typeobj, then
+ * char kind, type, byteorder ('<','>','=','|').  The header is larger
+ * on free-threaded builds, so the offsets follow C2PY.pyobject_size:
+ * type char at 25 on GIL LP64, 41 on free-threaded LP64, 13 on ILP32. */
+#define C2PY_DESCR_TYPE_CHAR_OFF (C2PY.pyobject_size + (Py_ssize_t)sizeof(void*) + 1)
 #define C2PY_DESCR_BYTEORDER_OFF (C2PY_DESCR_TYPE_CHAR_OFF + 1)
 
 /* Acquire via numpy ndarray struct-cast (no PyObject_GetBuffer).
@@ -804,22 +830,27 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     Py_ssize_t nelem, i;
     char type_char;
 
-    /* Free-threaded Python and PyPy: type-object layout differs from
-     * standard GIL CPython.  PyPy cpyext wraps ndarray objects in
-     * proxies -- the data pointer is not at a fixed offset from id().
-     * Skip the fast path and fall through to buffer protocol. */
-    if (C2PY.is_free_threaded || C2PY.is_pypy)
+    /* PyPy cpyext wraps ndarray objects in proxies -- the data pointer
+     * is not at a fixed offset from id() -- so there is no struct to
+     * cast: fall through to the buffer protocol.  Free-threaded builds
+     * use the fast path when the layout can be published safely. */
+    if (C2PY.is_pypy)
         return -1;
+#if !C2PY_HAVE_ATOMICS
+    if (C2PY.is_free_threaded)
+        return -1;
+#endif
 
     tp = *(void**)((char*)obj + C2PY.ob_type_offset);
 
-    if (L->ndarray_type && tp == L->ndarray_type) {
+    if (tp && tp == c2py_load_ptr_acq(&L->ndarray_type)) {
         goto fill;
     }
 
-    if (!L->probed && tp) {
-        const char *name = ((c2py_type_min_t*)tp)->tp_name;
+    if (!c2py_load_int(&L->probed) && tp) {
+        const char *name = *(const char**)((char*)tp + C2PY_TP_NAME_OFF);
         if (name && strcmp(name, "numpy.ndarray") == 0) {
+            int data_off = -1;
             /* First encounter: validate via buffer protocol, then
              * scan object memory to locate the data pointer at runtime.
              * Note: PyObject_GetBuffer COPIES shape/strides to temporary
@@ -835,26 +866,34 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
                      off < (int)C2PY.pyobject_size + 80;
                      off += (int)sizeof(void*)) {
                     if (*(void**)(base + off) == dptr) {
-                        L->data_off = off;
+                        data_off = off;
                         break;
                     }
                 }
             }
+            /* Data pointer not found (e.g. NULL for an empty array):
+             * nothing learned, retry on a later array. */
+            if (data_off < 0)
+                goto probe_fail;
 
             /* Verify the layout against known numpy struct:
              * data_off+OFF_ND      -> nd   (int, 0 <= nd <= 32)
              * data_off+OFF_DIMS    -> shape ptr (reasonable pointer)
              * data_off+OFF_DESCR   -> descr (non-NULL pointer) */
-            nd    = *(int*)(base + L->data_off + C2PY_NDARR_OFF_ND);
-            descr = *(void**)(base + L->data_off + C2PY_NDARR_OFF_DESCR);
+            nd    = *(int*)(base + data_off + C2PY_NDARR_OFF_ND);
+            descr = *(void**)(base + data_off + C2PY_NDARR_OFF_DESCR);
             if (nd < 0 || nd > C2PY_MAX_NDIM || descr == NULL)
                 goto probe_fail;
             /* Sanity: shape pointer should be non-NULL if nd>0 */
-            if (nd > 0 && *(void**)(base + L->data_off + C2PY_NDARR_OFF_DIMS) == NULL)
+            if (nd > 0 && *(void**)(base + data_off + C2PY_NDARR_OFF_DIMS) == NULL)
                 goto probe_fail;
 
-            L->ndarray_type = tp;
-            L->probed = 1;
+            /* Publish: data_off first, then the type (release), so a
+             * thread that sees the type also sees data_off.  A racing
+             * prober stores the same values. */
+            c2py_store_int(&L->data_off, data_off);
+            c2py_store_int(&L->probed, 1);
+            c2py_store_ptr_rel(&L->ndarray_type, tp);
 
 
             /* First call: info already filled via c2py_acquire_buffer.
@@ -872,11 +911,11 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     return -1;
 
 fill:
-    base = (char*)obj;
+    base = (char*)obj + c2py_load_int(&L->data_off);
 
-    dptr  = *(void**)(base + L->data_off);
-    nd    = *(int*)(base + L->data_off + C2PY_NDARR_OFF_ND);
-    flags = *(int*)(base + L->data_off + C2PY_NDARR_OFF_FLAGS);
+    dptr  = *(void**)base;
+    nd    = *(int*)(base + C2PY_NDARR_OFF_ND);
+    flags = *(int*)(base + C2PY_NDARR_OFF_FLAGS);
 
     if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
         /* ValueError, as numpy raises through PEP 3118, so the error is
@@ -886,7 +925,7 @@ fill:
         return -1;
     }
 
-    descr = *(void**)(base + L->data_off + C2PY_NDARR_OFF_DESCR);
+    descr = *(void**)(base + C2PY_NDARR_OFF_DESCR);
     if (descr) {
         /* Explicit non-native byte order: this fast path only ever
          * synthesizes a bare type char (no PEP 3118 prefix), so it
@@ -914,8 +953,8 @@ fill:
 
     info->ptr     = dptr;
     info->ndim    = nd;
-    info->shape   = *(Py_ssize_t**)(base + L->data_off + C2PY_NDARR_OFF_DIMS);
-    info->strides = *(Py_ssize_t**)(base + L->data_off + C2PY_NDARR_OFF_STRIDES);
+    info->shape   = *(Py_ssize_t**)(base + C2PY_NDARR_OFF_DIMS);
+    info->strides = *(Py_ssize_t**)(base + C2PY_NDARR_OFF_STRIDES);
 
     nelem = 1;
     if (info->shape) {
