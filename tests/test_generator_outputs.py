@@ -168,7 +168,7 @@ def test_decode_time_dtype_check_emitted():
     assert "decode-time dtype check: a" in code
     assert "argument 1 (a)" in code
     assert "has unsupported format" in code
-    assert "c2py_format_is_native" in code
+    assert "c2py_format_type" in code
 
 
 def test_decode_time_dtype_check_position():

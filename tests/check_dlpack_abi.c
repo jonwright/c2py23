@@ -44,6 +44,19 @@ typedef struct c2py_dl_managed_tensor {
     void (*deleter)(struct c2py_dl_managed_tensor *);
 } c2py_dl_managed_tensor;
 
+typedef struct {
+    uint32_t major;
+    uint32_t minor;
+} c2py_dl_version_t;
+
+typedef struct c2py_dl_managed_tensor_versioned {
+    c2py_dl_version_t version;
+    void *manager_ctx;
+    void (*deleter)(struct c2py_dl_managed_tensor_versioned *);
+    uint64_t flags;
+    c2py_dl_tensor_t dl_tensor;
+} c2py_dl_managed_tensor_versioned;
+
 #define EXPECT(label, val, expected) do { \
     printf("%-35s %-6s (expected %s, got %s)\n", \
            label, \
@@ -96,6 +109,15 @@ int main(void) {
            sizeof(c2py_dl_tensor_t));
     EXPECT("OFF deleter",     offsetof(c2py_dl_managed_tensor, deleter),
            sizeof(c2py_dl_tensor_t) + sizeof(void*));
+
+    /* DLPack >= 1.0 (dlpack.h DLManagedTensorVersioned, LP64) */
+    printf("\n=== DLManagedTensorVersioned ===\n");
+    EXPECT("SIZEOF c2py_dl_version_t", sizeof(c2py_dl_version_t), 8);
+    EXPECT("OFF version",     offsetof(c2py_dl_managed_tensor_versioned, version),      0);
+    EXPECT("OFF manager_ctx", offsetof(c2py_dl_managed_tensor_versioned, manager_ctx),  8);
+    EXPECT("OFF deleter",     offsetof(c2py_dl_managed_tensor_versioned, deleter),     16);
+    EXPECT("OFF flags",       offsetof(c2py_dl_managed_tensor_versioned, flags),       24);
+    EXPECT("OFF dl_tensor",   offsetof(c2py_dl_managed_tensor_versioned, dl_tensor),   32);
 
     printf("\n---\n");
     if (ok) {

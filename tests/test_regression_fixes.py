@@ -371,18 +371,50 @@ def test_INT_MAX_guard_narrow_receivers():
 
 
 def test_INT_MAX_guard_dropped_for_wide_receivers():
-    """Wide/pointer-width receivers need no INT_MAX guard (full Py_ssize_t fits)."""
-    for base_type, ctype in [
-        ("size_t", "size_t"),
-        ("intptr_t", "intptr_t"),
-        ("ptrdiff_t", "ptrdiff_t"),
-        ("int64_t", "int64_t"),
-        ("uint64_t", "uint64_t"),
+    """int64_t holds every long long: cast only, no range check."""
+    code = _module_for_receiver("int64_t", "int64_t")
+    assert "out of range" not in code, "wide <int64_t> must NOT emit a range check"
+    assert "(int64_t)(" in code, "wide <int64_t> should still cast to its type"
+    _pass()
+
+
+def test_round_trip_check_for_pointer_width_receivers():
+    """size_t/intptr_t/ptrdiff_t/uint64_t get a limit-macro-free round-trip check.
+
+    These hold every Py_ssize_t, but a long long scalar can exceed a 32-bit
+    pointer-width receiver, and a negative value must not wrap into an
+    unsigned one.
+    """
+    for ctype, cond in [
+        (
+            "size_t",
+            "if ((long long)(info_buf->len) < 0 || "
+            "(unsigned long long)(size_t)(info_buf->len) != (unsigned long long)(info_buf->len)) {",
+        ),
+        ("uint64_t", "if ((long long)(info_buf->len) < 0) {"),
     ]:
-        code = _module_for_receiver(base_type, ctype)
-        assert "out of range" not in code, "wide <{0}> must NOT emit a range check".format(ctype)
-        # The value is still cast to the receiver type (no truncation, so cast-only).
-        assert "({0})(".format(ctype) in code, "wide <{0}> should still cast to its type".format(ctype)
+        code = _module_for_receiver(ctype, ctype)
+        assert cond in code, "<{0}> round-trip check".format(ctype)
+        assert "buf.len out of range for C {0} n".format(ctype) in code, "<{0}> error message".format(ctype)
+        assert "({0})(".format(ctype) in code, "<{0}> should still cast to its type".format(ctype)
+    for ctype in ("intptr_t", "ptrdiff_t"):
+        # A Py_ssize_t expression always fits: no dead check.
+        code = _module_for_receiver(ctype, ctype)
+        assert "out of range" not in code, "<{0}> from buf.len needs no check".format(ctype)
+        # A long long scalar may not (32-bit builds).
+        code = _module_for_map(
+            [PyParam("arr", "buffer", None), PyParam("offset", "int", None)],
+            "void proc(float *arr, {0} offset)".format(ctype),
+            [
+                CParam("arr", "const float *", "float", True, True),
+                CParam("offset", ctype, ctype, False, False),
+            ],
+            {"arr": "arr.ptr", "offset": "offset + 1"},
+        )
+        arith = "c2py_add_ll(c_offset, 1, &_c2py_ovf)"
+        cond = "if ((long long)({0})({1}) != (long long)({1})) {{".format(ctype, arith)
+        assert cond in code, "<{0}> round-trip check on scalar".format(ctype)
+        assert "(offset + 1) out of range for C {0} offset".format(ctype) in code
     _pass()
 
 

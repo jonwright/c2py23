@@ -27,6 +27,7 @@ from c2py23.parser import (
     _expr_refers_to,
     _expr_to_c,
     _expr_to_source,
+    expr_has_checked_arith,
     _extract_fmt_from_expr,
     _extract_itemsize_from_expr,
 )
@@ -40,11 +41,12 @@ from c2py23.invariant_checker import verify_c_invariants
 # MSVC < 2010 has no <stdint.h> limit macros, so fixed-width bounds are
 # literals.
 #
-# Receivers absent from this table need no check: size_t, intptr_t, ptrdiff_t,
-# int64_t and uint64_t hold every Py_ssize_t value on every platform (Py_ssize_t
-# is 32-bit on ILP32 and 64-bit on LP64 and LLP64), so a buffer larger than
-# 2 GiB can be passed in one go.  _Bool, float and double convert by value, not
-# by truncation.
+# size_t, intptr_t, ptrdiff_t, int64_t and uint64_t hold every Py_ssize_t
+# value on every platform (Py_ssize_t is 32-bit on ILP32 and 64-bit on LP64 and
+# LLP64), so a buffer larger than 2 GiB can be passed in one go.  A scalar int
+# is long long, though, which a 32-bit pointer-width receiver cannot hold: see
+# _WIDE_INT_ROUND_TRIP.  _Bool, float and double convert by value, not by
+# truncation.
 _NARROW_INT_RANGE = {
     "int": ("INT_MIN", "INT_MAX"),
     "int32_t": ("INT_MIN", "INT_MAX"),
@@ -54,6 +56,20 @@ _NARROW_INT_RANGE = {
     "uint32_t": ("0", "4294967295"),
     "uint16_t": ("0", "65535"),
     "uint8_t": ("0", "255"),
+}
+
+# Receivers whose width depends on the platform (or that are unsigned 64-bit),
+# checked by round trip instead of by bounds: no limit macro is needed, and the
+# check folds away wherever the receiver holds every long long.  The value is
+# a C format string over the raw expression {0}.  Unsigned receivers also
+# reject negatives, so -1 never wraps to SIZE_MAX on one platform and raises
+# on another.  Signed receivers hold every Py_ssize_t, so they are only
+# checked when a scalar int (long long) feeds the expression.
+_WIDE_INT_ROUND_TRIP = {
+    "intptr_t": "(long long)(intptr_t)({0}) != (long long)({0})",
+    "ptrdiff_t": "(long long)(ptrdiff_t)({0}) != (long long)({0})",
+    "size_t": "(long long)({0}) < 0 || (unsigned long long)(size_t)({0}) != (unsigned long long)({0})",
+    "uint64_t": "(long long)({0}) < 0",
 }
 
 # Python conversion for each C scalar output type.
@@ -123,6 +139,56 @@ def _expr_needs_range_check(expr, scalar_params):
 
     wide, non_int = walk(expr)
     return wide and not non_int
+
+
+def _expr_uses_int_scalar(expr, scalar_params):
+    """True if a map expression reads a scalar int parameter (held as long long)."""
+    int_names = set(p.name for p in scalar_params if p.pytype == "int")
+
+    def walk(e):
+        if isinstance(e, Var):
+            return e.name in int_names
+        if isinstance(e, UnaryOp):
+            return walk(e.operand)
+        if isinstance(e, BinOp):
+            return walk(e.left) or walk(e.right)
+        return False
+
+    return walk(expr)
+
+
+def _func_uses_checked_arith(func, scalar_params):
+    """True if any check, when: or map: expression of `func` sets _c2py_ovf."""
+    exprs = list(func.checks)
+    for ol in func.overloads:
+        exprs.append(ol.when_expr)
+        exprs.extend(ol.map_exprs.values())
+    return any(expr_has_checked_arith(e, scalar_params) for e in exprs)
+
+
+def _ovf_raise_lines(func_name, what):
+    """C lines raising ValueError when integer arithmetic overflowed."""
+    return [
+        "if (_c2py_ovf) {",
+        "    PyErr_SetString(PyExc_ValueError,",
+        '        "{0}: integer overflow or division by zero in {1}");'.format(func_name, _escape_c_str(what)),
+        "    return NULL;",
+        "}",
+    ]
+
+
+def _when_cond(ol, when_c, scalar_params):
+    """Dispatch condition; an overflowing when: enters its branch to raise."""
+    if expr_has_checked_arith(ol.when_expr, scalar_params):
+        return "(" + when_c + ") || _c2py_ovf"
+    return when_c
+
+
+def _when_ovf_lines(ol, scalar_params, func_name):
+    """Raise lines for the branch an overflowing when: entered (see _when_cond)."""
+    if not expr_has_checked_arith(ol.when_expr, scalar_params):
+        return []
+    return _ovf_raise_lines(func_name, "when: " + _expr_to_source(ol.when_expr))
 
 
 class CBuilder:
@@ -635,6 +701,8 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
 
     # C89: every declaration precedes the first statement.
     b.emit_contiguity_decls(buf_params)
+    if _func_uses_checked_arith(func, scalar_params):
+        b.emit("    int _c2py_ovf = 0;  /* set by c2py_*_ll on overflow */")
 
     if timing:
         b.emit("    int _c2py_do_time = _c2py_timing_enabled;")
@@ -698,18 +766,20 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
         if i == 0:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + when_c + ") {")
+                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
             else:
                 b.emit("    if (1) {  /* group 0 (always) */")
         else:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + when_c + ") {")
+                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
             else:
                 b.emit("    }} else {{  /* group {0} (always) */".format(i))
 
         if is_group:
             gi = group_index
+            for line in _when_ovf_lines(ol, scalar_params, name):
+                b.emit("        " + line)
             b.emit("        /* group {0}: {1} variants */".format(gi, len(ol.variants)))
             b.emit("        switch (_var_{0}_{1}) {{".format(name, gi))
 
@@ -742,7 +812,17 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
             group_index += 1
         else:
             b.emit("        /* {0} */".format(ol.sig_str))
-            _emit_c_call(b, ol, buf_params, scalar_params, timing, name, gil, indent="        ")
+            _emit_c_call(
+                b,
+                ol,
+                buf_params,
+                scalar_params,
+                timing,
+                name,
+                gil,
+                indent="        ",
+                pre_lines=_when_ovf_lines(ol, scalar_params, name),
+            )
 
     if default_raise:
         b.emit("    } else {")
@@ -767,17 +847,19 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
         if i == 0:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + when_c + ") {")
+                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
             else:
                 b.emit("    if (1) {  /* overload 0 (always) */")
         else:
             if ol.when_expr is not None:
                 when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + when_c + ") {")
+                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
             else:
                 b.emit("    }} else {{  /* overload {0} (always) */".format(i))
         b.emit("        /* {0} */".format(ol.sig_str))
-        _emit_c_call(b, ol, buf_params, scalar_params, timing, name, gil)
+        _emit_c_call(
+            b, ol, buf_params, scalar_params, timing, name, gil, pre_lines=_when_ovf_lines(ol, scalar_params, name)
+        )
 
     if default_raise:
         b.emit("    } else {")
@@ -799,7 +881,9 @@ def _emit_c_call(
     func_name,
     gil_release_call=False,
     indent=None,
+    pre_lines=(),
 ):
+    """Emit one C call.  pre_lines run after the output declarations (C89)."""
     if indent is None:
         indent = "        "
 
@@ -821,6 +905,8 @@ def _emit_c_call(
             if ctype not in _OUTPUT_FROM_C:
                 raise ValueError("unsupported output type '{0}' for param '{1}'".format(ctype, p.name))
             emitl("{0} {1} = 0;".format(ctype, var_name))
+    for line in pre_lines:
+        emitl(line)
 
     # Build args
     args = []
@@ -843,10 +929,26 @@ def _emit_c_call(
             arg_c = raw_c
         elif not p.is_pointer and p.base_type not in ("double", "void"):
             arg_c = "(" + p.ctype + ")(" + arg_c + ")"
-        # Range check before narrowing (see _NARROW_INT_RANGE).
-        if not p.is_pointer and p.base_type in _NARROW_INT_RANGE and _expr_needs_range_check(expr, scalar_params):
-            lo, hi = _NARROW_INT_RANGE[p.base_type]
-            emitl("if ((long long)({0}) < (long long){1} || (long long)({0}) > (long long){2}) {{".format(raw_c, lo, hi))
+        # Evaluate checked arithmetic once up front so an overflow raises
+        # before the range check or the call can use the value.
+        if expr_has_checked_arith(expr, scalar_params):
+            emitl("(void)({0});".format(raw_c))
+            for line in _ovf_raise_lines(func_name, "map: {0} = {1}".format(p.name, _expr_to_source(expr))):
+                emitl(line)
+        # Range check before narrowing (see _NARROW_INT_RANGE and
+        # _WIDE_INT_ROUND_TRIP).
+        if (
+            not p.is_pointer
+            and (p.base_type in _NARROW_INT_RANGE or p.base_type in _WIDE_INT_ROUND_TRIP)
+            and _expr_needs_range_check(expr, scalar_params)
+            and (p.base_type not in ("intptr_t", "ptrdiff_t") or _expr_uses_int_scalar(expr, scalar_params))
+        ):
+            if p.base_type in _NARROW_INT_RANGE:
+                lo, hi = _NARROW_INT_RANGE[p.base_type]
+                cond = "(long long)({0}) < (long long){1} || (long long)({0}) > (long long){2}".format(raw_c, lo, hi)
+            else:
+                cond = _WIDE_INT_ROUND_TRIP[p.base_type].format(raw_c)
+            emitl("if ({0}) {{".format(cond))
             emitl("    PyErr_SetString(PyExc_ValueError,")
             emitl(
                 '        "{0} out of range for C {1} {2}");'.format(
@@ -1337,7 +1439,12 @@ def _emit_check(b, check, buf_params, scalar_params, name):
     c_expr = _expr_to_c(check, buf_params, scalar_params, None)
     msg = _expr_to_source(check)
     diag = _make_check_diag(check, buf_params, scalar_params, name)
-    b.emit("    if (!(" + c_expr + ")) {")
+    if expr_has_checked_arith(check, scalar_params):
+        b.emit("    if (!(" + c_expr + ") || _c2py_ovf) {")
+        for line in _ovf_raise_lines(name, "check: " + msg):
+            b.emit("        " + line)
+    else:
+        b.emit("    if (!(" + c_expr + ")) {")
     if diag:
         b.emit("        " + diag[0])
         if len(diag) > 1:
@@ -1490,7 +1597,8 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     argument at a time, so an unsupported type is reported naming the
     argument, its 1-based position in the call, and the received PEP 3118
     format string -- instead of an opaque SystemError from a later
-    dispatch failure. Uses c2py_format_is_native for byte-order safety.
+    dispatch failure. Uses c2py_format_type, which rejects non-native byte
+    order and complex/struct formats.
 
     `supported_itemsizes` comes from `<buf>.itemsize == N` fallback
     alternatives in the `when:` condition -- these accept any format char
@@ -1514,9 +1622,9 @@ def _emit_decode_dtype_check(b, func, p, supported_chars, supported_itemsizes):
     expected = "; or ".join(expected_parts)
     b.emit("    /* decode-time dtype check: {0} */".format(p.name))
     b.emit("    {")
-    b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "";'.format(p.name))
-    b.emit("        char _last = _fmt[0] ? _fmt[strlen(_fmt) - 1] : 0;")
-    b.emit("        if (_fmt[0] && !(({0}) && c2py_format_is_native(info_{1}.format))) {{".format(last_cmp, p.name))
+    b.emit('        const char *_fmt = info_{0}.format ? info_{0}.format : "B";'.format(p.name))
+    b.emit("        char _last = c2py_format_type(_fmt);")
+    b.emit("        if (!(_last && ({0}))) {{".format(last_cmp))
     b.emit("            PyErr_Format(PyExc_TypeError,")
     b.emit(
         "                \"{0}: argument {1} ({2}) has unsupported format '%s'; expected formats: {3}\",".format(
@@ -1672,6 +1780,12 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
                 b.emit("        long long _c2py_tmp = PyLong_AsLongLong(args[{0}]);".format(idx))
                 b.emit("        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;")
                 b.emit("        c_{0} = (intptr_t)_c2py_tmp;".format(p.name))
+                # An address above 4 GiB cannot exist on a 32-bit build.
+                b.emit("        if ((long long)c_{0} != _c2py_tmp) {{".format(p.name))
+                b.emit("            PyErr_SetString(PyExc_ValueError,")
+                b.emit('                "{0} out of range for C void *");'.format(p.name))
+                b.emit("            return NULL;")
+                b.emit("        }")
             else:
                 # Held as long long; each narrow C receiver is range-checked
                 # at its call site (see _NARROW_INT_RANGE).

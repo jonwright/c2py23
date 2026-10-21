@@ -49,6 +49,23 @@ def test_alias_slice():
         print("PASS: slice alias detected")
 
 
+def test_empty_writable_slice_is_not_alias():
+    """An empty writable slice inside another buffer occupies no bytes.
+
+    It used to raise "buffer aliasing forbidden"; now the call reaches
+    the size checks, which reject it for the real reason.
+    """
+    x = np.arange(10, dtype=np.float64)
+    try:
+        arraysum.array_sum(x, np.zeros(10), x[5:5])
+        raise AssertionError("FAIL: size mismatch should be rejected")
+    except ValueError as e:
+        assert "alias" not in str(e), "Expected size check, got: %s" % e
+        assert "a.n == result.n" in str(e), "Expected size check, got: %s" % e
+    # Two empty views of the same spot share no bytes either: no error.
+    arraysum.array_sum(x[5:5], np.zeros(0), x[5:5])
+
+
 def test_alias_reversed():
     """Reversed: b = a[::-1] overlaps with original a."""
     a = np.arange(100, dtype=np.float64)

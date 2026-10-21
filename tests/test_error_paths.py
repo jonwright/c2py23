@@ -57,6 +57,31 @@ def refcount(obj):
     return sys.getrefcount(obj) - 1
 
 
+def test_old_buffer_not_accepted_as_double():
+    """array.array('d') reaches a format == 'd' check as typed doubles on
+    3.x (PEP 3118 'd').  On 2.7 it has only the old buffer API: raw bytes,
+    no format, .n counting bytes.  That is 'B', and must be rejected --
+    accepting it made the C function process 8x the element count."""
+    import array
+
+    sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))
+    import arraysum
+
+    a = array.array("d", [1.0, 2.0, 3.0, 4.0])
+    b = array.array("d", [5.0, 6.0, 7.0, 8.0])
+    out = array.array("d", [0.0] * 4)
+    if sys.version_info[0] >= 3:
+        arraysum.array_sum(a, b, out)
+        assert list(out) == [6.0, 8.0, 10.0, 12.0], out
+    else:
+        try:
+            arraysum.array_sum(a, b, out)
+            raise AssertionError("old-API buffer accepted as format 'd'")
+        except ValueError as e:
+            assert "format" in str(e), e
+    print("PASS: old-API buffer is bytes")
+
+
 def test_arraysum_format_mismatch_last_buffer():
     """3 buffers: a(d), b(d), c(f). c has wrong format -> format check fails."""
     sys.path.insert(0, os.path.join(SCRIPT_DIR, "cases", "arraysum"))

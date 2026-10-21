@@ -67,6 +67,81 @@ def test_int64_scalars_and_outputs():
         assert widthmod.echo_i64(v) == v, "echo_i64(%d)" % v
     for v in (0, 2**40, 2**63 - 1):
         assert widthmod.echo_u64(v) == v, "echo_u64(%d)" % v
+    msg = _expect_value_error(widthmod.echo_u64, -1)
+    assert "out of range for C uint64_t v" in msg, msg
+
+
+def test_pointer_width_scalars():
+    """size_t/intptr_t/ptrdiff_t take their full range and raise beyond it.
+
+    These are 32-bit on a 32-bit build, so 2**32 and 2**40 must raise there
+    rather than arrive truncated; on a 64-bit build they must arrive intact.
+    Negative values never wrap into size_t.
+    """
+    wide = sys.maxsize > 2**32
+    big = [2**31, 2**32, 2**40]
+    signed_ok = [0, 1, -1, 2**31 - 1, -(2**31), sys.maxsize, -sys.maxsize - 1]
+    size_ok = [0, 1, 2**31, 2**32 - 1 if not wide else sys.maxsize]
+    if wide:
+        signed_ok += big + [-x for x in big]
+        size_ok += big
+        signed_bad = []
+        size_bad = [-1, -(2**40)]
+    else:
+        signed_bad = big + [-(2**31) - 1, -(2**40)]
+        size_bad = [-1, 2**32, 2**40]
+    for fn, ctype, ok, bad in (
+        (widthmod.echo_size, "size_t", size_ok, size_bad),
+        (widthmod.echo_iptr, "intptr_t", signed_ok, signed_bad),
+        (widthmod.echo_pdiff, "ptrdiff_t", signed_ok, signed_bad),
+    ):
+        for v in ok:
+            assert fn(v) == v, "%s(%d)" % (fn.__name__, v)
+        for v in bad:
+            msg = _expect_value_error(fn, v)
+            assert "out of range for C %s v" % ctype in msg, msg
+
+
+def test_check_arithmetic_overflow():
+    """out.n >= rows * cols raises when rows * cols overflows instead of wrapping."""
+    out = bytearray(6)
+    widthmod.fill_grid(out, 2, 3)
+    assert out == bytearray(b"\x01" * 6)
+    msg = _expect_value_error(widthmod.fill_grid, bytearray(6), 2, 4)
+    assert "out.n >= (rows * cols)" in msg, msg
+    # 2**32 * 2**32 wraps to 0 in 64 bits: the check must not pass.
+    msg = _expect_value_error(widthmod.fill_grid, bytearray(6), 2**32, 2**32)
+    assert "integer overflow or division by zero in check: out.n >= (rows * cols)" in msg, msg
+
+
+def test_map_division_by_zero():
+    """data.len / k with k == 0 raises instead of trapping (SIGFPE)."""
+    assert widthmod.chunk_len(bytearray(10), 2) == 5
+    msg = _expect_value_error(widthmod.chunk_len, bytearray(10), 0)
+    assert "integer overflow or division by zero in map: n = (data.len / k)" in msg, msg
+
+
+def test_when_arithmetic_overflow():
+    """An overflowing when: raises instead of picking an overload on a wrapped value."""
+    assert widthmod.pick_half(bytearray(10), 11) == 1
+    assert widthmod.pick_half(bytearray(10), 10) == 0
+    msg = _expect_value_error(widthmod.pick_half, bytearray(10), 2**62)
+    assert "integer overflow or division by zero in when: (data.len * k) > 100" in msg, msg
+
+
+def test_old_buffer_is_bytes():
+    """A buffer without a format is unsigned bytes (PEP 3118).
+
+    On Python 2.7 array.array has only the old buffer API, which hands
+    over raw bytes with no format.  A format == 'B' check accepts it and
+    .len counts bytes; it must not pass as typed data (small_len checks
+    format == 'B', so bytes are exactly what it takes).  On 3.x
+    array.array exports a real 'B' format.
+    """
+    import array
+
+    assert widthmod.small_len(array.array("B", [1, 2, 3])) == 3
+    assert widthmod.small_len(bytearray(7)) == 7
 
 
 def test_int64_constants():

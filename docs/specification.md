@@ -466,10 +466,25 @@ than 64 bits (`int`, `int8_t` ... `int32_t`, `uint8_t` ... `uint32_t`, `char`),
 the wrapper checks the value against that type's range before the call and
 raises `ValueError` ("`<expr>` out of range for C `<type>` `<name>`") instead of
 truncating.  `size_t`, `intptr_t`, `ptrdiff_t`, `int64_t` and `uint64_t`
-receivers hold every `Py_ssize_t` on every platform and are passed unchecked,
-so a buffer larger than 2 GiB reaches them in one call.  Literals, `ndim` and
+receivers hold every `Py_ssize_t` on every platform, so a buffer larger than
+2 GiB reaches them in one call.  A `long long` scalar can still exceed a
+32-bit `size_t`/`intptr_t`/`ptrdiff_t` (ILP32), so these get a round-trip
+check whenever a scalar int feeds them, and a negative value never wraps into
+`size_t` or `uint64_t`.  `int64_t` is never checked.  Literals, `ndim` and
 the axis attributes are never checked.  Use a 64-bit or pointer-width
 receiver for lengths of large buffers.
+
+#### Integer arithmetic
+
+Integer `+ - * / %` and unary minus in `checks:`, `when:` and `map:`
+expressions are evaluated in `long long` by overflow-checked helpers
+(`c2py_add_ll` ... `c2py_neg_ll` in `c2py_runtime.h`), not in `Py_ssize_t`,
+which is 32-bit on ILP32.  If a result does not fit in `long long`, or a
+division or modulo has a zero divisor, the wrapper raises `ValueError`
+("`<func>`: integer overflow or division by zero in check: ...") instead of
+using a wrapped value: `checks: ["out.n >= rows * cols"]` cannot pass because
+`rows * cols` wrapped.  Arithmetic involving a float, or on literals only, is
+emitted as plain C.
 
 ### When Expressions
 
@@ -487,13 +502,17 @@ compare ::= map_expr cmp_op map_expr
 cmp_op ::= "==" | "!=" | "<" | ">" | "<=" | ">="
 ```
 
-Format comparison with a single-character string literal uses last-character
-matching to handle the type-char position of a PEP 3118 format string
-regardless of its (optional) byte-order prefix:
+Format comparison with a single-character string literal matches a PEP 3118
+format that describes exactly one element of that type, with an optional
+byte-order prefix (`c2py_format_type()` in `c2py_runtime.h`):
 ```
 arr.format == 'd'   matches "d", "<d", "=d", "@d" (on a little-endian build)
 arr.format == 'H'   matches "H", "<H", "=H", "@H" (on a little-endian build)
+arr.format == 'd'   does not match "Zd" (complex128), "2d", "T{d:re:d:im:}"
 ```
+Complex types are intentionally unsupported (`docs/design.md`, #53): a numpy
+complex array is rejected by every format check rather than read as half as
+many floats or doubles.  Pass interleaved pairs with `a.view(np.float64)`.
 
 c2py23 only supports **native byte order**: for a byte-order-sensitive type
 (anything wider than one byte -- `h`/`H`/`i`/`I`/`l`/`L`/`q`/`Q`/`f`/`d`/`e`),
@@ -508,15 +527,20 @@ basis. The check is a compile-time-resolved host-endianness comparison
 both little-endian and big-endian builds (e.g. ppc64le and a hypothetical
 ppc64be) without extra runtime cost.
 
-When the format pointer is NULL (old buffer protocol on Python 2.7), the
-condition evaluates to true, allowing the first matching overload to proceed.
+A NULL format pointer means `'B'` (unsigned bytes), as PEP 3118 defines it.
+This is also what the Python 2.7 old buffer API fallback provides: raw bytes,
+`itemsize` 1, `.n` counting bytes.  So on 2.7 an object with only the old API
+(`array.array`, `str`, `buffer`) matches `format == 'B'` but not
+`format == 'd'`.  Accepting it as `'d'` would make `.n` eight times the
+element count.  Pass a `ctypes` array or a numpy array on 2.7 for typed data.
 
 ### Decode-time dtype validation
 
 When a buffer argument's format participates in `when:` dispatch (i.e. some
 overload's `when:` condition compares its `.format`), the generator emits a
 decode-time check immediately after that buffer is acquired. If the buffer's
-PEP 3118 format (its last character, plus byte order) is not accepted by any
+PEP 3118 format (its element type, as `c2py_format_type()` reads it, which
+also rejects non-native byte order and complex/struct formats) is not accepted by any
 overload, a `TypeError` is raised at that argument's decode site, naming the
 argument, its 1-based position, and the received format string, e.g.:
 
@@ -1140,10 +1164,27 @@ non-numpy buffer library). Use `acquire: [ndarray, dlpack, buffer]` for
 maximum portability across numpy, DLPack exporters, and buffer-protocol objects.
 
 The DLPack backend is slower for CPU arrays (~381ns) because `__dlpack__()`
-is a Python method dispatch. Its value is for GPU device pointers (CuPy,
-PyTorch) where the buffer protocol cannot return a GPU address, and for
-non-CPython runtimes (PyPy, GraalPy) where the buffer protocol emulation
-is slow.
+is a Python method dispatch. Its value is for non-CPython runtimes (PyPy,
+GraalPy) where the buffer protocol emulation is slow, and for exporters that
+offer DLPack but not the buffer protocol.  It accepts CPU tensors only; a
+GPU tensor raises `TypeError`.
+
+The backend calls `__dlpack__(max_version=(1, 0))` and falls back to a plain
+`__dlpack__()` for producers that predate DLPack 1.0.  A versioned capsule
+carries a read-only flag: writing to a read-only tensor raises `ValueError`
+(as for a read-only array on the other backends),
+and read-only inputs are accepted.  A legacy capsule carries no flag, so it
+is never written through: for a writable parameter the backend declines it
+and the next backend decides.  numpy does the same as a consumer
+(`np.from_dlpack` of a legacy capsule is read-only).  numpy < 2.1 exports
+only legacy capsules, so an `acquire: [dlpack]`-only function cannot write to
+those arrays; include `buffer` in the list.  Every tensor field (`ndim`, `shape`,
+`byte_offset`, `data`, the int64 shape/stride ranges) is validated before
+use, and a malformed tensor raises `ValueError`.
+
+A backend that cannot handle an object declines silently and the next one is
+tried.  A backend that finds a real problem (read-only array, malformed
+tensor, an exporter's own error) stops the search, and that error is raised.
 
 ## Generated Wrapper Structure
 
@@ -1287,7 +1328,7 @@ and module creation. No other CPython APIs are exposed or used.
    `PyObject_GetBuffer` with `PyBUF_STRIDES | PyBUF_FORMAT` flags; on Python 2.7
    it tries PEP 3118 first, then falls back to `PyObject_AsReadBuffer`/
    `PyObject_AsWriteBuffer` (old buffer API). Old buffers have `format = NULL`
-   and `ndim = 1`
+   (read as `'B'`), `itemsize = 1` and `ndim = 1`
 
 ### Function Pointer Table
 

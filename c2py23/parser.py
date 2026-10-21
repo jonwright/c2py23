@@ -1365,13 +1365,6 @@ _FORMAT_TO_CTYPE = {
     "?": "uint8_t",
 }
 
-# Byte-order-sensitive format chars (itemsize > 1).  c2py23 only
-# supports native byte order; an explicit non-native PEP 3118 prefix
-# ('<', '>', '!') on one of these must be rejected rather than silently
-# read as native (see c2py_format_is_native in c2py_runtime.h). 1-byte
-# types (b, B, ?, c) are byte-order-invariant and skip the check.
-_ENDIAN_SENSITIVE_FORMAT_CHARS = frozenset("hHiIlLqQfdeZz")
-
 _FORMAT_CHAR_TO_NAME = {
     "b": "int8",
     "B": "uint8",
@@ -1387,8 +1380,6 @@ _FORMAT_CHAR_TO_NAME = {
     "c": "char",
     "?": "bool",
     "e": "half-float",
-    "Z": "complex64",
-    "z": "complex128",
 }
 
 _FUNC_DECL_RE = re.compile(
@@ -1681,8 +1672,72 @@ def _expr_to_source(expr):
 # ---- Expression transpilation ----
 
 
+# Integer-valued buffer attributes (Py_ssize_t or int in c2py_ptr_info).
+_INT_ATTRS = frozenset(["len", "n", "itemsize", "ndim", "slow_dim", "fast_dim", "slow_axis", "fast_axis"])
+
+_LL_HELPERS = {"+": "c2py_add_ll", "-": "c2py_sub_ll", "*": "c2py_mul_ll", "/": "c2py_div_ll", "%": "c2py_mod_ll"}
+
+
+def _expr_is_int(expr, scalar_params):
+    """True if an expression is integer-valued (buffer sizes, int scalars, int literals)."""
+    if isinstance(expr, IntLit):
+        return True
+    if isinstance(expr, Var):
+        for p in scalar_params:
+            if p.name == expr.name:
+                return p.pytype == "int"
+        return False
+    if isinstance(expr, Attr):
+        return expr.attr in _INT_ATTRS
+    if isinstance(expr, Subscript):
+        return True
+    if isinstance(expr, UnaryOp):
+        return expr.op in ("-", "+") and _expr_is_int(expr.operand, scalar_params)
+    if isinstance(expr, BinOp):
+        return (
+            expr.op in _LL_HELPERS
+            and _expr_is_int(expr.left, scalar_params)
+            and _expr_is_int(expr.right, scalar_params)
+        )
+    return False
+
+
+def _is_checked_arith(expr, scalar_params):
+    """True if this node is integer arithmetic evaluated by a c2py_*_ll helper.
+
+    Literal-only arithmetic is folded by the compiler and left plain.
+    """
+    if isinstance(expr, BinOp) and expr.op in _LL_HELPERS:
+        operands = (expr.left, expr.right)
+    elif isinstance(expr, UnaryOp) and expr.op == "-":
+        operands = (expr.operand,)
+    else:
+        return False
+    if not all(_expr_is_int(e, scalar_params) for e in operands):
+        return False
+    return not all(isinstance(e, IntLit) for e in operands)
+
+
+def expr_has_checked_arith(expr, scalar_params):
+    """True if the C for `expr` reads or sets the wrapper's _c2py_ovf flag."""
+    if expr is None:
+        return False
+    if _is_checked_arith(expr, scalar_params):
+        return True
+    if isinstance(expr, (BinOp, Compare)):
+        return expr_has_checked_arith(expr.left, scalar_params) or expr_has_checked_arith(expr.right, scalar_params)
+    if isinstance(expr, UnaryOp):
+        return expr_has_checked_arith(expr.operand, scalar_params)
+    return False
+
+
 def _expr_to_c(expr, buf_params, scalar_params, current_ol):
-    """Transpile an expression AST node to a C expression string."""
+    """Transpile an expression AST node to a C expression string.
+
+    Integer arithmetic on buffer sizes and int scalars is evaluated in long
+    long by the overflow-checked c2py_*_ll helpers, which set the wrapper's
+    _c2py_ovf flag instead of wrapping (see expr_has_checked_arith).
+    """
     if expr is None:
         return "1"  # No condition = always true
 
@@ -1747,29 +1802,19 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         right = _expr_to_c(expr.right, buf_params, scalar_params, current_ol)
         op = expr.op
 
-        # String comparison with format char: use last-char match for
-        # PEP 3118 format strings (handles "d", "<d", "=d", etc.)
-        # On old buffers (format == NULL), treat as matching (we can't check)
+        # String comparison with a format char: c2py_format_type() accepts
+        # only a single native-order element ("d", "<d", "=d"), so complex
+        # ("Zd"), repeat counts and structs never match a plain type char.
+        # A NULL format is 'B' (PEP 3118; also the 2.7 old buffer API).
         if isinstance(expr.left, StrLit) or isinstance(expr.right, StrLit):
             str_lit = expr.left if isinstance(expr.left, StrLit) else expr.right
             fmt_expr = right if isinstance(expr.left, StrLit) else left
             if len(str_lit.value) == 1:
                 ch = str_lit.value
-                endian_sensitive = ch in _ENDIAN_SENSITIVE_FORMAT_CHARS
                 if op == "==":
-                    if endian_sensitive:
-                        result = "(!{0} || ({0}[strlen({0}) - 1] == '{1}' && c2py_format_is_native({0})))".format(
-                            fmt_expr, ch
-                        )
-                    else:
-                        result = "(!{0} || {0}[strlen({0}) - 1] == '{1}')".format(fmt_expr, ch)
+                    result = "(c2py_format_type({0}) == '{1}')".format(fmt_expr, ch)
                 elif op == "!=":
-                    if endian_sensitive:
-                        result = "({0} && ({0}[strlen({0}) - 1] != '{1}' || !c2py_format_is_native({0})))".format(
-                            fmt_expr, ch
-                        )
-                    else:
-                        result = "({0} && {0}[strlen({0}) - 1] != '{1}')".format(fmt_expr, ch)
+                    result = "(c2py_format_type({0}) != '{1}')".format(fmt_expr, ch)
                 # 'l'/'L' are platform-sized in PEP 3118: sizeof(long)
                 # differs between LP64 (8) and LLP64 (4).  Add an
                 # itemsize check so the same .c2py works on both.
@@ -1783,10 +1828,11 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
                 return "strcmp({}, {}) != 0".format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for strings".format(op))
-        # Both sides are format attributes: compare the last character
-        # of each format string (handles endian prefixes like "<d", "=d").
-        # Pointer comparison is wrong -- PyPy cpyext may allocate distinct
-        # format strings with identical content.
+        # Both sides are format attributes: compare the element type of
+        # each format string (c2py_format_type handles "<d", "=d", and
+        # rejects complex/struct formats).  Pointer comparison is wrong --
+        # PyPy cpyext may allocate distinct format strings with identical
+        # content.
         elif (
             isinstance(expr.left, Attr)
             and expr.left.attr == "format"
@@ -1795,15 +1841,11 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         ):
             if op == "==":
                 return (
-                    "((!{0} && !{1}) || ({0} && {1} && "
-                    "{0}[strlen({0}) - 1] == {1}[strlen({1}) - 1] && "
-                    "c2py_format_is_native({0}) && c2py_format_is_native({1})))"
+                    "(c2py_format_type({0}) != '\\0' && c2py_format_type({0}) == c2py_format_type({1}))"
                 ).format(left, right)
             elif op == "!=":
                 return (
-                    "({0} && {1} && ("
-                    "{0}[strlen({0}) - 1] != {1}[strlen({1}) - 1] || "
-                    "!c2py_format_is_native({0}) || !c2py_format_is_native({1})))"
+                    "(c2py_format_type({0}) == '\\0' || c2py_format_type({0}) != c2py_format_type({1}))"
                 ).format(left, right)
             else:
                 raise ValueError("Unsupported comparison op '{}' for format attributes".format(op))
@@ -1817,7 +1859,9 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return "({}) && ({})".format(left, right)
         elif expr.op == "or":
             return "({}) || ({})".format(left, right)
-        elif expr.op in ("+", "-", "*", "/", "%"):
+        elif expr.op in _LL_HELPERS:
+            if _is_checked_arith(expr, scalar_params):
+                return "{0}({1}, {2}, &_c2py_ovf)".format(_LL_HELPERS[expr.op], left, right)
             return "({} {} {})".format(left, expr.op, right)
         else:
             raise ValueError("Unknown binop: {}".format(expr.op))
@@ -1827,6 +1871,8 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         if expr.op == "not":
             return "!({})".format(operand)
         elif expr.op == "-":
+            if _is_checked_arith(expr, scalar_params):
+                return "c2py_neg_ll({0}, &_c2py_ovf)".format(operand)
             return "-({})".format(operand)
         elif expr.op == "+":
             return "+({})".format(operand)

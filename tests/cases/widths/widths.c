@@ -29,3 +29,47 @@ void echo_u64(uint64_t v, uint64_t *out)
 {
     *out = v;
 }
+
+/* Pointer-width receivers: 32 bits on ILP32, so the wrapper must range-check
+   a long long scalar before narrowing. */
+void echo_size(size_t v, size_t *out)
+{
+    *out = v;
+}
+
+void echo_iptr(intptr_t v, intptr_t *out)
+{
+    *out = v;
+}
+
+void echo_pdiff(ptrdiff_t v, ptrdiff_t *out)
+{
+    *out = v;
+}
+
+/* Overflow-checked expression arithmetic: the wrapper must reject
+   rows * cols, data.len / 0 and data.len * k that do not fit long long. */
+void fill_grid(uint8_t *out, int64_t n)
+{
+    int64_t i;
+    for (i = 0; i < n; i++)
+        out[i] = 1;
+}
+
+void chunk_len(const uint8_t *data, int64_t n, int64_t *out)
+{
+    (void)data;
+    *out = n;
+}
+
+void pick_half(const uint8_t *data, int32_t *out)
+{
+    (void)data;
+    *out = 1;
+}
+
+void pick_none(const uint8_t *data, int32_t *out)
+{
+    (void)data;
+    *out = 0;
+}

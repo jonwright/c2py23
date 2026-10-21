@@ -208,6 +208,20 @@ def run_python_version(python_version, sif_file):
         "PIP_BREAK_SYSTEM_PACKAGES=1 "
         + system_py
         + " -m pip install --user --ignore-installed setuptools wheel pytest --quiet && "
+        # numpy is required, not optional, here: without it the ndarray,
+        # DLPack and peer-review tests skip silently (free-threaded
+        # images ship none).  Pre-release interpreters fall back to the
+        # scientific-python nightly wheels, as in CI.
+        "(" + system_py + ' -c "import numpy" 2>/dev/null || '
+        "PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --only-binary=:all: numpy --quiet 2>/dev/null || "
+        "PIP_BREAK_SYSTEM_PACKAGES=1 "
+        + system_py
+        + " -m pip install --user --only-binary=:all: --pre --extra-index-url "
+        "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple numpy --quiet 2>/dev/null || true) && "
+        + system_py
+        + ' -c "import numpy; print(\'numpy\', numpy.__version__)" && '
         "PYTHONPATH=/workspace " + system_py + " tests/runner.py"
     )
 
