@@ -11,19 +11,6 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-IS_FREE_THREADED = False
-try:
-    import sysconfig
-
-    IS_FREE_THREADED = sysconfig.get_config_var("Py_GIL_DISABLED") == 1
-except Exception:
-    pass
-# c2py23 deliberately skips ndarray struct-cast on FT builds because
-# the PyObject header layout differs (extra atomic refcounting fields).
-_ft_skip_ndarray_only = pytest.mark.skipif(
-    IS_FREE_THREADED, reason="ndarray struct-cast disabled on free-threaded Python (PyObject layout differs)"
-)
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks", "build"))
 
 # These are built by the benchmark Makefile (called from run_tests.sh)
@@ -86,8 +73,8 @@ class TestNdarrayFastPath:
 
     def test_read_only_rejected(self):
         """Writable request on read-only ndarray: ValueError mentioning
-        read-only, from the fast path's flags check or (free-threaded,
-        PyPy) from numpy's PEP 3118 export -- the same on every build."""
+        read-only, from the fast path's flags check or (PyPy) from
+        numpy's PEP 3118 export -- the same on every build."""
         mods_ro = make_mods()
         mods_ro.setflags(write=False)
         with pytest.raises(ValueError) as e:
@@ -122,13 +109,63 @@ class TestNdarrayFastPath:
 
 
 @needs_modules
-@pytest.mark.skipif(IS_FREE_THREADED, reason="ndarray struct-cast disabled on free-threaded Python")
 class TestBackendSpecific:
     """Verify each acquisition backend works in isolation."""
 
     def test_ndarray_only(self):
-        """ndarray-only backend handles numpy arrays."""
-        c2py_vnorm_ndarray.vnorm(make_vec(), make_mods())
+        """ndarray-only backend handles numpy arrays (GIL and free-threaded)."""
+        mods = make_mods()
+        c2py_vnorm_ndarray.vnorm(make_vec(), mods)
+        assert np.allclose(mods, np.linalg.norm(make_vec(), axis=1))
+
+    def test_ndarray_first_probe_threads(self):
+        """Threads meeting the first ndarray at once all get correct data.
+
+        The fast path probes numpy's layout on first use and publishes it
+        to every thread; on free-threaded Python the probes really run
+        concurrently.  A fresh interpreter makes this the first ndarray
+        seen; an Event releases all threads together."""
+        import subprocess
+
+        script = r"""
+from __future__ import print_function
+import sys, threading
+sys.path.insert(0, sys.argv[1])
+import numpy as np
+import c2py_vnorm_ndarray as m
+
+N_THREADS, N_CALLS = 8, 200
+go = threading.Event()
+errors = []
+
+def work(k):
+    vec = np.arange(3.0 * (k + 1)).reshape(-1, 3) + k
+    want = np.sqrt((vec * vec).sum(axis=1))
+    go.wait()
+    for _ in range(N_CALLS):
+        mods = np.zeros(vec.shape[0])
+        m.vnorm(vec, mods)
+        if not np.array_equal(mods, want):
+            errors.append((k, mods, want))
+            return
+
+threads = [threading.Thread(target=work, args=(k,)) for k in range(N_THREADS)]
+for t in threads:
+    t.start()
+go.set()
+for t in threads:
+    t.join()
+print("ERRORS", len(errors))
+sys.exit(1 if errors else 0)
+"""
+        build = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks", "build")
+        for _ in range(5):
+            p = subprocess.Popen(
+                [sys.executable, "-c", script, build], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
+            out = p.communicate()[0].decode("ascii", "replace")
+            assert p.returncode == 0, out
+            assert "ERRORS 0" in out, out
 
     def test_buffer_only(self):
         """buffer-only backend handles numpy arrays via PEP 3118."""
@@ -141,7 +178,6 @@ class TestBackendSpecific:
         # Just verify import works.
         assert c2py_vnorm_buffer is not None
 
-    @pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
     def test_dlpack(self):
         """DLPACK backend: verify basic import and function signature.
 
@@ -348,24 +384,29 @@ class _RawDLPack(object):
 
 
 def _numpy_dlpack_versioned():
-    """True if numpy exports DLPack 1.0 capsules (numpy >= 2.1)."""
+    """True if numpy exports DLPack 1.0 capsules (numpy >= 2.1).
+
+    False for legacy-only DLPack (numpy 1.22 - 2.0) and for no DLPack at
+    all (numpy < 1.22: no __dlpack__, so the DLPack backend declines and
+    a DLPack-only module reports "all backends exhausted")."""
     try:
         np.zeros(1).__dlpack__(max_version=(1, 0))
         return True
-    except TypeError:
+    except (TypeError, AttributeError):
         return False
 
 
 @needs_modules
-@pytest.mark.skipif(not hasattr(np.ndarray, "__dlpack__"), reason="numpy version does not support DLPack")
 class TestDLPackValidation:
     """DLPack is foreign data: honour the read-only flag of a versioned
     capsule, never write through a legacy one, and reject malformed
     tensors before reading them.
 
     numpy < 2.1 exports only legacy capsules (and refuses read-only arrays
-    altogether), so a DLPack-only module cannot write to its arrays: the
-    cases with a numpy output expect "all backends exhausted" there."""
+    altogether), and numpy < 1.22 has no DLPack at all, so a DLPack-only
+    module cannot write to their arrays: the cases with a numpy output
+    expect "all backends exhausted" there.  The hand-built capsules need
+    no numpy DLPack and run everywhere."""
 
     def test_read_only_input(self):
         """Versioned: a read-only input is accepted.  Legacy numpy refuses
@@ -518,33 +559,53 @@ def test_dlpack_abi():
 
 
 def test_numpy_abi():
-    """Verify NumPy ndarray struct layouts match expectations."""
+    """Verify NumPy ndarray struct layouts match the runtime's offsets.
+
+    Built from sysconfig (python-config is often absent, e.g. in CI), so
+    it runs wherever there is a C compiler and the Python headers --
+    including free-threaded builds, whose larger object header moves the
+    descriptor and tp_name offsets."""
     import subprocess
-    import os
-    import sys
+    import sysconfig
+    import tempfile
+    import shutil
 
-    script_dir = os.path.dirname(__file__)
-    src = os.path.join(script_dir, "check_numpy_abi.c")
-    if not os.path.exists(src):
-        pytest.skip("check_numpy_abi.c not found")
-
-    py_conf = sys.executable + "-config"
+    if sys.platform == "win32":
+        pytest.skip("check_numpy_abi.c embeds Python via gcc; Windows CI has MSVC only")
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_numpy_abi.c")
+    # INCLUDEPY: distro-patched interpreters (Debian/Ubuntu 2.7) report a
+    # wrong get_paths()["include"] (/usr/local/...); INCLUDEPY is where
+    # Python.h really is.
+    include = sysconfig.get_config_var("INCLUDEPY") or sysconfig.get_paths()["include"]
+    libdir = sysconfig.get_config_var("LIBDIR") or ""
+    ldlib = sysconfig.get_config_var("LDLIBRARY") or ""
+    if sysconfig.get_config_var("PYTHONFRAMEWORK") and ".framework" in ldlib:
+        # macOS framework build: LDLIBRARY is Python.framework/Versions/X.Y/Python
+        link = [
+            "-F" + sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX"),
+            "-framework",
+            sysconfig.get_config_var("PYTHONFRAMEWORK"),
+        ]
+    else:
+        # libpython3.14t.so / libpython3.12.a / libpython3.12.dylib -> -lpython3.14t
+        libname = ldlib[3:].split(".so")[0].split(".a")[0].split(".dylib")[0]
+        link = ["-L" + libdir, "-Wl,-rpath," + libdir, "-l" + libname]
+    extra = (sysconfig.get_config_var("LIBS") or "").split() + (sysconfig.get_config_var("SYSLIBS") or "").split()
+    tmp = tempfile.mkdtemp()
     try:
-        import subprocess
-
-        includes = subprocess.check_output([py_conf, "--includes"]).decode().strip()
-        ldflags = subprocess.check_output([py_conf, "--ldflags", "--embed"]).decode().strip()
-    except Exception:
-        pytest.skip("python-config not available")
-
-    np_include = np.get_include()
-    cmd = ["gcc", src] + includes.split() + ["-I" + np_include] + ldflags.split() + ["-o", "/tmp/check_numpy_abi_test"]
-    devnull2 = open(os.devnull, "w")
-    result = subprocess.call(cmd, stdout=devnull2, stderr=devnull2)
-    devnull2.close()
-    if result != 0:
-        pytest.skip("cannot compile check_numpy_abi.c")
-    proc = subprocess.Popen(["/tmp/check_numpy_abi_test"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, _ = proc.communicate()
-    stdout_str = stdout.decode() if isinstance(stdout, bytes) else stdout
-    assert "NUMPY_ABI_OK 1" in stdout_str, "NumPy ABI check failed"
+        exe = os.path.join(tmp, "check_numpy_abi")
+        cmd = [os.environ.get("CC", "gcc"), src, "-I" + include, "-I" + np.get_include(), "-o", exe] + link + extra
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = p.communicate()[0].decode("ascii", "replace")
+        assert p.returncode == 0, "cannot compile check_numpy_abi.c:\n%s\n%s" % (" ".join(cmd), out)
+        # The embedded interpreter must be this one: same prefix (an
+        # interpreter outside the default prefix cannot find its stdlib
+        # otherwise) and same path (numpy may be in the user site).
+        env = dict(os.environ)
+        env["PYTHONHOME"] = os.pathsep.join([sys.prefix, sys.exec_prefix])
+        env["PYTHONPATH"] = os.pathsep.join(q for q in sys.path if q)
+        p = subprocess.Popen([exe], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        out = p.communicate()[0].decode("ascii", "replace")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    assert "NUMPY_ABI_OK 1" in out, "NumPy ABI check failed:\n" + out

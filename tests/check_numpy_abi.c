@@ -60,7 +60,13 @@ static void check_ptr(const char *label, void *val) {
 
 int main(void) {
     Py_Initialize();
-    import_array();
+    /* import_array() returns NULL on failure (for module init); in main
+     * use the int-returning form. */
+    if (_import_array() < 0) {
+        PyErr_Print();
+        printf("ERROR: numpy import failed\n");
+        return 1;
+    }
 
     printf("NUMPY_ABI %s\n", "1.0");
 
@@ -70,18 +76,25 @@ int main(void) {
 #if defined(__LP64__) || defined(_WIN64)
     long exp_nd = 8, exp_dims = 16, exp_strides = 24;
     long exp_descr = 40, exp_flags = 48;
-    int  exp_descr_type_off = 25;
 #else
     long exp_nd = 4, exp_dims = 8, exp_strides = 12;
     long exp_descr = 20, exp_flags = 24;
-    int  exp_descr_type_off = 13;
 #endif
+    /* The runtime derives these from the object header size, which is
+     * larger on free-threaded builds (C2PY_DESCR_TYPE_CHAR_OFF,
+     * C2PY_TP_NAME_OFF in c2py_runtime.h): 25 / 24 on GIL LP64, 41 / 40
+     * on free-threaded LP64, 13 / 12 on ILP32. */
+    int  exp_descr_type_off = (int)(sizeof(PyObject) + sizeof(void*) + 1);
+    long exp_tp_name_off = (long)(sizeof(PyObject) + sizeof(Py_ssize_t));
+    int  formula_ok = 1;
 
     /* --- PyArrayObject layout --- */
     {
-        PyArrayObject *tmp = (PyArrayObject*)PyArray_ZEROS(
-            1, (npy_intp[]){1}, PyArray_DescrFromType(NPY_DOUBLE), 0);
-        if (!tmp) { printf("ERROR: PyArray_ZEROS failed\n"); return 1; }
+        npy_intp dims1[1] = {1};
+        /* PyArray_ZEROS takes a type number (it wraps PyArray_Zeros with
+         * PyArray_DescrFromType itself). */
+        PyArrayObject *tmp = (PyArrayObject*)PyArray_ZEROS(1, dims1, NPY_DOUBLE, 0);
+        if (!tmp) { PyErr_Print(); printf("ERROR: PyArray_ZEROS failed\n"); return 1; }
 
         char *base = (char*)tmp;
         check_sizeof("PyObject_HEAD", sizeof(PyObject));
@@ -158,10 +171,15 @@ int main(void) {
         check_offset("PyArray_Descr.elsize",    base + offsetof(C2PY_DESCR_FIELDS, elsize) - base);
         check_offset("PyArray_Descr.alignment", base + offsetof(C2PY_DESCR_FIELDS, alignment) - base);
 
-        /* Verify the type char at the arch-expected offset
-         * (25 on LP64, 13 on ILP32 -- our hardcoded assumption) */
+        /* The runtime's type/byteorder offsets must be numpy's. */
         check_val("descr_type_char_at_expected_off",
                   ((char*)d)[exp_descr_type_off] == d->type ? 1 : 0);
+        if ((long)offsetof(PyArray_Descr, type) != (long)exp_descr_type_off ||
+            (long)offsetof(PyArray_Descr, byteorder) != (long)exp_descr_type_off + 1) {
+            printf("MISMATCH descr_type_off got=%ld want=%ld\n",
+                   (long)offsetof(PyArray_Descr, type), (long)exp_descr_type_off);
+            formula_ok = 0;
+        }
         check_val("type_char_val", (int)(unsigned char)d->type);
         check_val("elsize_val", (int)C2PY_DESCR_ELSIZE(d));
 
@@ -179,6 +197,19 @@ int main(void) {
     check_flag("NPY_ARRAY_C_CONTIGUOUS", NPY_ARRAY_C_CONTIGUOUS);
     check_flag("NPY_ARRAY_ALIGNED", NPY_ARRAY_ALIGNED);
 
+    /* --- PyTypeObject.tp_name (read by the runtime to spot ndarray) --- */
+    check_offset("PyTypeObject.tp_name", (ptrdiff_t)offsetof(PyTypeObject, tp_name));
+    if ((long)offsetof(PyTypeObject, tp_name) != exp_tp_name_off) {
+        printf("MISMATCH tp_name_off got=%ld want=%ld\n",
+               (long)offsetof(PyTypeObject, tp_name), exp_tp_name_off);
+        formula_ok = 0;
+    }
+
+    if (!formula_ok) {
+        printf("NUMPY_ABI_MISMATCH 1\n");
+        Py_Finalize();
+        return 1;
+    }
     printf("NUMPY_ABI_OK 1\n");
     Py_Finalize();
     return 0;
