@@ -580,12 +580,10 @@ def test_numpy_abi():
     libdir = sysconfig.get_config_var("LIBDIR") or ""
     ldlib = sysconfig.get_config_var("LDLIBRARY") or ""
     if sysconfig.get_config_var("PYTHONFRAMEWORK") and ".framework" in ldlib:
-        # macOS framework build: LDLIBRARY is Python.framework/Versions/X.Y/Python
-        link = [
-            "-F" + sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX"),
-            "-framework",
-            sysconfig.get_config_var("PYTHONFRAMEWORK"),
-        ]
+        # macOS framework build: LDLIBRARY is Python.framework/Versions/X.Y/Python.
+        # Link that file itself: "-framework Python" takes Versions/Current,
+        # which is some other Python when several are installed (CI runners).
+        link = [os.path.join(sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX"), ldlib)]
     else:
         # libpython3.14t.so / libpython3.12.a / libpython3.12.dylib -> -lpython3.14t
         libname = ldlib[3:].split(".so")[0].split(".a")[0].split(".dylib")[0]
@@ -608,4 +606,8 @@ def test_numpy_abi():
         out = p.communicate()[0].decode("ascii", "replace")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    # The probe must have embedded this very interpreter (not another
+    # libpython found by the linker); say so plainly if not.
+    want = "PYVER " + sys.version.split()[0]
+    assert want in out, "probe embedded a different Python (want %r):\n%s" % (want, out)
     assert "NUMPY_ABI_OK 1" in out, "NumPy ABI check failed:\n" + out

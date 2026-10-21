@@ -60,6 +60,10 @@ static void check_ptr(const char *label, void *val) {
 
 int main(void) {
     Py_Initialize();
+    /* The test checks this against its own sys.version: a probe linked
+     * to another libpython fails clearly instead of in the stdlib. */
+    printf("PYVER %s\n", Py_GetVersion());
+    fflush(stdout);
     /* import_array() returns NULL on failure (for module init); in main
      * use the int-returning form. */
     if (_import_array() < 0) {
