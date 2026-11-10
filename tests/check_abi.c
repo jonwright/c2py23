@@ -79,8 +79,8 @@ int main(void) {
         printf("OFFSET Py_buffer.suboffsets %td\n",
                (char*)&b.suboffsets - (char*)&b);
         /* smalltable presence inferred from internal offset:
-         * < 3.12: internal at 88 (with smalltable[2] in between)
-         * >= 3.12: internal at 72 (smalltable removed) */
+         * <= 3.2: internal at 88 (with smalltable[2] in between)
+         * >= 3.3: internal at 72 (smalltable removed) */
         printf("OFFSET Py_buffer.internal  %td\n",
                (char*)&b.internal - (char*)&b);
     }

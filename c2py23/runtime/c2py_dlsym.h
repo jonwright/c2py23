@@ -106,18 +106,6 @@ typedef long long Py_ssize_t;
 typedef long Py_ssize_t;
 #endif
 
-/* sizeof(Py_buffer) differs across CPython versions:
- * < 3.12: includes smalltable[2]  (96 bytes LP64, 52 bytes ILP32)
- * >= 3.12: smalltable removed for PEP 697 stable ABI (80 / 44)
- */
-#if defined(__LP64__) || defined(_WIN64)
-#define C2PY_PYBUFFER_SZ_PRE312   96
-#define C2PY_PYBUFFER_SZ_POST312  80
-#else
-#define C2PY_PYBUFFER_SZ_PRE312   52
-#define C2PY_PYBUFFER_SZ_POST312  44
-#endif
-
 /* ------------------------------------------------------------------ */
 /* CPython type definitions (stable layouts across versions)          */
 /* ------------------------------------------------------------------ */
@@ -167,9 +155,10 @@ typedef struct _c2py_object_ft {
 typedef void *(*PyCFunction)(PyObject*, PyObject*);
 
 /* Py_buffer: stable since Python 2.6 (PEP 3118).
- * NOTE: includes smalltable[2] field present in CPython 2.7-3.11.
- * In CPython 3.12+ this was removed (PEP 697 stable ABI);
- * we use C2PY.pybuffer_size (set at init) for correct sizeof.
+ * Declared with smalltable[2], which CPython 2.7-3.2 has and 3.3
+ * removed, so sizeof(Py_buffer) here is the larger of the two layouts
+ * (96 bytes LP64, 52 ILP32 vs 80 / 44).  Fields up to suboffsets are
+ * at the same offsets in both; c2py never reads smalltable or internal.
  */
 typedef struct {
     void *buf;
@@ -182,7 +171,7 @@ typedef struct {
     Py_ssize_t *shape;
     Py_ssize_t *strides;
     Py_ssize_t *suboffsets;
-    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.11 */
+    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.2 only */
     void *internal;
 } Py_buffer;
 

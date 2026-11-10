@@ -421,9 +421,6 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
-    C2PY.pybuffer_size = (C2PY.version_major >= 3)
-        ? C2PY_PYBUFFER_SZ_POST312 : C2PY_PYBUFFER_SZ_PRE312;
-
     C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
 
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
@@ -438,25 +435,42 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
     if (C2PY.Long_FromLong == NULL || C2PY.Float_FromDouble == NULL) return;
 
-    /* Runtime PyObject layout probe */
-    {
-        PyObject *tmp = C2PY.Long_FromLong(1);
-        if (tmp) {
-            void *p_type = *(void**)((char*)tmp + sizeof(Py_ssize_t));
-            if (p_type != NULL && (uintptr_t)p_type >= 0x100000) {
-                /* GIL layout confirmed */
-            } else {
-                C2PY.is_free_threaded = 1;
-                C2PY.pyobject_size = sizeof(PyObject_FT);
-                C2PY.ob_refcnt_offset = offsetof(PyObject_FT, ob_ref_shared);
-                C2PY.ob_type_offset = offsetof(PyObject_FT, ob_type);
-            }
-            {
-                typedef void (*dref_fn)(PyObject*);
-                dref_fn dref = (dref_fn)_resolve_raw("Py_DecRef");
-                if (!dref) dref = (dref_fn)_resolve_raw("_Py_DecRef");
-                if (dref) dref(tmp);
-            }
+    /* Exported functions since Python 2.4 (PyPy: PyPy_IncRef/DecRef). */
+    RESOLVE_REQ(C2PY.IncRef, "Py_IncRef");
+    RESOLVE_REQ(C2PY.DecRef, "Py_DecRef");
+
+    /* PyObject layout check: the word at ob_type_offset of an int must
+     * be &PyLong_Type.  PyLong_FromLong returns a long on Python 2 as
+     * well, so PyLong_Type is the right type there too.  Catches a wrong
+     * GIL / free-threaded layout choice as ImportError instead of a crash
+     * on the first call.  Skipped on PyPy: cpyext hands out a proxy
+     * whose ob_type need not be the exported PyPyLong_Type address. */
+    if (!C2PY.is_pypy) {
+        void *long_type = _resolve_raw("PyLong_Type");
+        PyObject *one;
+        void *seen;
+        if (long_type == NULL) {
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: missing symbol: PyLong_Type");
+            return;
+        }
+        one = C2PY.Long_FromLong(1);
+        if (one == NULL) {
+            C2PY.Err_Clear();
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: PyLong_FromLong(1) failed");
+            return;
+        }
+        seen = *(void**)((char*)one + C2PY.ob_type_offset);
+        C2PY.DecRef(one);
+        if (seen != long_type) {
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: PyObject layout mismatch: ob_type at "
+                     "offset %d of int(1) is %p, expected &PyLong_Type %p "
+                     "(%s layout assumed)", (int)C2PY.ob_type_offset,
+                     seen, long_type,
+                     C2PY.is_free_threaded ? "free-threaded" : "GIL");
+            return;
         }
     }
 
@@ -499,27 +513,6 @@ static void _c2py_runtime_init_once(void)
         C2PY.Module_Create2 = (PyObject* (*)(PyModuleDef*, int))mc;
     }
     C2PY.InitModule_2_7 = _init_module_2_7;
-
-    {
-        if (_resolve((void**)&C2PY.IncRef, "Py_IncRef") != 0)
-            _resolve((void**)&C2PY.IncRef, "_Py_IncRef");
-        if (_resolve((void**)&C2PY.DecRef, "Py_DecRef") != 0)
-            _resolve((void**)&C2PY.DecRef, "_Py_DecRef");
-
-        if (C2PY.is_free_threaded) {
-            if (C2PY.IncRef == NULL || C2PY.DecRef == NULL) {
-                snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
-                         "c2py_runtime: free-threaded build requires "
-                         "Py_IncRef / Py_DecRef symbols");
-                return;
-            }
-        } else {
-            if (C2PY.IncRef == NULL)
-                C2PY.IncRef = _c2py_inc_ref_manual;
-            if (C2PY.DecRef == NULL)
-                C2PY.DecRef = _c2py_dec_ref_manual;
-        }
-    }
 
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
     if (C2PY.SetAttrString == NULL) return;
@@ -572,37 +565,6 @@ static void _c2py_runtime_init_once(void)
             if (!C2PY.none_immortal) {
                 C2PY.DecRef(C2PY.none_obj);
             }
-        }
-    }
-
-    /* Runtime Py_buffer size probe */
-    if (!C2PY.is_pypy) {
-        unsigned char probe[96];
-        Py_buffer *pb = (Py_buffer*)probe;
-        typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
-        bytes_fn mkbytes = (bytes_fn)_resolve_raw("PyBytes_FromStringAndSize");
-        PyObject *by;
-        if (!mkbytes)
-            mkbytes = (bytes_fn)_resolve_raw("PyString_FromStringAndSize");
-        by = mkbytes ? mkbytes("x", 1) : NULL;
-        if (by) {
-            memset(probe, 0xAA, sizeof(probe));
-            if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {
-                {
-                    Py_ssize_t internal_off;
-#if defined(__LP64__) || defined(_WIN64)
-                    internal_off = 72;
-#else
-                    internal_off = 40;
-#endif
-                    if (*((char*)pb + internal_off) == 0)
-                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
-                    else
-                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
-                }
-                C2PY.ReleaseBuffer(pb);
-            }
-            C2PY.DecRef(by);
         }
     }
 

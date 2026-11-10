@@ -1322,9 +1322,9 @@ and module creation. No other CPython APIs are exposed or used.
 4. CPython types (`PyObject`, `Py_buffer`, `PyMethodDef`, `PyModuleDef`) are
    redefined with ABI-stable layouts in `c2py_runtime.h`
 
-5. The `Py_buffer` struct supports both 96-byte (Python 2.7, with smalltable)
-   and 80-byte (Python 3.x, without smalltable) layouts; the runtime selects
-   the correct size based on the Python version
+5. The `Py_buffer` struct is declared with `smalltable[2]` (present in Python
+   2.7-3.2, removed in 3.3), so its 96-byte size covers both the 96-byte and
+   the 80-byte layouts; the fields c2py23 reads are at the same offsets in both
 
 6. `c2py_acquire_buffer()` is a version-aware wrapper: on Python 3.x it uses
    `PyObject_GetBuffer` with `PyBUF_STRIDES | PyBUF_FORMAT` flags; on Python 2.7
@@ -1341,7 +1341,6 @@ typedef struct {
 
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
-    Py_ssize_t pybuffer_size;       /* actual sizeof(Py_buffer) for this version */
     Py_ssize_t pyobject_size;       /* actual sizeof(PyObject) for this version */
     ptrdiff_t ob_refcnt_offset;     /* offset of refcount field within PyObject */
 

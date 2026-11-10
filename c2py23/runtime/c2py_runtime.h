@@ -53,7 +53,6 @@ typedef struct {
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
     int is_pypy;                    /* 1 = running on PyPy (cpyext, PyPy_* symbols) */
-    Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
     Py_ssize_t pyobject_size;      /* actual sizeof(PyObject) for this Python version */
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject_FT): 32 on LP64, 20 on ILP32 */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
@@ -218,44 +217,6 @@ extern C2PY_HIDDEN c2py_api_t C2PY;
 #define Py_XDECREF(o)                  do { if (o) C2PY.DecRef((PyObject*)(o)); } while(0)
 
 /* ------------------------------------------------------------------ */
-/* Reference counting fallbacks (for CPython < 3.12 where Py_IncRef   */
-/* is not an exported symbol)                                         */
-/* ------------------------------------------------------------------ */
-
-/* Manual refcount increment - accesses ob_refcnt via the correct offset
- * for the Python build (ob_refcnt on GIL, ob_ref_shared on free-threaded).
- * Safe on GIL-enabled builds where refcount is a simple Py_ssize_t field.
- * On free-threaded builds this fallback is UNSAFE (ob_ref_shared requires
- * atomic operations); always prefer Py_IncRef / Py_DecRef on 3.12+. */
-static inline void _c2py_inc_ref_manual(PyObject *op)
-{
-    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
-    ++(*refcnt);
-}
-
-/*
- * _c2py_dec_ref_manual: Fallback dec-ref for pre-3.12 Python where
- * Py_DecRef is not resolvable via dlsym. On those versions CPython uses
- * shared refcounts where zero-is-special does not apply -- refcounts
- * never reach zero through normal INCREF/DECREF alone.
- *
- * WARNING: This is a diagnostic-only fallback. When refcount hits zero
- * it prints a warning but does NOT call tp_dealloc destructor.
- * This is acceptable because the fallback is only active on Python < 3.12
- * where the zero-refcount invariant holds. If porting to a platform where
- * this invariant does not hold, implement proper deallocation.
- */
-static inline void _c2py_dec_ref_manual(PyObject *op)
-{
-    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
-    --(*refcnt);
-    if (*refcnt == 0) {
-        fprintf(stderr, "c2py_runtime: _c2py_dec_ref_manual reached zero "
-                "refcount for %p -- possible leak\n", (void*)op);
-    }
-}
-
-/* ------------------------------------------------------------------ */
 /* Buffer acquisition helper with old-API fallback for Python 2.7     */
 /* ------------------------------------------------------------------ */
 
@@ -267,10 +228,11 @@ static inline void _c2py_dec_ref_manual(PyObject *op)
 static inline int
 c2py_acquire_buffer(PyObject *obj, Py_buffer *buf, int want_writable)
 {
+    Py_buffer zero = {0};
     int flags = PyBUF_STRIDES | PyBUF_FORMAT;
     if (want_writable) flags |= PyBUF_WRITABLE;
 
-    memset(buf, 0, C2PY.pybuffer_size);
+    *buf = zero;  /* sizeof(Py_buffer); see c2py_pin_init */
 
     if (C2PY.buffer_api_is_pep3118) {
         return PyObject_GetBuffer(obj, buf, flags);
@@ -592,6 +554,21 @@ typedef struct {
     Py_ssize_t shape_buf[C2PY_MAX_NDIM];   /* DLPack: int64 shape copied to Py_ssize_t */
     Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
+
+/* Reset a pin before acquisition: zero the Py_buffer (sizeof covers
+ * the largest CPython layout; the _buf_pad tail is left untouched,
+ * it is only scratch for PyPy's larger Py_buffer) and mark it empty
+ * so c2py_unpin_buffer is a no-op until a backend succeeds.
+ * Struct assignment rather than memset: gcc -O2 emits rep stos for a
+ * fixed 96-byte memset, which costs more than a few vector stores. */
+static inline void
+c2py_pin_init(c2py_buf_pin *p)
+{
+    Py_buffer zero = {0};
+    p->buf = zero;
+    p->kind = C2PY_PIN_NONE;
+    p->ctx = NULL;
+}
 
 /* ------------------------------------------------------------------ */
 /* NumPy ndarray struct-cast fast path (lazy-probed, no import)       */

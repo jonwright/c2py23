@@ -63,6 +63,8 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     C2PY.Call               = PyObject_Call;
     C2PY.Dict_New           = PyDict_New;
     C2PY.Long_FromVoidPtr   = PyLong_FromVoidPtr;
+    C2PY.IncRef             = Py_IncRef;
+    C2PY.DecRef             = Py_DecRef;
     C2PY.SaveThread         = (void*(*)(void))PyEval_SaveThread;
     C2PY.RestoreThread      = (void(*)(void*))PyEval_RestoreThread;
     C2PY.exc_TypeError      = (void *)PyExc_TypeError;
@@ -72,7 +74,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
 
     C2PY.version_major      = PY_MAJOR_VERSION;
     C2PY.version_minor      = PY_MINOR_VERSION;
-    C2PY.pybuffer_size      = sizeof(Py_buffer);
     C2PY.pyobject_size      = sizeof(PyObject);
     C2PY.pyobject_size_ft   = sizeof(PyObject);
 
@@ -104,8 +105,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
 
 #if PY_MAJOR_VERSION == 2
     C2PY.InitModule_2_7            = _c2py_pythonh_init_module;
-    C2PY.IncRef                    = NULL;   /* manual refcount on 2.7 */
-    C2PY.DecRef                    = NULL;
 #else
     C2PY.InitModule_2_7            = NULL;
 #endif
@@ -128,10 +127,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     }
     if (PY_MINOR_VERSION >= 12) {
         C2PY.none_immortal         = 1;
-#if defined(Py_IncRef)
-        C2PY.IncRef                = Py_IncRef;
-        C2PY.DecRef                = Py_DecRef;
-#endif
     }
 
 # if defined(Py_GIL_DISABLED)

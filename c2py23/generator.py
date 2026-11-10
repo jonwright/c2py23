@@ -464,9 +464,9 @@ class CBuilder:
         self.emit("    c2py_buf_pin pin_{0};".format(base))
         self.emit("    c2py_ptr_info info_{0};".format(base))
 
-    def emit_buf_memset(self, buf_var):
+    def emit_buf_pin_init(self, buf_var):
         base = buf_var.replace("info_", "", 1)
-        self.emit("    memset(&pin_{0}.buf, 0, C2PY.pybuffer_size);".format(base))
+        self.emit("    c2py_pin_init(&pin_{0});".format(base))
 
     def acquire_buffer(self, buf_var, py_var, flags, func_name):
         """Emits c2py_pin with correct failure path.
@@ -1919,9 +1919,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
 
-    # Zero-initialize buffer pins (size varies by runtime: CPython 80/96, PyPy ~660)
+    # Reset buffer pins (zeroed Py_buffer, kind NONE) so cleanup is a no-op
     for p in buf_params:
-        b.emit_buf_memset("info_" + p.name)
+        b.emit_buf_pin_init("info_" + p.name)
     b.emit("")
 
     buf_formats = _collect_buf_formats(func)
@@ -2346,7 +2346,7 @@ def _emit_perf_accessors(b, mod):
     b.emit("    c2py_buf_pin pin;")
     b.emit("    Py_buffer *buf = &pin.buf;")
     b.emit("    (void)self;")
-    b.emit("    memset(&pin.buf, 0, C2PY.pybuffer_size);")
+    b.emit("    c2py_pin_init(&pin);")
     b.emit('    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))')
     b.emit("        return NULL;")
     b.emit("    perf = _c2py_perf_lookup(ptr_val);")

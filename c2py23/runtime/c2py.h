@@ -238,18 +238,6 @@ typedef long long Py_ssize_t;
 typedef long Py_ssize_t;
 #endif
 
-/* sizeof(Py_buffer) differs across CPython versions:
- * < 3.12: includes smalltable[2]  (96 bytes LP64, 52 bytes ILP32)
- * >= 3.12: smalltable removed for PEP 697 stable ABI (80 / 44)
- */
-#if defined(__LP64__) || defined(_WIN64)
-#define C2PY_PYBUFFER_SZ_PRE312   96
-#define C2PY_PYBUFFER_SZ_POST312  80
-#else
-#define C2PY_PYBUFFER_SZ_PRE312   52
-#define C2PY_PYBUFFER_SZ_POST312  44
-#endif
-
 /* ------------------------------------------------------------------ */
 /* CPython type definitions (stable layouts across versions)          */
 /* ------------------------------------------------------------------ */
@@ -299,9 +287,10 @@ typedef struct _c2py_object_ft {
 typedef void *(*PyCFunction)(PyObject*, PyObject*);
 
 /* Py_buffer: stable since Python 2.6 (PEP 3118).
- * NOTE: includes smalltable[2] field present in CPython 2.7-3.11.
- * In CPython 3.12+ this was removed (PEP 697 stable ABI);
- * we use C2PY.pybuffer_size (set at init) for correct sizeof.
+ * Declared with smalltable[2], which CPython 2.7-3.2 has and 3.3
+ * removed, so sizeof(Py_buffer) here is the larger of the two layouts
+ * (96 bytes LP64, 52 ILP32 vs 80 / 44).  Fields up to suboffsets are
+ * at the same offsets in both; c2py never reads smalltable or internal.
  */
 typedef struct {
     void *buf;
@@ -314,7 +303,7 @@ typedef struct {
     Py_ssize_t *shape;
     Py_ssize_t *strides;
     Py_ssize_t *suboffsets;
-    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.11 */
+    Py_ssize_t smalltable[2];  /* present on CPython 2.7-3.2 only */
     void *internal;
 } Py_buffer;
 
@@ -448,7 +437,6 @@ typedef struct {
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
     int is_pypy;                    /* 1 = running on PyPy (cpyext, PyPy_* symbols) */
-    Py_ssize_t pybuffer_size;      /* actual sizeof(Py_buffer) for this Python version */
     Py_ssize_t pyobject_size;      /* actual sizeof(PyObject) for this Python version */
     Py_ssize_t pyobject_size_ft;   /* sizeof(PyObject_FT): 32 on LP64, 20 on ILP32 */
     Py_ssize_t pymoduledef_max_size; /* max(sizeof(PyModuleDef), sizeof(PyModuleDef_FT)) */
@@ -613,44 +601,6 @@ extern C2PY_HIDDEN c2py_api_t C2PY;
 #define Py_XDECREF(o)                  do { if (o) C2PY.DecRef((PyObject*)(o)); } while(0)
 
 /* ------------------------------------------------------------------ */
-/* Reference counting fallbacks (for CPython < 3.12 where Py_IncRef   */
-/* is not an exported symbol)                                         */
-/* ------------------------------------------------------------------ */
-
-/* Manual refcount increment - accesses ob_refcnt via the correct offset
- * for the Python build (ob_refcnt on GIL, ob_ref_shared on free-threaded).
- * Safe on GIL-enabled builds where refcount is a simple Py_ssize_t field.
- * On free-threaded builds this fallback is UNSAFE (ob_ref_shared requires
- * atomic operations); always prefer Py_IncRef / Py_DecRef on 3.12+. */
-static inline void _c2py_inc_ref_manual(PyObject *op)
-{
-    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
-    ++(*refcnt);
-}
-
-/*
- * _c2py_dec_ref_manual: Fallback dec-ref for pre-3.12 Python where
- * Py_DecRef is not resolvable via dlsym. On those versions CPython uses
- * shared refcounts where zero-is-special does not apply -- refcounts
- * never reach zero through normal INCREF/DECREF alone.
- *
- * WARNING: This is a diagnostic-only fallback. When refcount hits zero
- * it prints a warning but does NOT call tp_dealloc destructor.
- * This is acceptable because the fallback is only active on Python < 3.12
- * where the zero-refcount invariant holds. If porting to a platform where
- * this invariant does not hold, implement proper deallocation.
- */
-static inline void _c2py_dec_ref_manual(PyObject *op)
-{
-    Py_ssize_t *refcnt = (Py_ssize_t*)((char*)op + C2PY.ob_refcnt_offset);
-    --(*refcnt);
-    if (*refcnt == 0) {
-        fprintf(stderr, "c2py_runtime: _c2py_dec_ref_manual reached zero "
-                "refcount for %p -- possible leak\n", (void*)op);
-    }
-}
-
-/* ------------------------------------------------------------------ */
 /* Buffer acquisition helper with old-API fallback for Python 2.7     */
 /* ------------------------------------------------------------------ */
 
@@ -662,10 +612,11 @@ static inline void _c2py_dec_ref_manual(PyObject *op)
 static inline int
 c2py_acquire_buffer(PyObject *obj, Py_buffer *buf, int want_writable)
 {
+    Py_buffer zero = {0};
     int flags = PyBUF_STRIDES | PyBUF_FORMAT;
     if (want_writable) flags |= PyBUF_WRITABLE;
 
-    memset(buf, 0, C2PY.pybuffer_size);
+    *buf = zero;  /* sizeof(Py_buffer); see c2py_pin_init */
 
     if (C2PY.buffer_api_is_pep3118) {
         return PyObject_GetBuffer(obj, buf, flags);
@@ -987,6 +938,21 @@ typedef struct {
     Py_ssize_t shape_buf[C2PY_MAX_NDIM];   /* DLPack: int64 shape copied to Py_ssize_t */
     Py_ssize_t stride_buf[C2PY_MAX_NDIM]; /* stride buffer */
 } c2py_buf_pin;
+
+/* Reset a pin before acquisition: zero the Py_buffer (sizeof covers
+ * the largest CPython layout; the _buf_pad tail is left untouched,
+ * it is only scratch for PyPy's larger Py_buffer) and mark it empty
+ * so c2py_unpin_buffer is a no-op until a backend succeeds.
+ * Struct assignment rather than memset: gcc -O2 emits rep stos for a
+ * fixed 96-byte memset, which costs more than a few vector stores. */
+static inline void
+c2py_pin_init(c2py_buf_pin *p)
+{
+    Py_buffer zero = {0};
+    p->buf = zero;
+    p->kind = C2PY_PIN_NONE;
+    p->ctx = NULL;
+}
 
 /* ------------------------------------------------------------------ */
 /* NumPy ndarray struct-cast fast path (lazy-probed, no import)       */
@@ -2555,6 +2521,8 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     C2PY.Call               = PyObject_Call;
     C2PY.Dict_New           = PyDict_New;
     C2PY.Long_FromVoidPtr   = PyLong_FromVoidPtr;
+    C2PY.IncRef             = Py_IncRef;
+    C2PY.DecRef             = Py_DecRef;
     C2PY.SaveThread         = (void*(*)(void))PyEval_SaveThread;
     C2PY.RestoreThread      = (void(*)(void*))PyEval_RestoreThread;
     C2PY.exc_TypeError      = (void *)PyExc_TypeError;
@@ -2564,7 +2532,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
 
     C2PY.version_major      = PY_MAJOR_VERSION;
     C2PY.version_minor      = PY_MINOR_VERSION;
-    C2PY.pybuffer_size      = sizeof(Py_buffer);
     C2PY.pyobject_size      = sizeof(PyObject);
     C2PY.pyobject_size_ft   = sizeof(PyObject);
 
@@ -2596,8 +2563,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
 
 #if PY_MAJOR_VERSION == 2
     C2PY.InitModule_2_7            = _c2py_pythonh_init_module;
-    C2PY.IncRef                    = NULL;   /* manual refcount on 2.7 */
-    C2PY.DecRef                    = NULL;
 #else
     C2PY.InitModule_2_7            = NULL;
 #endif
@@ -2620,10 +2585,6 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     }
     if (PY_MINOR_VERSION >= 12) {
         C2PY.none_immortal         = 1;
-#if defined(Py_IncRef)
-        C2PY.IncRef                = Py_IncRef;
-        C2PY.DecRef                = Py_DecRef;
-#endif
     }
 
 # if defined(Py_GIL_DISABLED)
@@ -3074,9 +3035,6 @@ static void _c2py_runtime_init_once(void)
     if (C2PY.Err_Clear == NULL) return;
     C2PY.buffer_api_is_pep3118 = (C2PY.version_major >= 3);
 
-    C2PY.pybuffer_size = (C2PY.version_major >= 3)
-        ? C2PY_PYBUFFER_SZ_POST312 : C2PY_PYBUFFER_SZ_PRE312;
-
     C2PY.use_fastcall = (C2PY.version_major >= 3 && C2PY.version_minor >= 12);
 
     RESOLVE_REQ(C2PY.ParseTuple, "PyArg_ParseTuple");
@@ -3091,25 +3049,42 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.Float_FromDouble, "PyFloat_FromDouble");
     if (C2PY.Long_FromLong == NULL || C2PY.Float_FromDouble == NULL) return;
 
-    /* Runtime PyObject layout probe */
-    {
-        PyObject *tmp = C2PY.Long_FromLong(1);
-        if (tmp) {
-            void *p_type = *(void**)((char*)tmp + sizeof(Py_ssize_t));
-            if (p_type != NULL && (uintptr_t)p_type >= 0x100000) {
-                /* GIL layout confirmed */
-            } else {
-                C2PY.is_free_threaded = 1;
-                C2PY.pyobject_size = sizeof(PyObject_FT);
-                C2PY.ob_refcnt_offset = offsetof(PyObject_FT, ob_ref_shared);
-                C2PY.ob_type_offset = offsetof(PyObject_FT, ob_type);
-            }
-            {
-                typedef void (*dref_fn)(PyObject*);
-                dref_fn dref = (dref_fn)_resolve_raw("Py_DecRef");
-                if (!dref) dref = (dref_fn)_resolve_raw("_Py_DecRef");
-                if (dref) dref(tmp);
-            }
+    /* Exported functions since Python 2.4 (PyPy: PyPy_IncRef/DecRef). */
+    RESOLVE_REQ(C2PY.IncRef, "Py_IncRef");
+    RESOLVE_REQ(C2PY.DecRef, "Py_DecRef");
+
+    /* PyObject layout check: the word at ob_type_offset of an int must
+     * be &PyLong_Type.  PyLong_FromLong returns a long on Python 2 as
+     * well, so PyLong_Type is the right type there too.  Catches a wrong
+     * GIL / free-threaded layout choice as ImportError instead of a crash
+     * on the first call.  Skipped on PyPy: cpyext hands out a proxy
+     * whose ob_type need not be the exported PyPyLong_Type address. */
+    if (!C2PY.is_pypy) {
+        void *long_type = _resolve_raw("PyLong_Type");
+        PyObject *one;
+        void *seen;
+        if (long_type == NULL) {
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: missing symbol: PyLong_Type");
+            return;
+        }
+        one = C2PY.Long_FromLong(1);
+        if (one == NULL) {
+            C2PY.Err_Clear();
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: PyLong_FromLong(1) failed");
+            return;
+        }
+        seen = *(void**)((char*)one + C2PY.ob_type_offset);
+        C2PY.DecRef(one);
+        if (seen != long_type) {
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: PyObject layout mismatch: ob_type at "
+                     "offset %d of int(1) is %p, expected &PyLong_Type %p "
+                     "(%s layout assumed)", (int)C2PY.ob_type_offset,
+                     seen, long_type,
+                     C2PY.is_free_threaded ? "free-threaded" : "GIL");
+            return;
         }
     }
 
@@ -3152,27 +3127,6 @@ static void _c2py_runtime_init_once(void)
         C2PY.Module_Create2 = (PyObject* (*)(PyModuleDef*, int))mc;
     }
     C2PY.InitModule_2_7 = _init_module_2_7;
-
-    {
-        if (_resolve((void**)&C2PY.IncRef, "Py_IncRef") != 0)
-            _resolve((void**)&C2PY.IncRef, "_Py_IncRef");
-        if (_resolve((void**)&C2PY.DecRef, "Py_DecRef") != 0)
-            _resolve((void**)&C2PY.DecRef, "_Py_DecRef");
-
-        if (C2PY.is_free_threaded) {
-            if (C2PY.IncRef == NULL || C2PY.DecRef == NULL) {
-                snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
-                         "c2py_runtime: free-threaded build requires "
-                         "Py_IncRef / Py_DecRef symbols");
-                return;
-            }
-        } else {
-            if (C2PY.IncRef == NULL)
-                C2PY.IncRef = _c2py_inc_ref_manual;
-            if (C2PY.DecRef == NULL)
-                C2PY.DecRef = _c2py_dec_ref_manual;
-        }
-    }
 
     RESOLVE_REQ(C2PY.SetAttrString, "PyObject_SetAttrString");
     if (C2PY.SetAttrString == NULL) return;
@@ -3225,37 +3179,6 @@ static void _c2py_runtime_init_once(void)
             if (!C2PY.none_immortal) {
                 C2PY.DecRef(C2PY.none_obj);
             }
-        }
-    }
-
-    /* Runtime Py_buffer size probe */
-    if (!C2PY.is_pypy) {
-        unsigned char probe[96];
-        Py_buffer *pb = (Py_buffer*)probe;
-        typedef PyObject* (*bytes_fn)(const char*, Py_ssize_t);
-        bytes_fn mkbytes = (bytes_fn)_resolve_raw("PyBytes_FromStringAndSize");
-        PyObject *by;
-        if (!mkbytes)
-            mkbytes = (bytes_fn)_resolve_raw("PyString_FromStringAndSize");
-        by = mkbytes ? mkbytes("x", 1) : NULL;
-        if (by) {
-            memset(probe, 0xAA, sizeof(probe));
-            if (C2PY.GetBuffer(by, pb, PyBUF_STRIDES | PyBUF_FORMAT) == 0) {
-                {
-                    Py_ssize_t internal_off;
-#if defined(__LP64__) || defined(_WIN64)
-                    internal_off = 72;
-#else
-                    internal_off = 40;
-#endif
-                    if (*((char*)pb + internal_off) == 0)
-                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_POST312;
-                    else
-                        C2PY.pybuffer_size = C2PY_PYBUFFER_SZ_PRE312;
-                }
-                C2PY.ReleaseBuffer(pb);
-            }
-            C2PY.DecRef(by);
         }
     }
 

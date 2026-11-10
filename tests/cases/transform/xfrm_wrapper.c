@@ -99,7 +99,7 @@ _c2py_perf_read(PyObject *self, PyObject *args) {
     c2py_buf_pin pin;
     Py_buffer *buf = &pin.buf;
     (void)self;
-    memset(&pin.buf, 0, C2PY.pybuffer_size);
+    c2py_pin_init(&pin);
     if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))
         return NULL;
     perf = _c2py_perf_lookup(ptr_val);
@@ -314,8 +314,8 @@ _transform_fastcall(PyObject *self, PyObject *const *args, Py_ssize_t nargs)
     py_points = args[0];
     py_out = args[1];
 
-    memset(&pin_points.buf, 0, C2PY.pybuffer_size);
-    memset(&pin_out.buf, 0, C2PY.pybuffer_size);
+    c2py_pin_init(&pin_points);
+    c2py_pin_init(&pin_out);
 
     if (c2py_pin(py_points, &pin_points, &info_points, C2PY_BUF_WRITE, _acqord_transform, 2) == -1)
         return NULL;
