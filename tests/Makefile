@@ -129,6 +129,7 @@ MODULES := \
 	tests/cases/variants/varcmod$(EXT) \
 	tests/cases/widths/widthmod$(EXT) \
 	tests/cases/shapeguard/shapeguardmod$(EXT) \
+	tests/cases/ptralign/ptralignmod$(EXT) \
 	tests/cases/autoformat/autoformatmod$(EXT) \
 	examples/kissfft_wrap/kissfftmod$(EXT) \
 	examples/lz4_wrap/lz4mod$(EXT) \

@@ -219,6 +219,8 @@ def test_ptr_arith_rejected_in_map(expr):
         "buf.ptr - 1 > 0",
         "off + buf.ptr == 0",
         "buf.format == 'f' and (2 * buf.ptr) > 0",
+        "32 % buf.ptr == 0",
+        "off % buf.ptr == 0",
     ],
 )
 def test_ptr_arith_rejected_in_when(expr):
@@ -261,3 +263,11 @@ def test_ptr_arith_rejected_in_variant_when():
 
 def test_bare_ptr_still_parses():
     from_c2py_dict(_base(functions=[_ptr_func(map_p="buf.ptr")]))
+
+
+def test_ptr_modulo_literal_parses():
+    from_c2py_dict(_base(functions=[_ptr_func(when="buf.ptr % 32 == 0")]))
+
+
+def test_ptr_modulo_int_scalar_parses():
+    from_c2py_dict(_base(functions=[_ptr_func(when="buf.ptr % off == 0")]))

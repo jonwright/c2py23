@@ -25,6 +25,13 @@ _c2py_pythonh_init_module(const char *name, PyMethodDef *methods)
 
 /* ---- c2py_runtime_init ---- */
 
+/* The Python.h backend cannot fail to initialise; kept for API parity. */
+void c2py_runtime_init_failed(const char *modname)
+{
+    PyErr_Format(PyExc_ImportError, "cannot import %s: c2py_runtime "
+                 "initialisation failed", modname);
+}
+
 int c2py_runtime_init(void)
 {
     /* CPU feature probing (shared with dlsym backend) */

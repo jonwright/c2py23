@@ -899,6 +899,7 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
         for v in ol.variants:
             all_names.append(v.name)
     b.emit("    PyObject *tuple = PyTuple_New({0});".format(len(all_names)))
+    b.emit("    if (tuple == NULL) return NULL;")
     for idx, vname in enumerate(all_names):
         b.emit(
             '        PyTuple_SetItem(tuple, {0}, PyBytes_FromStringAndSize("{1}", {2}));'.format(idx, vname, len(vname))
@@ -1431,13 +1432,25 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
             if any(ol.variants for ol in func.overloads):
                 resolve_calls.append("    _resolve_{}();".format(func.name))
 
+    if has_attrs:
+        # Takes ownership of val (SetAttrString does not steal) and
+        # reports a NULL val, i.e. a failed constructor, as failure.
+        b.emit("static int _c2py_set_attr(PyObject *module, const char *name,")
+        b.emit("                          PyObject *val) {")
+        b.emit("    if (val == NULL) return -1;")
+        b.emit("    c2py_set_module_attr(module, name, val);")
+        b.emit("    Py_DECREF(val);")
+        b.emit("    return PyErr_Occurred() ? -1 : 0;")
+        b.emit("}")
+        b.emit("")
     # PyInit (Python 3)
     b.emit("C2PY_EXPORT PyObject* PyInit_{}(void) {{".format(name))
     b.emit("    PyObject *module = NULL;")
     b.emit("    PyMethodDef *methods;")
     b.emit("")
     b.emit("    if (c2py_runtime_init() != 0) {")
-    b.emit("        return NULL;  /* Python will raise ImportError */")
+    b.emit('        c2py_runtime_init_failed("{}");'.format(name))
+    b.emit("        return NULL;  /* ImportError is set */")
     b.emit("    }")
     for rc in resolve_calls:
         b.emit(rc)
@@ -1467,7 +1480,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    }")
     b.emit("")
     b.emit("    if (module != NULL) {")
-    _emit_constants(b, module_def)
+    _emit_constants(b, module_def, "{ Py_DECREF(module); return NULL; }")
     if has_free_threading:
         b.emit("        if (C2PY.Unstable_Module_SetGIL != NULL) {")
         b.emit("            C2PY.Unstable_Module_SetGIL(module, (void*)1);" "  /* Py_MOD_GIL_NOT_USED */")
@@ -1481,7 +1494,10 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("C2PY_EXPORT void init{}(void) {{".format(name))
     b.emit("    PyObject *module;")
     b.emit("")
-    b.emit("    c2py_runtime_init();")
+    b.emit("    if (c2py_runtime_init() != 0) {")
+    b.emit('        c2py_runtime_init_failed("{}");'.format(name))
+    b.emit("        return;")
+    b.emit("    }")
     for rc in resolve_calls:
         b.emit(rc)
     # Match original: resolve_calls always emitted (even if empty, adds blank line)
@@ -1490,7 +1506,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit('    module = C2PY.InitModule_2_7("{}",'.format(name))
     b.emit("        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);")
     b.emit("    if (module != NULL) {")
-    _emit_constants(b, module_def)
+    _emit_constants(b, module_def, "return;")  # module is borrowed on 2.7
     b.emit("    }")
     b.emit("}")
 
@@ -2199,50 +2215,57 @@ def _derive_param_info(param_name, checks, overloads):
 
 
 # ---- Module support ----
-def _emit_constants(b, mod):
+def _emit_constants(b, mod, fail):
     """Emit PyObject_SetAttrString calls for module-level integer constants,
     timing perf struct pointers (deprecated raw attrs + new _c2py_ attrs),
-    and GIL release flags."""
+    and GIL release flags.  Each is set through _c2py_set_attr, which owns
+    the new object; fail is the statement run when one fails."""
     has_gil = any(f.gil_release for f in mod.functions)
     if not mod.constants and not mod.timing and not has_gil:
         return
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
-            b.emit('        c2py_set_module_attr(module, "{}",'.format(_escape_c_str(cname)))
-            b.emit("            PyLong_FromLongLong({}));".format(_int_literal(cvalue)))
+            b.emit('        if (_c2py_set_attr(module, "{}",'.format(_escape_c_str(cname)))
+            b.emit("            PyLong_FromLongLong({})) != 0)".format(_int_literal(cvalue)))
+            b.emit("            " + fail)
     if mod.timing:
-        b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
-        b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")
+        b.emit('        if (_c2py_set_attr(module, "_c2py_cycle_counter_frequency",')
+        b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz)) != 0)")
+        b.emit("            " + fail)
         handles = _perf_handles(mod)
         n_static = len(handles)
         active_funcs = _perf_active_funcs(mod)
         for func in mod.functions:
-            b.emit('        c2py_set_module_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
-            b.emit("            PyLong_FromLong({0}L));".format(handles["_perf_" + func.name]))
+            b.emit('        if (_c2py_set_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
+            b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles["_perf_" + func.name]))
+            b.emit("            " + fail)
             for ol in func.overloads:
                 if ol.variants:
                     ai = active_funcs.index(func.name)
-                    b.emit('        c2py_set_module_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
-                    b.emit("            PyLong_FromLong({0}L));".format(n_static + ai))
+                    b.emit('        if (_c2py_set_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
+                    b.emit("            PyLong_FromLong({0}L)) != 0)".format(n_static + ai))
+                    b.emit("            " + fail)
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split("(")[0].strip().split()[-1]
                         perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                        b.emit(
-                            '        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
-                        )
-                        b.emit("            PyLong_FromLong({0}L));".format(handles[perf_name]))
+                        b.emit('        if (_c2py_set_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                        b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles[perf_name]))
+                        b.emit("            " + fail)
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split("(")[0].strip().split()[-1]
                     perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                    b.emit('        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
-                    b.emit("            PyLong_FromLong({0}L));".format(handles[perf_name]))
+                    b.emit('        if (_c2py_set_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                    b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles[perf_name]))
+                    b.emit("            " + fail)
     if has_gil:
-        b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_enabled",')
-        b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));")
+        b.emit('        if (_c2py_set_attr(module, "_c2py_gil_release_enabled",')
+        b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled)) != 0)")
+        b.emit("            " + fail)
         for func in mod.functions:
             if func.gil_release:
-                b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
-                b.emit("            PyLong_FromVoidPtr(&_gil_release_{0}));".format(func.name))
+                b.emit('        if (_c2py_set_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
+                b.emit("            PyLong_FromVoidPtr(&_gil_release_{0})) != 0)".format(func.name))
+                b.emit("            " + fail)
 
 
 def _perf_counter_names(mod):

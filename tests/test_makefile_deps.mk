@@ -190,6 +190,23 @@ tests/cases/optional/optmod$(EXT): tests/cases/optional/optmod_wrapper.c tests/c
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/ptralign/ptralignmod_wrapper.c: tests/cases/ptralign/ptralign.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/ptralign/ptralign.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/ptralign/ptralignmod$(EXT): tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/ptralign \
+		tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/ptralign/ptralignmod$(EXT): tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/ptralign \
+		tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
 tests/cases/scalar_output/statmod_wrapper.c: tests/cases/scalar_output/stats.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 tests/cases/scalar_output/stats.c2py -o $@ $(C2PY_FLAGS)
 

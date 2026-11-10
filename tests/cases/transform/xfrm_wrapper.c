@@ -432,12 +432,21 @@ static PyModuleDef_FT _module_def_ft = {
     NULL, NULL, NULL
 };
 
+static int _c2py_set_attr(PyObject *module, const char *name,
+                          PyObject *val) {
+    if (val == NULL) return -1;
+    c2py_set_module_attr(module, name, val);
+    Py_DECREF(val);
+    return PyErr_Occurred() ? -1 : 0;
+}
+
 C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     PyObject *module = NULL;
     PyMethodDef *methods;
 
     if (c2py_runtime_init() != 0) {
-        return NULL;  /* Python will raise ImportError */
+        c2py_runtime_init_failed("xfrm");
+        return NULL;  /* ImportError is set */
     }
 
     methods = C2PY.use_fastcall ? _methods_fastcall : _methods_varargs;
@@ -458,14 +467,18 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
     }
 
     if (module != NULL) {
-        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
-            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
-            PyLong_FromLong(0L));
-        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
-            PyLong_FromLong(1L));
-        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
-            PyLong_FromLong(2L));
+        if (_c2py_set_attr(module, "_c2py_cycle_counter_frequency",
+            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz)) != 0)
+            { Py_DECREF(module); return NULL; }
+        if (_c2py_set_attr(module, "_c2py_perf_ptr_transform",
+            PyLong_FromLong(0L)) != 0)
+            { Py_DECREF(module); return NULL; }
+        if (_c2py_set_attr(module, "_c2py_ol_ptr_transform__transform_aos",
+            PyLong_FromLong(1L)) != 0)
+            { Py_DECREF(module); return NULL; }
+        if (_c2py_set_attr(module, "_c2py_ol_ptr_transform__transform_soa",
+            PyLong_FromLong(2L)) != 0)
+            { Py_DECREF(module); return NULL; }
         if (C2PY.Unstable_Module_SetGIL != NULL) {
             C2PY.Unstable_Module_SetGIL(module, (void*)1);  /* Py_MOD_GIL_NOT_USED */
         }
@@ -476,18 +489,25 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
 C2PY_EXPORT void initxfrm(void) {
     PyObject *module;
 
-    c2py_runtime_init();
+    if (c2py_runtime_init() != 0) {
+        c2py_runtime_init_failed("xfrm");
+        return;
+    }
 
     module = C2PY.InitModule_2_7("xfrm",
         C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);
     if (module != NULL) {
-        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
-            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
-        c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
-            PyLong_FromLong(0L));
-        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
-            PyLong_FromLong(1L));
-        c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
-            PyLong_FromLong(2L));
+        if (_c2py_set_attr(module, "_c2py_cycle_counter_frequency",
+            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz)) != 0)
+            return;
+        if (_c2py_set_attr(module, "_c2py_perf_ptr_transform",
+            PyLong_FromLong(0L)) != 0)
+            return;
+        if (_c2py_set_attr(module, "_c2py_ol_ptr_transform__transform_aos",
+            PyLong_FromLong(1L)) != 0)
+            return;
+        if (_c2py_set_attr(module, "_c2py_ol_ptr_transform__transform_soa",
+            PyLong_FromLong(2L)) != 0)
+            return;
     }
 }

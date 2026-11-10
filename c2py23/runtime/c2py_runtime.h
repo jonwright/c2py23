@@ -387,6 +387,16 @@ c2py_mod_ll(long long a, long long b, int *ovf)
     return a % b;
 }
 
+/* <buf>.ptr % n in a when:/checks: expression with a non-literal n.  The
+ * address is reduced in uintptr_t.  n <= 0 yields 1 (an alignment test
+ * never matches) instead of dividing by zero. */
+static inline uintptr_t
+c2py_ptr_mod(const void *p, long long n)
+{
+    if (n <= 0) return 1;
+    return (uintptr_t)p % (uintptr_t)n;
+}
+
 static inline long long
 c2py_neg_ll(long long a, int *ovf)
 {
@@ -1067,10 +1077,25 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         PyObject *kw = C2PY.Dict_New();
         PyObject *ver = PyTuple_New(2);
         if (kw && ver) {
-            PyTuple_SetItem(ver, 0, PyLong_FromLong(1));
-            PyTuple_SetItem(ver, 1, PyLong_FromLong(0));
+            PyObject *v0 = PyLong_FromLong(1);
+            PyObject *v1 = v0 ? PyLong_FromLong(0) : NULL;
+            if (!v1) {
+                /* Out of memory: leave the exception set (hard failure,
+                 * not a decline). */
+                Py_XDECREF(v0);
+                Py_DECREF(kw);
+                Py_DECREF(ver);
+                goto fail;
+            }
+            PyTuple_SetItem(ver, 0, v0);
+            PyTuple_SetItem(ver, 1, v1);
             if (((dset_fn)C2PY._ds_set_item_string)(kw, "max_version", ver) == 0)
                 capsule = C2PY.Call(dl_method, dl_args, kw);
+        } else {
+            /* Allocation failed: the MemoryError stays set. */
+            Py_XDECREF(kw);
+            Py_XDECREF(ver);
+            goto fail;
         }
         if (kw) Py_DECREF(kw);
         if (ver) Py_DECREF(ver);
@@ -1269,6 +1294,7 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
          int want_writable, const uint8_t *src_order, int n_src)
 {
     int i;
+    pin->kind = C2PY_PIN_NONE;  /* defined even if every backend fails */
     for (i = 0; i < n_src; i++) {
         switch (src_order[i]) {
         case C2PY_PIN_NDARRAY:
@@ -1591,6 +1617,8 @@ static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
 /* ------------------------------------------------------------------ */
 
 int c2py_runtime_init(void);
+/* Raise ImportError(reason) after c2py_runtime_init() failed. */
+void c2py_runtime_init_failed(const char *modname);
 
 #ifdef __cplusplus
 }

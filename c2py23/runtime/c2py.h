@@ -105,6 +105,8 @@ typedef struct {
     PyObject_SetAttrString((PyObject*)(mod), (name), (PyObject*)(val))
 
 int c2py_runtime_init(void);
+/* Raise ImportError(reason) after c2py_runtime_init() failed. */
+void c2py_runtime_init_failed(const char *modname);
 
 #else
 /* c2py_dlsym.h - nimpy-style dlsym backend
@@ -767,6 +769,16 @@ c2py_mod_ll(long long a, long long b, int *ovf)
 {
     if (b == 0 || (a == LLONG_MIN && b == -1)) { *ovf = 1; return 0; }
     return a % b;
+}
+
+/* <buf>.ptr % n in a when:/checks: expression with a non-literal n.  The
+ * address is reduced in uintptr_t.  n <= 0 yields 1 (an alignment test
+ * never matches) instead of dividing by zero. */
+static inline uintptr_t
+c2py_ptr_mod(const void *p, long long n)
+{
+    if (n <= 0) return 1;
+    return (uintptr_t)p % (uintptr_t)n;
 }
 
 static inline long long
@@ -1449,10 +1461,25 @@ c2py_pin_dlpack(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
         PyObject *kw = C2PY.Dict_New();
         PyObject *ver = PyTuple_New(2);
         if (kw && ver) {
-            PyTuple_SetItem(ver, 0, PyLong_FromLong(1));
-            PyTuple_SetItem(ver, 1, PyLong_FromLong(0));
+            PyObject *v0 = PyLong_FromLong(1);
+            PyObject *v1 = v0 ? PyLong_FromLong(0) : NULL;
+            if (!v1) {
+                /* Out of memory: leave the exception set (hard failure,
+                 * not a decline). */
+                Py_XDECREF(v0);
+                Py_DECREF(kw);
+                Py_DECREF(ver);
+                goto fail;
+            }
+            PyTuple_SetItem(ver, 0, v0);
+            PyTuple_SetItem(ver, 1, v1);
             if (((dset_fn)C2PY._ds_set_item_string)(kw, "max_version", ver) == 0)
                 capsule = C2PY.Call(dl_method, dl_args, kw);
+        } else {
+            /* Allocation failed: the MemoryError stays set. */
+            Py_XDECREF(kw);
+            Py_XDECREF(ver);
+            goto fail;
         }
         if (kw) Py_DECREF(kw);
         if (ver) Py_DECREF(ver);
@@ -1651,6 +1678,7 @@ c2py_pin(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
          int want_writable, const uint8_t *src_order, int n_src)
 {
     int i;
+    pin->kind = C2PY_PIN_NONE;  /* defined even if every backend fails */
     for (i = 0; i < n_src; i++) {
         switch (src_order[i]) {
         case C2PY_PIN_NDARRAY:
@@ -1973,6 +2001,8 @@ static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
 /* ------------------------------------------------------------------ */
 
 int c2py_runtime_init(void);
+/* Raise ImportError(reason) after c2py_runtime_init() failed. */
+void c2py_runtime_init_failed(const char *modname);
 
 #ifdef __cplusplus
 }
@@ -2463,6 +2493,13 @@ _c2py_pythonh_init_module(const char *name, PyMethodDef *methods)
 
 /* ---- c2py_runtime_init ---- */
 
+/* The Python.h backend cannot fail to initialise; kept for API parity. */
+void c2py_runtime_init_failed(const char *modname)
+{
+    PyErr_Format(PyExc_ImportError, "cannot import %s: c2py_runtime "
+                 "initialisation failed", modname);
+}
+
 int c2py_runtime_init(void)
 {
     /* CPU feature probing (shared with dlsym backend) */
@@ -2644,10 +2681,14 @@ static void *_resolve_raw(const char *name)
 #pragma warning(pop)
 #endif
 
+/* Why c2py_runtime_init() failed, kept for c2py_runtime_init_failed(). */
+static char _c2py_init_reason[512];
+
 #define RESOLVE(ptr, name) _resolve((void**)&(ptr), name)
 #define RESOLVE_REQ(ptr, name) do { \
     if (_resolve((void**)&(ptr), name) != 0) { \
-        fprintf(stderr, "c2py_runtime: FATAL - missing symbol: %s\n", name); \
+        snprintf(_c2py_init_reason, sizeof(_c2py_init_reason), \
+                 "c2py_runtime: missing symbol: %s", name); \
         return; \
     } \
 } while(0)
@@ -2728,6 +2769,38 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 
 
 
+/* ---- Failure reporting ---- */
+
+/* Called by PyInit_<mod> after c2py_runtime_init() failed: raise
+ * ImportError with the reason.  Only if the two symbols needed cannot
+ * be resolved does the text go to stderr instead. */
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4152)
+#endif
+void c2py_runtime_init_failed(const char *modname)
+{
+    typedef void (*set_str_fn)(void*, const char*);
+    char msg[640];
+    set_str_fn set_str = NULL;
+    void **pexc = NULL;
+
+    snprintf(msg, sizeof(msg), "cannot import %s: %s", modname,
+             _c2py_init_reason[0] ? _c2py_init_reason
+                                  : "c2py_runtime initialisation failed");
+    if (C2PY.dl_handle != NULL) {
+        set_str = (set_str_fn)_resolve_raw("PyErr_SetString");
+        pexc = (void**)_resolve_raw("PyExc_ImportError");
+    }
+    if (set_str != NULL && pexc != NULL && *pexc != NULL)
+        set_str(*pexc, msg);
+    else
+        fprintf(stderr, "%s\n", msg);
+}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 /* ---- Main init function ---- */
 
 #ifdef _MSC_VER
@@ -2790,20 +2863,22 @@ static void _c2py_runtime_init_once(void)
             }
         }
         if (C2PY.dl_handle == NULL) {
-            fprintf(stderr, "c2py_runtime: GetModuleHandle / LoadLibrary failed "
-                    "(python3.dll not found). "
-                    "GetLastError=%lu\n", GetLastError());
-            fprintf(stderr, "c2py_runtime: interpreter may be statically "
-                    "linked or embedded in an unusual host.\n");
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: GetModuleHandle / LoadLibrary failed "
+                     "(python3.dll not found; GetLastError=%lu); the "
+                     "interpreter may be statically linked or embedded "
+                     "in an unusual host", (unsigned long)GetLastError());
             return;
         }
     }
 #else
     C2PY.dl_handle = dlopen(NULL, RTLD_LAZY | RTLD_GLOBAL);
     if (C2PY.dl_handle == NULL) {
-        fprintf(stderr, "c2py_runtime: dlopen(NULL) failed: %s\n", dlerror());
-        fprintf(stderr, "c2py_runtime: interpreter may be statically linked "
-                "(requires --enable-shared or export-dynamic).\n");
+        const char *err = dlerror();
+        snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                 "c2py_runtime: dlopen(NULL) failed: %s; the interpreter "
+                 "may be statically linked (requires --enable-shared or "
+                 "export-dynamic)", err ? err : "unknown error");
         return;
     }
     /* If no CPython symbols found, try PyPy's separate C library.
@@ -2831,6 +2906,14 @@ static void _c2py_runtime_init_once(void)
 #endif
 
     dl = C2PY.dl_handle;
+
+#ifdef C2PY_TEST_FORCE_INIT_FAIL
+    /* Test-only: lets tests/test_init_failure.py exercise the failure
+     * path with a real interpreter.  Never defined in a normal build. */
+    snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+             "c2py_runtime: forced init failure (C2PY_TEST_FORCE_INIT_FAIL)");
+    return;
+#endif
 
     /* --- Detect Python version --- */
     {
@@ -2879,22 +2962,21 @@ static void _c2py_runtime_init_once(void)
     /* --- Reject unsupported Python versions --- */
 #ifdef _WIN32
     if (C2PY.version_major >= 3 && C2PY.version_minor > 15) {
-        fprintf(stderr,
-                "c2py_runtime: Python %d.%d on Windows is not yet supported.\n"
-                "Supported versions: 2.7, 3.6-3.15.\n"
-                "To add Windows support for a new Python version, audit the CPython\n"
-                "headers for ABI changes and update checks in c2py_runtime.c.\n",
-                C2PY.version_major, C2PY.version_minor);
+        snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                 "c2py_runtime: Python %d.%d on Windows is not yet "
+                 "supported (supported versions: 2.7, 3.6-3.15); audit the "
+                 "CPython headers for ABI changes and update the checks in "
+                 "c2py_runtime.c",
+                 C2PY.version_major, C2PY.version_minor);
         return;
     }
 #else
     if (C2PY.version_major >= 3 && C2PY.version_minor > 15) {
-        fprintf(stderr,
-                "c2py_runtime: Python %d.%d is not supported.\n"
-                "Supported versions: 2.7, 3.6-3.15.\n"
-                "To add support for a new Python version, audit the CPython\n"
-                "headers for ABI changes and update checks in c2py_runtime.c.\n",
-                C2PY.version_major, C2PY.version_minor);
+        snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                 "c2py_runtime: Python %d.%d is not supported (supported "
+                 "versions: 2.7, 3.6-3.15); audit the CPython headers for "
+                 "ABI changes and update the checks in c2py_runtime.c",
+                 C2PY.version_major, C2PY.version_minor);
         return;
     }
 #endif
@@ -3028,6 +3110,7 @@ static void _c2py_runtime_init_once(void)
     RESOLVE_REQ(C2PY.exc_ValueError, "PyExc_ValueError");
     RESOLVE_REQ(C2PY.exc_RuntimeError, "PyExc_RuntimeError");
     RESOLVE_REQ(C2PY.exc_MemoryError, "PyExc_MemoryError");
+    RESOLVE(C2PY.exc_BufferError, "PyExc_BufferError");  /* optional */
     RESOLVE_REQ(C2PY.Err_SetString, "PyErr_SetString");
     RESOLVE_REQ(C2PY.Err_Format, "PyErr_Format");
     if (C2PY.exc_TypeError   == NULL || C2PY.exc_ValueError  == NULL ||
@@ -3054,8 +3137,9 @@ static void _c2py_runtime_init_once(void)
 
         if (C2PY.is_free_threaded) {
             if (C2PY.IncRef == NULL || C2PY.DecRef == NULL) {
-                fprintf(stderr, "c2py_runtime: FATAL - free-threaded build "
-                        "requires Py_IncRef / Py_DecRef symbols\n");
+                snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                         "c2py_runtime: free-threaded build requires "
+                         "Py_IncRef / Py_DecRef symbols");
                 return;
             }
         } else {
@@ -3087,7 +3171,6 @@ static void _c2py_runtime_init_once(void)
     C2PY.Call = (PyObject*(*)(PyObject*, PyObject*, PyObject*))
         _resolve_raw("PyObject_Call");
     C2PY.Dict_New = (PyObject*(*)(void))_resolve_raw("PyDict_New");
-    C2PY.exc_BufferError = (void*)_resolve_raw("PyExc_BufferError");
 
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
     if (C2PY.Long_FromVoidPtr == NULL) return;
@@ -3105,7 +3188,8 @@ static void _c2py_runtime_init_once(void)
         }
         C2PY.none_obj = (PyObject*)none;
         if (C2PY.none_obj == NULL) {
-            fprintf(stderr, "c2py_runtime: could not resolve Py_None\n");
+            snprintf(_c2py_init_reason, sizeof(_c2py_init_reason),
+                     "c2py_runtime: could not resolve Py_None");
             return;
         }
         {

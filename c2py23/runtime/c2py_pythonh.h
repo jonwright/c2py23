@@ -88,3 +88,5 @@ typedef struct {
     PyObject_SetAttrString((PyObject*)(mod), (name), (PyObject*)(val))
 
 int c2py_runtime_init(void);
+/* Raise ImportError(reason) after c2py_runtime_init() failed. */
+void c2py_runtime_init_failed(const char *modname);

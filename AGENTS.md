@@ -501,8 +501,10 @@ checks:
 - **Alignment:** every non-empty buffer must be aligned to its itemsize
   (automatic, after the contiguity check; `check_alignment: false` opts a
   function out).  For stricter SIMD alignment use
-  `"(uintptr_t)buf.ptr % alignment == 0"` in `when:` conditions (the scalar
-  fallback handles misaligned cases)
+  `"buf.ptr % 32 == 0"` in `when:` conditions (the divisor may be an int
+  literal or an int scalar; the generator reduces the address in
+  `uintptr_t`; the scalar fallback handles misaligned cases).  There is no
+  cast syntax, and `.ptr` is accepted only as the left operand of `%`.
 - **Alias:** c2py23 checks writable buffer aliasing at runtime; add
   `default_raise:` for a clear error message.  Set `check_aliasing: false`
   only when the caller guarantees non-overlap and the check is hot.

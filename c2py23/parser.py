@@ -1087,12 +1087,17 @@ def _coerce_expr_value(val, context, path):
 
 
 def _has_ptr_arith(expr):
-    """True if a .ptr attribute is an operand of +, -, * or / anywhere in expr."""
+    """True if a .ptr attribute is an operand of +, -, * or / (or the divisor of %)
+    anywhere in expr."""
     if isinstance(expr, BinOp):
         if expr.op in ("+", "-", "*", "/"):
             for side in (expr.left, expr.right):
                 if _is_ptr_expr(side):
                     return True
+        elif expr.op == "%" and _is_ptr_expr(expr.right):
+            # <buf>.ptr % N is the one supported form (alignment test);
+            # .ptr as the divisor is meaningless.
+            return True
         return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
     if isinstance(expr, Compare):
         return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
@@ -1114,8 +1119,9 @@ def _reject_ptr_arith(name, checks, overloads, path):
     for e in exprs:
         if e is not None and _has_ptr_arith(e):
             raise ValueError(
-                "Function '%s' in %s: arithmetic on a buffer .ptr (+, -, *, /) is not "
-                "supported.  Pointer offsets belong in the C function: pass the offset "
+                "Function '%s' in %s: arithmetic on a buffer .ptr (+, -, *, /, or .ptr as "
+                "the divisor of %%) is not supported.  Only '<buf>.ptr %% N' (alignment) "
+                "is.  Pointer offsets belong in the C function: pass the offset "
                 "as a separate argument." % (name, path)
             )
 
@@ -1908,6 +1914,16 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return "({}) && ({})".format(left, right)
         elif expr.op == "or":
             return "({}) || ({})".format(left, right)
+        elif expr.op == "%" and _is_ptr_expr(expr.left):
+            # Alignment test: the address is taken modulo in uintptr_t, never
+            # through the signed long long helpers.  A literal divisor is
+            # emitted as is; any other divisor goes through c2py_ptr_mod,
+            # which cannot divide by zero.
+            if isinstance(expr.right, IntLit):
+                if expr.right.value <= 0:
+                    raise ValueError("'.ptr %% N' needs a positive literal N, got %d" % expr.right.value)
+                return "((uintptr_t){} % (uintptr_t){})".format(left, right)
+            return "c2py_ptr_mod({}, {})".format(left, right)
         elif expr.op in _LL_HELPERS:
             if _is_checked_arith(expr, scalar_params):
                 return "{0}({1}, {2}, &_c2py_ovf)".format(_LL_HELPERS[expr.op], left, right)
