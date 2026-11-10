@@ -1086,6 +1086,40 @@ def _coerce_expr_value(val, context, path):
     raise ValueError("Expected string or number for %s value in %s, got %s" % (context, path, type(val).__name__))
 
 
+def _has_ptr_arith(expr):
+    """True if a .ptr attribute is an operand of +, -, * or / anywhere in expr."""
+    if isinstance(expr, BinOp):
+        if expr.op in ("+", "-", "*", "/"):
+            for side in (expr.left, expr.right):
+                if _is_ptr_expr(side):
+                    return True
+        return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
+    if isinstance(expr, Compare):
+        return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
+    if isinstance(expr, UnaryOp):
+        if expr.op in ("+", "-") and _is_ptr_expr(expr.operand):
+            return True
+        return _has_ptr_arith(expr.operand)
+    return False
+
+
+def _reject_ptr_arith(name, checks, overloads, path):
+    """Raise ValueError if any map:/when:/checks: expr does arithmetic on .ptr."""
+    exprs = list(checks)
+    for ol in overloads:
+        exprs.append(ol.when_expr)
+        exprs.extend(ol.map_exprs.values())
+        for v in ol.variants or ():
+            exprs.append(v.when_expr)
+    for e in exprs:
+        if e is not None and _has_ptr_arith(e):
+            raise ValueError(
+                "Function '%s' in %s: arithmetic on a buffer .ptr (+, -, *, /) is not "
+                "supported.  Pointer offsets belong in the C function: pass the offset "
+                "as a separate argument." % (name, path)
+            )
+
+
 def _parse_func(raw, path):
     py_sig_str = _get_required(raw, "py_sig", path)
     name, py_params, ret_type = _parse_py_sig(py_sig_str, path)
@@ -1328,6 +1362,8 @@ def _parse_func(raw, path):
                 )
             pdesc = str(params[pname]) if not isinstance(params[pname], _STRING_TYPES) else params[pname]
             params[pname] = _check_ascii(pdesc, "params.{}".format(pname), path)
+
+    _reject_ptr_arith(name, checks, overloads, path)
 
     return FuncDef(
         name,

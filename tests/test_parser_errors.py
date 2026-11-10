@@ -178,3 +178,86 @@ def test_load_c2py_missing_embed_raises():
         f.write("/* no c2py block */\n")
     with pytest.raises(ValueError):
         load_c2py(path)
+
+
+def _ptr_func(map_p="buf.ptr", when="buf.format == 'f'", checks=None):
+    return {
+        "py_sig": "procfn(buf: buffer, off: int) -> void",
+        "checks": checks or ["buf.format == 'f'"],
+        "c_overloads": [
+            {
+                "when": when,
+                "map": {"p": map_p, "n": "buf.n", "o": "off"},
+                "sig": "void proc_a(const float *p, int n, int o)",
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "buf.ptr + off",
+        "buf.ptr - 1",
+        "off + buf.ptr",
+        "(buf.ptr + 1) * 2",
+        "off - (buf.ptr)",
+        "-buf.ptr",
+    ],
+)
+def test_ptr_arith_rejected_in_map(expr):
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict(_base(functions=[_ptr_func(map_p=expr)]))
+    assert "procfn" in str(ei.value)
+    assert "C function" in str(ei.value)
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "buf.ptr + off == 0",
+        "buf.ptr - 1 > 0",
+        "off + buf.ptr == 0",
+        "buf.format == 'f' and (2 * buf.ptr) > 0",
+    ],
+)
+def test_ptr_arith_rejected_in_when(expr):
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict(_base(functions=[_ptr_func(when=expr)]))
+    assert "procfn" in str(ei.value)
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "buf.ptr + off == 0",
+        "buf.ptr - 1 > 0",
+        "off + buf.ptr == 0",
+        "buf.n > 0 and (buf.ptr / 2) > 0",
+    ],
+)
+def test_ptr_arith_rejected_in_checks(expr):
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict(_base(functions=[_ptr_func(checks=["buf.format == 'f'", expr])]))
+    assert "procfn" in str(ei.value)
+
+
+def test_ptr_arith_rejected_in_variant_when():
+    f = _ptr_func()
+    f["c_overloads"] = [
+        {
+            "when": "buf.format == 'f'",
+            "map": {"p": "buf.ptr", "n": "buf.n"},
+            "variants": [
+                {"sig": "void proc_a(const float *p, int n)", "when": "buf.ptr + 1 == 0"},
+                {"sig": "void proc_b(const float *p, int n)"},
+            ],
+        }
+    ]
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict(_base(functions=[f]))
+    assert "procfn" in str(ei.value)
+
+
+def test_bare_ptr_still_parses():
+    from_c2py_dict(_base(functions=[_ptr_func(map_p="buf.ptr")]))
