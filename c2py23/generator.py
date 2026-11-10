@@ -191,6 +191,73 @@ def _when_ovf_lines(ol, scalar_params, func_name):
     return _ovf_raise_lines(func_name, "when: " + _expr_to_source(ol.when_expr))
 
 
+def _implied_ndim_needs(ol, buf_params):
+    """Sorted (buffer name, required ndim) pairs implied by shape[k]/strides[k]
+    in the overload's map: expressions (k + 1 dimensions needed)."""
+    names = set(p.name for p in buf_params)
+    need = {}
+
+    def walk(e):
+        if isinstance(e, Subscript):
+            o = e.obj
+            if (
+                isinstance(o, Attr)
+                and o.attr in ("shape", "strides")
+                and isinstance(o.obj, Var)
+                and o.obj.name in names
+                and e.index >= 0
+            ):
+                need[o.obj.name] = max(need.get(o.obj.name, 0), e.index + 1)
+            walk(e.obj)
+        elif isinstance(e, Attr):
+            walk(e.obj)
+        elif isinstance(e, (Compare, BinOp)):
+            walk(e.left)
+            walk(e.right)
+        elif isinstance(e, UnaryOp):
+            walk(e.operand)
+
+    for e in ol.map_exprs.values():
+        walk(e)
+    return sorted(need.items())
+
+
+def _ol_cond(ol, buf_params, scalar_params):
+    """Dispatch condition of an overload, or None if it always matches.
+
+    An overload whose map: reads shape[k]/strides[k] of a buffer is only
+    eligible when that buffer has more than k dimensions; the implied
+    ndim terms come first so the user's when: never sees a short buffer.
+    """
+    terms = ["info_{0}->ndim >= {1}".format(n, k) for n, k in _implied_ndim_needs(ol, buf_params)]
+    if ol.when_expr is not None:
+        when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
+        when_c = _when_cond(ol, when_c, scalar_params)
+        if terms:
+            when_c = "(" + when_c + ")"
+        terms.append(when_c)
+    if not terms:
+        return None
+    return " && ".join(terms)
+
+
+def _emit_ndim_fallback(b, func_name, overloads, buf_params):
+    """ValueError for a call no overload accepted because a buffer had too
+    few dimensions for the shape[k]/strides[k] its map: reads."""
+    needs = {}
+    for ol in overloads:
+        for n, k in _implied_ndim_needs(ol, buf_params):
+            needs[n] = min(needs.get(n, k), k)
+    parts = ", ".join("'{0}' needs ndim >= {1}".format(n, needs[n]) for n in sorted(needs))
+    b.emit("        PyErr_SetString(PyExc_ValueError,")
+    b.emit('            "{0}: no overload matches: {1}");'.format(_escape_c_str(func_name), _escape_c_str(parts)))
+    b.emit("        return NULL;")
+
+
+def _has_implied_ndim(overloads, buf_params):
+    return any(_implied_ndim_needs(ol, buf_params) for ol in overloads)
+
+
 class CBuilder:
     """Stateful builder for generating C wrapper code.
 
@@ -763,16 +830,15 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
     group_index = 0
     for i, ol in enumerate(overloads):
         is_group = ol.variants is not None
+        cond = _ol_cond(ol, buf_params, scalar_params)
         if i == 0:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    if (" + cond + ") {")
             else:
                 b.emit("    if (1) {  /* group 0 (always) */")
         else:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    } else if (" + cond + ") {")
             else:
                 b.emit("    }} else {{  /* group {0} (always) */".format(i))
 
@@ -827,6 +893,9 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
+    elif _has_implied_ndim(overloads, buf_params):
+        b.emit("    } else {")
+        _emit_ndim_fallback(b, name, overloads, buf_params)
     b.emit("    }")
 
 
@@ -836,7 +905,7 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
 
 
 def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise):
-    if len(overloads) == 1 and overloads[0].when_expr is None:
+    if len(overloads) == 1 and _ol_cond(overloads[0], buf_params, scalar_params) is None:
         b.emit("    /* overload 0 (always) */")
         b.emit("    {")
         _emit_c_call(b, overloads[0], buf_params, scalar_params, timing, name, gil)
@@ -844,16 +913,15 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
         return
 
     for i, ol in enumerate(overloads):
+        cond = _ol_cond(ol, buf_params, scalar_params)
         if i == 0:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    if (" + cond + ") {")
             else:
                 b.emit("    if (1) {  /* overload 0 (always) */")
         else:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    } else if (" + cond + ") {")
             else:
                 b.emit("    }} else {{  /* overload {0} (always) */".format(i))
         b.emit("        /* {0} */".format(ol.sig_str))
@@ -864,6 +932,9 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
+    elif _has_implied_ndim(overloads, buf_params):
+        b.emit("    } else {")
+        _emit_ndim_fallback(b, name, overloads, buf_params)
     b.emit("    }")
 
 

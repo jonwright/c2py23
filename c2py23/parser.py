@@ -1777,15 +1777,20 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         elif attr == "fast_axis":
             return "_c2py_fast_axis_" + obj
         elif attr == "slow_dim":
-            return "{0}->shape[_c2py_slow_axis_{0}]".format(obj)
+            return "c2py_shape_at({0}, _c2py_slow_axis_{0})".format(obj)
         elif attr == "fast_dim":
-            return "{0}->shape[_c2py_fast_axis_{0}]".format(obj)
+            return "c2py_shape_at({0}, _c2py_fast_axis_{0})".format(obj)
         else:
             return obj + "->" + attr
 
     elif isinstance(expr, Subscript):
-        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
         idx = expr.index
+        if isinstance(expr.obj, Attr) and expr.obj.attr in ("shape", "strides"):
+            # Bounds-safe: shape[k] / strides[k] must never index past ndim.
+            base = _expr_to_c(expr.obj.obj, buf_params, scalar_params, current_ol)
+            helper = "c2py_shape_at" if expr.obj.attr == "shape" else "c2py_stride_at"
+            return "{}({}, {})".format(helper, base, idx)
+        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
         return "{}[{}]".format(obj, idx)
 
     elif isinstance(expr, IntLit):

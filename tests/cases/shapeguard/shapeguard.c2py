@@ -1,0 +1,61 @@
+# shape[k] / strides[k] in map:, when: and checks: never read past ndim.
+{
+    "module": "shapeguardmod",
+    "source": ["shapeguard.c"],
+    "functions": [
+        {
+            "py_sig": "get_cols(a: buffer) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "get_cols(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.shape[1]"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "get_stride1(a: buffer) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "get_stride1(const double *a, int64_t s, int64_t *out)",
+                    "map": {"a": "a.ptr", "s": "a.strides[1]"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "three(a: buffer) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "tag_three(const double *a, int64_t *out)",
+                    "map": {"a": "a.ptr"},
+                    "when": "a.shape[1] == 3",
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+            "default_raise": "ValueError: need exactly 3 columns",
+        },
+        {
+            "py_sig": "either(a: buffer) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "tag_vec(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "when": "a.ndim == 1",
+                    "outputs": {"out": "int64_t"},
+                },
+                {
+                    "sig": "tag_mat3(const double *a, int64_t rows, int64_t *out)",
+                    "map": {"a": "a.ptr", "rows": "a.shape[0]"},
+                    "when": "a.ndim == 2 and a.shape[1] == 3",
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+            "default_raise": "ValueError: expected 1-D or (N, 3)",
+        },
+    ],
+}

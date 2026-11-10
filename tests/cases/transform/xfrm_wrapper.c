@@ -221,19 +221,19 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         PyErr_SetString(PyExc_ValueError, _c2py_err);
         return NULL;
     }
-    if ((info_points->shape[1]) == (3)) {
+    if (info_points->ndim >= 1 && ((c2py_shape_at(info_points, 1)) == (3))) {
         /* transform_aos(double *points, intptr_t n, double *out) */
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
-        transform_aos((double *)info_points->ptr, (intptr_t)(info_points->shape[0]), (double *)info_out->ptr);
+        transform_aos((double *)info_points->ptr, (intptr_t)(c2py_shape_at(info_points, 0)), (double *)info_out->ptr);
         if (_c2py_do_time) {
             _c2py_ct1 = c2py_ticks();
             c2py_perf_record_call(&_perf_transform__transform_aos, _c2py_ct0, _c2py_ct1);
         }
         Py_RETURN_NONE;
-    } else if ((info_points->shape[0]) == (3)) {
+    } else if (info_points->ndim >= 2 && ((c2py_shape_at(info_points, 0)) == (3))) {
         /* transform_soa(double *points, intptr_t n, double *out) */
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
-        transform_soa((double *)info_points->ptr, (intptr_t)(info_points->shape[1]), (double *)info_out->ptr);
+        transform_soa((double *)info_points->ptr, (intptr_t)(c2py_shape_at(info_points, 1)), (double *)info_out->ptr);
         if (_c2py_do_time) {
             _c2py_ct1 = c2py_ticks();
             c2py_perf_record_call(&_perf_transform__transform_soa, _c2py_ct0, _c2py_ct1);

@@ -813,6 +813,37 @@ c2py_check_no_overlap(c2py_ptr_info *const *infos, int n_writable, int n)
     return 0;
 }
 
+/* Bounds-safe shape[k] / strides[k] for generated map:, when: and checks:
+ * expressions.  Out-of-range k (k < 0 or k >= ndim) yields -1 instead of
+ * reading past the Py_buffer arrays.  A NULL shape (1-D, and every Python 2.7
+ * old-buffer object) is the flat length; a NULL strides (PEP 3118: C order)
+ * is itemsize for k == 0 and the C-order step for k > 0. */
+static inline Py_ssize_t
+c2py_shape_at(const c2py_ptr_info *info, int k)
+{
+    if (k < 0 || k >= info->ndim) return -1;
+    if (info->shape == NULL) {
+        if (k != 0 || info->itemsize <= 0) return -1;
+        return info->len / info->itemsize;
+    }
+    return info->shape[k];
+}
+
+static inline Py_ssize_t
+c2py_stride_at(const c2py_ptr_info *info, int k)
+{
+    Py_ssize_t _s;
+    int _d;
+
+    if (k < 0 || k >= info->ndim) return -1;
+    if (info->strides != NULL) return info->strides[k];
+    if (k == 0 && info->shape == NULL) return info->itemsize;
+    if (info->shape == NULL) return -1;
+    _s = info->itemsize;
+    for (_d = info->ndim - 1; _d > k; _d--) _s *= info->shape[_d];
+    return _s;
+}
+
 /* Validate that a buffer is C-contiguous or Fortran-contiguous and report
  * the slowest/fastest varying axis indices through `slow_axis`/`fast_axis`
  * (used by `when:` dispatch on `.slow_axis`/`.fast_axis`).  The caller
