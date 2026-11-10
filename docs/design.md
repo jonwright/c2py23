@@ -37,9 +37,12 @@ but callers must pass arguments in order: `fn(data, 5)` works, `fn(data, n=5)`
 raises `TypeError`.
 
 Keyword argument support would also introduce `METH_KEYWORDS` in the generated
-CPython wrappers, which causes undefined behavior when cast to `PyCFunction`.
-Deferred until Python 2.7 is dropped and the minimum can be raised to 3.12
-where `METH_FASTCALL` avoids this issue natively.
+CPython wrappers.  c2py23 stays positional-only because that maps directly onto
+the C calling model and keeps the generated wrapper small; keyword handling
+would add a per-argument name lookup on the call path for a feature the wrapped
+C functions do not have.  Deferred until Python 2.7 is dropped and the minimum
+can be raised to 3.12 where `METH_FASTCALL` can serve both conventions without
+the extra wrapper machinery.
 
 ### No memory allocation in wrappers
 
@@ -112,6 +115,51 @@ instead.
 support a limited grammar: comparisons, arithmetic, `and`/`or`/`not`,
 attribute access (`buf.n`, `buf.format`), and subscript (`buf.shape[1]`).
 
+## dlsym mode vs the Limited API (abi3)
+
+c2py23's core claim is one `.so` across many Pythons.  The mainstream way to
+get that is the CPython [Limited API](https://docs.python.org/3/c-api/stable.html)
+(PEP 384, the `abi3` wheel tag): one binary built against a stable subset of
+CPython's ABI works on every CPython version from that point on.  From
+Python 3.15 there is also `abi3t`, the same stable-API contract for
+free-threaded builds (PEP 803).  A reader will ask why c2py23 does not just
+target `abi3`.
+
+The dlsym mode makes a different trade-off:
+
+- **What it buys.** It covers Python 2.7, which the Limited API does not.  A
+  single binary spans both GIL and free-threaded builds of Python 3.13 and
+  3.14, which `abi3` wheels cannot do (`abi3t` only exists
+  from 3.15).  No Python headers are needed at build time, so one `.so` is
+  compiled once against the oldest target OS and imported everywhere.
+- **What it costs.** c2py23 depends on CPython object layouts that are not
+  covered by any ABI promise: `PyObject` refcount/type offsets, `PyModuleDef`,
+  and numpy's `PyArrayObject` fields.  The Limited API is explicitly designed
+  so a consumer never relies on those.  The consequence is a hard version
+  ceiling: each new CPython needs an audit of those offsets and a rebuild, and
+  the runtime refuses to import on a version above the audited ceiling.
+
+### Policy on Python versions still in development
+
+c2py23 supports only released Python versions that have been audited.  The
+runtime carries a fixed ceiling (Python 3.15); when asked to import on a
+higher version, `c2py_runtime_init()` records the reason and the module init
+raises `ImportError` with it, e.g. "Python 3.16 is not supported (supported
+versions: 2.7, 3.6-3.15); audit the CPython headers for ABI changes and update
+the checks in c2py_runtime.c".  A version still in development, or released
+after the ceiling, is not supported until the audit described in "Adding
+Support for a New Python Version" (in AGENTS.md) is done and the ceiling is
+bumped.  Nothing in the design works around an unreleased interpreter.
+
+### Where dlsym mode cannot work
+
+`dlopen(NULL)` + `dlsym()` finds CPython's functions only if the interpreter
+makes them visible in the global symbol scope.  A host that embeds Python by
+`dlopen("libpython", RTLD_LOCAL)` hides those symbols and the module fails to
+import (the reason goes to stderr, or into `ImportError` when it can be set).
+Such hosts are not supported in dlsym mode; use `--pythonh`
+([docs/pythonh.md](pythonh.md)) there.
+
 ## Alternative Python Wrapper Generators
 
 c2py23 is deliberately incomplete and inflexible -- it maps a narrow set of
@@ -121,10 +169,14 @@ coverage.
 
 - **[ctypes](https://docs.python.org/3/library/ctypes.html)** -- built into
   Python, no build step, but no buffer-protocol shape/format checking
-- **[cffi](https://cffi.readthedocs.io/)** -- richer C type system, ABI and API
-  modes, but Python 2.7 is sunsetting
+- **[cffi](https://cffi.readthedocs.io/)** -- richer C type system, supports
+  Python 2.7 and 3.x, but ABI mode does no buffer shape/format checking and
+  API mode needs a C compiler
 - **[pybind11](https://pybind11.readthedocs.io/)** -- C++ native, rich type
-  conversion, Python 3.6+ only
+  conversion; current releases no longer support Python 2.7
+- **[nanobind](https://nanobind.readthedocs.io/)** -- the pybind11 author's
+  leaner, faster C++ binder; Python 3 only, needs a C++17 compiler, and can
+  target the Limited API on recent Python versions
 - **[Cython](https://cython.org/)** -- Python-like syntax for C extensions,
   Python 2.7-3.x support
 - **[f2py](https://numpy.org/doc/stable/f2py/)** -- wraps Fortran 77/90 and C

@@ -459,92 +459,25 @@ The human uses a classic `repo`-scoped token for admin tasks.
 
 ## Writing Safe .c2py Definitions
 
-**Always validate buffer dimensions in `checks:` blocks.**  Without size
-checks, a caller can pass a too-small output buffer, causing the C function
-to write past the end and produce a segfault or silent memory corruption.
+The `.c2py` author-facing safety rules now live in the user guide under
+"Writing Safe .c2py Definitions":
+`docs/user_guide.md#writing-safe-c2py-definitions`.  That section covers the
+requirements that the generator now derives for every buffer mapped as
+`buf.ptr` (element type, alignment, contiguity) plus their opt-outs
+(`check_format`, `check_alignment`, `check_aliasing`), the bounds-safe
+`buf.shape[k]` / `buf.strides[k]` access, the `buf.ptr % N` alignment idiom,
+and the `'l'`/`'L'` format portability warning.
 
-### Required checks for every function with buffer parameters:
+The rule that matters most, and the reason it exists, is unchanged:
 
-1. **Format:** derived automatically.  For every C pointer parameter mapped
-   to exactly `buf.ptr`, the generator adds the element-type check implied
-   by the pointee type (`double *` -> `'d'`, `int32_t *` -> `'i'`/`'l'` with
-   itemsize 4, `char *` -> itemsize 1, `void *` -> none; table in
-   `docs/specification.md`).  Explicit `"buf.format == 'd'"` checks are still
-   allowed and replace the derived one for that buffer (same dispatch as
-   before).  Pointee types outside the table get a generation-time warning
-   and no check -- write the check yourself.  `check_format: false` opts a
-   function out.
-2. **Dimensionality:** `"buf.ndim == 1"` or `"buf.ndim == 2"` -- reject unexpected shapes
-3. **Size relationships:** `"ibuf.n == obuf.n"` or `"obuf.n >= ibuf.n + 2"` --
-   the single most important check for preventing segfaults
-
-### Example: safe output buffer sizing
-
-```python
-# Correct: validates output is large enough
-checks:
-  - "a.format == 'f'"
-  - "out.format == 'f'"
-  - "out.n >= a.n"          # output at least as large as input
-
-# Wrong: missing size check -- segfault if out is too small
-checks:
-  - "a.format == 'f'"
-  - "out.format == 'f'"
-```
-
-### Additional safe checks to consider:
-
-- **Contiguity:** c2py23 enforces C/F-contiguity automatically, but check for specific
-  expectations (e.g., C-order only)
-- **Non-empty:** `"buf.n > 0"` when zero-length would be invalid
-- **Alignment:** every non-empty buffer must be aligned to its itemsize
-  (automatic, after the contiguity check; `check_alignment: false` opts a
-  function out).  For stricter SIMD alignment use
-  `"buf.ptr % 32 == 0"` in `when:` conditions (the divisor may be an int
-  literal or an int scalar; the generator reduces the address in
-  `uintptr_t`; the scalar fallback handles misaligned cases).  There is no
-  cast syntax, and `.ptr` is accepted only as the left operand of `%`.
-- **Alias:** c2py23 checks writable buffer aliasing at runtime; add
-  `default_raise:` for a clear error message.  Set `check_aliasing: false`
-  only when the caller guarantees non-overlap and the check is hot.
-
-### Format char portability: never use `'l'` or `'L'` for fixed-width dispatch
-
-The PEP 3118 format characters `'l'` (signed long) and `'L'` (unsigned long)
-are **platform-sized**: `sizeof(long)` differs between LP64 (Linux/macOS, 8
-bytes) and LLP64 (Windows 64-bit, 4 bytes).  A buffer with format `'l'` has
-8-byte elements on Linux but 4-byte elements on Windows.
-
-**Do not rely on `'l'`/`'L'` for fixed-width dispatch.**  Use the format
-characters that have guaranteed sizes on all platforms:
-
-| Format | C type | Size (all platforms) |
-|--------|--------|---------------------|
-| `'i'` / `'I'` | `int32_t` / `uint32_t` | 4 bytes |
-| `'q'` / `'Q'` | `int64_t` / `uint64_t` | 8 bytes |
-
-c2py23 generates a runtime `itemsize == sizeof(long)` check alongside format
-comparisons for `'l'`/`'L'`, so these characters remain usable if you need
-platform-native `long` semantics.  But the generated `.so` or `.pyd` will
-dispatch to different C code on different platforms -- do not depend on
-`'l'`/`'L'` mapping to a specific fixed-width type.
-
-### Buffer writability and overload dispatch
-
-When a function has multiple overloads, the wrapper acquires each buffer with
-`PyBUF_WRITABLE` if **any** overload writes to it. If you add a read-only
-overload alongside a writable overload for the same buffer parameter, callers
-will be forced to provide writable buffers for the read-only path. Keep this
-in mind when mixing read and write overloads.
-
-### Remember:
-
-The C function receives raw pointers with no bounds information. If the
+**A C function receives raw pointers with no bounds information.** If the
 Python caller passes a 100-element output buffer for a function expecting
-1000 elements, the C code will write 900 elements past the buffer end.
-There is no runtime instrumentation to catch this; the ONLY defense is
-the `checks:` block.
+1000 elements, the C code will write 900 elements past the buffer end. There
+is no runtime instrumentation to catch this; the `checks:` block -- together
+with the derived element-type, alignment and writable-aliasing checks -- is
+the only defence. When you write a `.c2py` interface, validate every output
+buffer is large enough (`"obuf.n >= ibuf.n"`) and put in a dimensionality
+check (`"buf.ndim == 1"`) when the C signature implies one.
 
 ## Adding Support for a New Python Version
 
