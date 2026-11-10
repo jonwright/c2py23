@@ -29,8 +29,9 @@ RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
 C2PY_FLAGS   :=
 endif
 
-# Auto-detect MSVC from CC or env var
-ifneq ($(or $(MSVC),$(findstring cl,$(CC))),)
+# Auto-detect MSVC from CC or env var.  Match the compiler name exactly:
+# a substring test for "cl" also matches clang.
+ifneq ($(or $(MSVC),$(filter cl cl.exe clang-cl clang-cl.exe,$(notdir $(firstword $(CC))))),)
   EXT      ?= .pyd
   LIBS     ?=
 else
