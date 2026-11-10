@@ -54,6 +54,23 @@ tests/cases/arraysum/arraysum$(EXT): tests/cases/arraysum/arraysum_wrapper.c tes
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/autoformat/autoformatmod_wrapper.c: tests/cases/autoformat/autoformat.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/autoformat/autoformat.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/autoformat/autoformatmod$(EXT): tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/autoformat \
+		tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/autoformat/autoformatmod$(EXT): tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/autoformat \
+		tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
 tests/cases/constants/constmod_wrapper.c: tests/cases/constants/constants.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 tests/cases/constants/constants.c2py -o $@ $(C2PY_FLAGS)
 

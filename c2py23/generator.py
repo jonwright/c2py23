@@ -8,6 +8,8 @@ output scalars with NULL checks and PyTuple_SetItem.
 
 from __future__ import print_function
 
+import sys
+
 from c2py23 import __version__
 from c2py23.parser import (
     Var,
@@ -30,6 +32,7 @@ from c2py23.parser import (
     expr_has_checked_arith,
     _extract_fmt_from_expr,
     _extract_itemsize_from_expr,
+    parse_expr,
 )
 from c2py23.invariant_checker import verify_c_invariants
 
@@ -222,14 +225,19 @@ def _implied_ndim_needs(ol, buf_params):
     return sorted(need.items())
 
 
-def _ol_cond(ol, buf_params, scalar_params):
+def _ol_cond(ol, buf_params, scalar_params, func=None):
     """Dispatch condition of an overload, or None if it always matches.
 
     An overload whose map: reads shape[k]/strides[k] of a buffer is only
     eligible when that buffer has more than k dimensions; the implied
     ndim terms come first so the user's when: never sees a short buffer.
+    The element-type terms implied by the C pointee types follow (see
+    _implied_format_checks), then the user's when:.
     """
     terms = ["info_{0}->ndim >= {1}".format(n, k) for n, k in _implied_ndim_needs(ol, buf_params)]
+    if func is not None:
+        for src in _ol_format_terms(func, ol, buf_params):
+            terms.append("(" + _expr_to_c(parse_expr(src), buf_params, scalar_params, ol) + ")")
     if ol.when_expr is not None:
         when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
         when_c = _when_cond(ol, when_c, scalar_params)
@@ -241,21 +249,173 @@ def _ol_cond(ol, buf_params, scalar_params):
     return " && ".join(terms)
 
 
-def _emit_ndim_fallback(b, func_name, overloads, buf_params):
+def _emit_ndim_fallback(b, func_name, overloads, buf_params, func=None):
     """ValueError for a call no overload accepted because a buffer had too
-    few dimensions for the shape[k]/strides[k] its map: reads."""
+    few dimensions for the shape[k]/strides[k] its map: reads, or the wrong
+    element type for the C pointer it is passed as."""
     needs = {}
     for ol in overloads:
         for n, k in _implied_ndim_needs(ol, buf_params):
             needs[n] = min(needs.get(n, k), k)
-    parts = ", ".join("'{0}' needs ndim >= {1}".format(n, needs[n]) for n in sorted(needs))
+    parts = ["'{0}' needs ndim >= {1}".format(n, needs[n]) for n in sorted(needs)]
+    fmts = {}
+    if func is not None and not _func_level_format_checks(func, buf_params):
+        for ol in overloads:
+            for n, src in _implied_format_checks(func, ol, buf_params):
+                fmts.setdefault(n, [])
+                if src not in fmts[n]:
+                    fmts[n].append(src)
+    for n in sorted(fmts):
+        parts.append("'{0}' needs {1}".format(n, " or ".join("(" + src + ")" for src in fmts[n])))
+    parts = ", ".join(parts)
     b.emit("        PyErr_SetString(PyExc_ValueError,")
     b.emit('            "{0}: no overload matches: {1}");'.format(_escape_c_str(func_name), _escape_c_str(parts)))
     b.emit("        return NULL;")
 
 
-def _has_implied_ndim(overloads, buf_params):
-    return any(_implied_ndim_needs(ol, buf_params) for ol in overloads)
+def _has_implied_ndim(overloads, buf_params, func=None):
+    """True if some overload carries an implied ndim or element-type term."""
+    if any(_implied_ndim_needs(ol, buf_params) for ol in overloads):
+        return True
+    return func is not None and any(_ol_format_terms(func, ol, buf_params) for ol in overloads)
+
+
+# Element check derived from the C pointee type of a parameter that is mapped
+# to exactly "<buf>.ptr" (B1).  Keys are the base_type spellings parser.py
+# accepts (see _C_TYPES_INT); the values are ordinary check expressions, so
+# they go through the same format matcher (_expr_to_c, c2py_format_type) as
+# user-written ones.  'l'/'L' are platform-sized: _expr_to_c already adds
+# itemsize == sizeof(long), and the itemsize term here picks the row whose
+# width matches (so 'l' is int32 where sizeof(long) == 4, int64 where it is
+# 8).  The itemsize term is ANDed outside the 'or' so that gcc does not see
+# itemsize == sizeof(long) && itemsize == 4 as a constant contradiction.
+# void gets no check; other pointee types (intptr_t, ptrdiff_t, size_t,
+# _Bool) get none either and a generation-time warning.
+_POINTEE_FORMAT_CHECK = {
+    "double": "{0}.format == 'd'",
+    "float": "{0}.format == 'f'",
+    "int8_t": "{0}.format == 'b'",
+    "uint8_t": "{0}.format == 'B'",
+    "char": "{0}.itemsize == 1",
+    "int16_t": "{0}.format == 'h'",
+    "uint16_t": "{0}.format == 'H'",
+    "int32_t": "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4",
+    "int": "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4",
+    "uint32_t": "({0}.format == 'I' or {0}.format == 'L') and {0}.itemsize == 4",
+    "int64_t": "({0}.format == 'q' or {0}.format == 'l') and {0}.itemsize == 8",
+    "uint64_t": "({0}.format == 'Q' or {0}.format == 'L') and {0}.itemsize == 8",
+}
+
+
+def _mentions_elem_type(expr, buf_name):
+    """True if expr reads <buf_name>.format or <buf_name>.itemsize."""
+    if expr is None:
+        return False
+    if isinstance(expr, Attr):
+        if expr.attr in ("format", "itemsize") and isinstance(expr.obj, Var) and expr.obj.name == buf_name:
+            return True
+        return _mentions_elem_type(expr.obj, buf_name)
+    if isinstance(expr, Subscript):
+        return _mentions_elem_type(expr.obj, buf_name)
+    if isinstance(expr, (Compare, BinOp)):
+        return _mentions_elem_type(expr.left, buf_name) or _mentions_elem_type(expr.right, buf_name)
+    if isinstance(expr, UnaryOp):
+        return _mentions_elem_type(expr.operand, buf_name)
+    return False
+
+
+def _pointee_checks(cparams, map_exprs, buf_name, label, warnings):
+    """Sorted check sources implied by the pointer params in cparams that are
+    mapped to exactly <buf_name>.ptr; unknown pointee types are reported in
+    `warnings` (when it is a list)."""
+    srcs = set()
+    for cp in cparams:
+        if not cp.is_pointer:
+            continue
+        e = map_exprs.get(cp.name)
+        if not (isinstance(e, Attr) and e.attr == "ptr" and isinstance(e.obj, Var) and e.obj.name == buf_name):
+            continue
+        if cp.base_type == "void":
+            continue
+        src = _POINTEE_FORMAT_CHECK.get(cp.base_type)
+        if src is None:
+            if warnings is not None:
+                warnings.append(
+                    "{0}: parameter '{1}' ({2} *) has no derived element-type check for buffer '{3}'".format(
+                        label, cp.name, cp.base_type, buf_name
+                    )
+                )
+            continue
+        srcs.add(src.format(buf_name))
+    return sorted(srcs)
+
+
+def _implied_format_checks(func, ol, buf_params, warnings=None):
+    """(buffer name, check source) pairs implied for overload ol by the C
+    pointee types of params mapped to exactly <buf>.ptr.  Nothing is implied
+    for a buffer whose format or itemsize the function's checks: or ol's
+    when: (group or variant level) already read, or when the function sets
+    check_format: false.  A grouped overload gets a term only if every
+    variant implies the same one."""
+    if not getattr(func, "check_format", True):
+        return []
+    whens = [ol.when_expr]
+    if ol.variants:
+        whens.extend(v.when_expr for v in ol.variants)
+    out = []
+    for p in buf_params:
+        b = p.name
+        if any(_mentions_elem_type(c, b) for c in func.checks) or any(_mentions_elem_type(w, b) for w in whens):
+            continue
+        if ol.variants:
+            per_variant = [
+                _pointee_checks(v.params, ol.map_exprs, b, "{0}/{1}".format(func.name, v.name), warnings)
+                for v in ol.variants
+            ]
+            implied = per_variant[0]
+            if any(s != implied for s in per_variant[1:]):
+                if warnings is not None:
+                    warnings.append(
+                        "{0}: variants of group '{1}' take different element types from buffer '{2}'; "
+                        "no derived element-type check (constrain {2}.format in when:)".format(
+                            func.name, ol.group_name or "?", b
+                        )
+                    )
+                continue
+        else:
+            implied = _pointee_checks(ol.params, ol.map_exprs, b, func.name, warnings)
+        for src in implied:
+            out.append((b, src))
+    return out
+
+
+def _func_level_format_checks(func, buf_params):
+    """Derived checks emitted as function-level checks: only for a single
+    flat unconditional overload (normal 'check failed' message).  With
+    several overloads they are ANDed into each overload's condition."""
+    ols = func.overloads
+    if len(ols) == 1 and ols[0].variants is None and ols[0].when_expr is None:
+        return [(b, parse_expr(src)) for b, src in _implied_format_checks(func, ols[0], buf_params)]
+    return []
+
+
+def _ol_format_terms(func, ol, buf_params):
+    if _func_level_format_checks(func, buf_params):
+        return []
+    return [src for _b, src in _implied_format_checks(func, ol, buf_params)]
+
+
+def _warn_unchecked_pointees(func, buf_params):
+    """Print (once per function) the pointer params that get no derived
+    element-type check because their pointee type is not in the table."""
+    warnings = []
+    for ol in func.overloads:
+        _implied_format_checks(func, ol, buf_params, warnings)
+    seen = set()
+    for w in warnings:
+        if w not in seen:
+            seen.add(w)
+            sys.stderr.write("c2py23: warning: " + w + "\n")
 
 
 class CBuilder:
@@ -435,12 +595,14 @@ class CBuilder:
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(p.name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(p.name))
 
-    def emit_contiguity_checks(self, buf_params):
+    def emit_contiguity_checks(self, buf_params, check_alignment=True):
         """Emit contiguity validation for each buffer.
 
         Also emits _c2py_slow_axis_buf_{name} -- the index of the slowest
         varying axis (0 for C-contiguous, ndim-1 for F-contiguous).
         Set to -1 if the buffer is not C or F contiguous (rejected anyway).
+        Unless check_alignment is false, each buffer's pointer must also be
+        aligned to its itemsize (c2py_check_alignment).
         """
         if not buf_params:
             return
@@ -456,6 +618,9 @@ class CBuilder:
                 "&_c2py_fast_axis_info_{0}) < 0)".format(name)
             )
             self.emit("        return NULL;")
+            if check_alignment:
+                self.emit("    if (c2py_check_alignment(info_{0}) < 0)".format(name))
+                self.emit("        return NULL;")
             self.emit("")
 
 
@@ -596,6 +761,8 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     b.emit("/* Wrapper for: {0} */".format(name))
     b.emit("/* " + "-" * 44 + " */")
     b.emit_blank()
+
+    _warn_unchecked_pointees(func, buf_params)
 
     has_groups = any(ol.variants for ol in func.overloads)
     if has_groups:
@@ -782,13 +949,15 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
         b.emit("    void *_c2py_thread_state = NULL;")
         b.emit_blank()
 
-    # Contiguity checks (inside impl so when: conditions can use them)
-    b.emit_contiguity_checks(buf_params)
+    # Contiguity (and alignment) checks (inside impl so when: conditions can use them)
+    b.emit_contiguity_checks(buf_params, getattr(func, "check_alignment", True))
 
     # Checks
     for check in func.checks:
         b.emit("    /* check: {0} */".format(_expr_to_source(check)))
         _emit_check(b, check, buf_params, scalar_params, name)
+    for buf, check in _func_level_format_checks(func, buf_params):
+        _emit_derived_check(b, buf, check, buf_params, scalar_params, name)
 
     # Overload dispatch
     _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_release)
@@ -824,13 +993,13 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
 
     has_groups = any(ol.variants for ol in overloads)
     if not has_groups:
-        _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise)
+        _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise, func)
         return
 
     group_index = 0
     for i, ol in enumerate(overloads):
         is_group = ol.variants is not None
-        cond = _ol_cond(ol, buf_params, scalar_params)
+        cond = _ol_cond(ol, buf_params, scalar_params, func)
         if i == 0:
             if cond is not None:
                 b.emit("    if (" + cond + ") {")
@@ -893,9 +1062,9 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
-    elif _has_implied_ndim(overloads, buf_params):
+    elif _has_implied_ndim(overloads, buf_params, func):
         b.emit("    } else {")
-        _emit_ndim_fallback(b, name, overloads, buf_params)
+        _emit_ndim_fallback(b, name, overloads, buf_params, func)
     b.emit("    }")
 
 
@@ -904,8 +1073,8 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
 # ---------------------------------------------------------------------------
 
 
-def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise):
-    if len(overloads) == 1 and _ol_cond(overloads[0], buf_params, scalar_params) is None:
+def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise, func=None):
+    if len(overloads) == 1 and _ol_cond(overloads[0], buf_params, scalar_params, func) is None:
         b.emit("    /* overload 0 (always) */")
         b.emit("    {")
         _emit_c_call(b, overloads[0], buf_params, scalar_params, timing, name, gil)
@@ -913,7 +1082,7 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
         return
 
     for i, ol in enumerate(overloads):
-        cond = _ol_cond(ol, buf_params, scalar_params)
+        cond = _ol_cond(ol, buf_params, scalar_params, func)
         if i == 0:
             if cond is not None:
                 b.emit("    if (" + cond + ") {")
@@ -932,9 +1101,9 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
-    elif _has_implied_ndim(overloads, buf_params):
+    elif _has_implied_ndim(overloads, buf_params, func):
         b.emit("    } else {")
-        _emit_ndim_fallback(b, name, overloads, buf_params)
+        _emit_ndim_fallback(b, name, overloads, buf_params, func)
     b.emit("    }")
 
 
@@ -1529,6 +1698,26 @@ def _emit_check(b, check, buf_params, scalar_params, name):
         else:
             prefix_fb = "{0}: check failed: ".format(name)
         b.emit('        PyErr_SetString(PyExc_ValueError, "' + prefix_fb + _escape_c_str(msg) + '");')
+    b.emit("        return NULL;")
+    b.emit("    }")
+
+
+def _emit_derived_check(b, buf, check, buf_params, scalar_params, name):
+    """Emit a check derived from a C pointee type (see _implied_format_checks).
+
+    Same shape as _emit_check, but the message always quotes the whole
+    derived condition and reports both the format and the itemsize."""
+    src = _expr_to_source(check)
+    b.emit("    /* derived check: {0} */".format(src))
+    b.emit("    if (!(" + _expr_to_c(check, buf_params, scalar_params, None) + ")) {")
+    b.emit("        char _c2py_err[256];")
+    b.emit('        const char *_fmt = info_{0}->format ? info_{0}->format : "(null)";'.format(buf))
+    b.emit(
+        "        snprintf(_c2py_err, sizeof(_c2py_err), "
+        "\"{0}: arg '{1}' check failed: {2} (got format='%s', itemsize=\" C2PY_LLD \")\", "
+        "_fmt, (long long)info_{1}->itemsize);".format(name, buf, _escape_c_str(src))
+    )
+    b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
     b.emit("        return NULL;")
     b.emit("    }")
 

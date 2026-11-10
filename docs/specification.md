@@ -200,6 +200,8 @@ Additional per-key details:
 | `"params"` | `dict[str, str]` | no | per-parameter descriptions |
 | `"gil_release"` | `bool` | no | release the GIL during C calls |
 | `"check_aliasing"` | `bool` | no | reject overlapping writable buffers (default: `True`) |
+| `"check_format"` | `bool` | no | derive element-type checks from C pointee types (default: `True`) |
+| `"check_alignment"` | `bool` | no | reject buffers not aligned to their itemsize (default: `True`) |
 | `"acquire"` | `list[str]` | no | acquisition backend order (default: `["ndarray", "buffer"]`) |
 | `"expand"` | `dict[str, list[str]]` | no | template expansion variables |
 | `"checks"` | `list[str]` | no | pre-condition expressions |
@@ -1421,6 +1423,42 @@ for any glibc-linked binary.
   (user C code may use them internally; allocated memory must be freed before return)
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
+- Element types are checked even when `checks:` says nothing about them.
+  For every C pointer parameter mapped to exactly `<buf>.ptr`, the generator
+  derives a check from the pointee type:
+
+  | Pointee type | Accepted buffer |
+  |---|---|
+  | `double` | format `'d'` |
+  | `float` | format `'f'` |
+  | `int8_t` | format `'b'` |
+  | `uint8_t` | format `'B'` |
+  | `char` | itemsize 1 (any of `b`, `B`, `c`, `?`) |
+  | `int16_t` / `uint16_t` | format `'h'` / `'H'` |
+  | `int32_t`, `int` | format `'i'` or `'l'`, itemsize 4 |
+  | `uint32_t` | format `'I'` or `'L'`, itemsize 4 |
+  | `int64_t` | format `'q'` or `'l'`, itemsize 8 |
+  | `uint64_t` | format `'Q'` or `'L'`, itemsize 8 |
+  | `void` | no check |
+
+  `'l'`/`'L'` are `sizeof(long)` wide, so they match the 32-bit rows on
+  LLP64 (Windows) and the 64-bit rows on LP64.  Other pointee types
+  (`intptr_t`, `ptrdiff_t`, `size_t`, `_Bool`) get no check and a warning on
+  stderr at generation time.  Nothing is derived for a buffer whose
+  `.format` or `.itemsize` the function's `checks:` or the overload's
+  `when:` already reads, so explicit checks keep their exact dispatch.
+  With a single unconditional overload the derived check is a normal
+  check (`ValueError: f: arg 'a' check failed: a.format == 'd' (got
+  format=..., itemsize=...)`); with several overloads it is ANDed into each
+  overload's condition, so overloads without `when:` dispatch on the
+  pointee type, and a call no overload accepts raises `ValueError` (unless
+  `default_raise:` is given).  A grouped overload gets the term only when
+  all its variants agree on the pointee type.  Set `check_format: false` on
+  a function to opt out (e.g. to reinterpret raw bytes as `double *`).
+- Non-empty buffers whose itemsize is a power of two from 2 to 16 must be
+  aligned to their itemsize (`ValueError: buffer not aligned to its element
+  size`), checked right after contiguity.  Set `check_alignment: false` on a
+  function whose C code tolerates unaligned pointers.
 - The GIL is held during all C function calls by default (see [GIL Release](#gil-release-and-thread-safety))
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`.
 

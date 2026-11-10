@@ -465,7 +465,15 @@ to write past the end and produce a segfault or silent memory corruption.
 
 ### Required checks for every function with buffer parameters:
 
-1. **Format:** `"buf.format == 'd'"` -- ensure element type matches C pointer type
+1. **Format:** derived automatically.  For every C pointer parameter mapped
+   to exactly `buf.ptr`, the generator adds the element-type check implied
+   by the pointee type (`double *` -> `'d'`, `int32_t *` -> `'i'`/`'l'` with
+   itemsize 4, `char *` -> itemsize 1, `void *` -> none; table in
+   `docs/specification.md`).  Explicit `"buf.format == 'd'"` checks are still
+   allowed and replace the derived one for that buffer (same dispatch as
+   before).  Pointee types outside the table get a generation-time warning
+   and no check -- write the check yourself.  `check_format: false` opts a
+   function out.
 2. **Dimensionality:** `"buf.ndim == 1"` or `"buf.ndim == 2"` -- reject unexpected shapes
 3. **Size relationships:** `"ibuf.n == obuf.n"` or `"obuf.n >= ibuf.n + 2"` --
    the single most important check for preventing segfaults
@@ -490,8 +498,11 @@ checks:
 - **Contiguity:** c2py23 enforces C/F-contiguity automatically, but check for specific
   expectations (e.g., C-order only)
 - **Non-empty:** `"buf.n > 0"` when zero-length would be invalid
-- **Alignment:** `"(uintptr_t)buf.ptr % alignment == 0"` for SIMD overloads in
-  `when:` conditions (the scalar fallback handles misaligned cases)
+- **Alignment:** every non-empty buffer must be aligned to its itemsize
+  (automatic, after the contiguity check; `check_alignment: false` opts a
+  function out).  For stricter SIMD alignment use
+  `"(uintptr_t)buf.ptr % alignment == 0"` in `when:` conditions (the scalar
+  fallback handles misaligned cases)
 - **Alias:** c2py23 checks writable buffer aliasing at runtime; add
   `default_raise:` for a clear error message.  Set `check_aliasing: false`
   only when the caller guarantees non-overlap and the check is hot.

@@ -1,0 +1,186 @@
+# No checks: on buffer formats -- the element type check for every
+# <buf>.ptr passed as a typed pointer is derived from the C signature.
+{
+    "module": "autoformatmod",
+    "source": ["autoformat.c"],
+    "headers": ["stdint.h"],
+    "functions": [
+        {
+            "py_sig": "sum_f64(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_f64(const double *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_f32(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_f32(const float *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_i8(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_i8(const int8_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_u8(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_u8(const uint8_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_char(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_char(const char *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_i16(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_i16(const int16_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_u16(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_u16(const uint16_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_i32(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_i32(const int32_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_int(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_int(const int *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_u32(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_u32(const uint32_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_i64(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_i64(const int64_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "sum_u64(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "sum_u64(const uint64_t *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        {
+            "py_sig": "filld(a: buffer, v: float) -> void",
+            "c_overloads": [
+                {"sig": "filld(double *a, intptr_t n, double v)", "map": {"a": "a.ptr", "n": "a.n", "v": "v"}},
+            ],
+        },
+        # check_format: False -- reinterpret any buffer as doubles (old behaviour)
+        {
+            "py_sig": "sum_raw(a: buffer) -> void",
+            "check_format": False,
+            "c_overloads": [
+                {
+                    "sig": "sum_raw(const double *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.len / 8"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        # check_alignment: False -- sum_raw reads through memcpy
+        {
+            "py_sig": "sum_unaligned(a: buffer) -> void",
+            "check_alignment": False,
+            "c_overloads": [
+                {
+                    "sig": "sum_raw(const double *a, intptr_t n, double *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "double"},
+                },
+            ],
+        },
+        # Two overloads, no when: -- the derived terms pick the overload
+        {
+            "py_sig": "scale(a: buffer, v: float) -> void",
+            "c_overloads": [
+                {
+                    "sig": "scale_f32(float *a, intptr_t n, double v, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n", "v": "v"},
+                    "outputs": {"out": "int64_t"},
+                },
+                {
+                    "sig": "scale_f64(double *a, intptr_t n, double v, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n", "v": "v"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        # void * gets no derived check
+        {
+            "py_sig": "count_bytes(a: buffer) -> void",
+            "c_overloads": [
+                {
+                    "sig": "count_bytes(const void *a, intptr_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.len"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+    ],
+}

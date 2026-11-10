@@ -531,6 +531,26 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
     return 0;
 }
 
+/* Reject a non-empty buffer whose data pointer is not aligned to its
+ * element size (e.g. np.frombuffer(..., dtype="f8", offset=1)), so a
+ * double* handed to C is always naturally aligned.  Only itemsizes that
+ * are powers of two from 2 to 16 are checked; 1-byte and odd-sized
+ * elements (structs, strings) have no natural alignment to enforce.
+ * Returns 0, or -1 with ValueError set. */
+static inline int
+c2py_check_alignment(const c2py_ptr_info *info)
+{
+    Py_ssize_t sz = info->itemsize;
+
+    if (info->len > 0 && sz >= 2 && sz <= 16 && (sz & (sz - 1)) == 0
+        && ((uintptr_t)info->ptr & (uintptr_t)(sz - 1)) != 0) {
+        PyErr_SetString(PyExc_ValueError,
+            "buffer not aligned to its element size");
+        return -1;
+    }
+    return 0;
+}
+
 /* Backend tags for c2py_buf_pin.kind -- tells c2py_unpin_buffer
  * which release path to use.  Zero-init = C2PY_PIN_NONE = no-op. */
 #define C2PY_PIN_NONE     0

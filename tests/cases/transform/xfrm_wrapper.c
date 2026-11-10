@@ -177,11 +177,15 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
     /* contiguity check: points */
     if (c2py_check_contiguity(info_points, &_c2py_slow_axis_info_points, &_c2py_fast_axis_info_points) < 0)
         return NULL;
+    if (c2py_check_alignment(info_points) < 0)
+        return NULL;
 
     (void)_c2py_slow_axis_info_out;
     (void)_c2py_fast_axis_info_out;
     /* contiguity check: out */
     if (c2py_check_contiguity(info_out, &_c2py_slow_axis_info_out, &_c2py_fast_axis_info_out) < 0)
+        return NULL;
+    if (c2py_check_alignment(info_out) < 0)
         return NULL;
 
     /* check: points.format == 'd' */

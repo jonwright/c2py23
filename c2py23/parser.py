@@ -262,6 +262,8 @@ class FuncDef(
         params=None,
         acquire=None,
         check_aliasing=True,
+        check_format=True,
+        check_alignment=True,
     ):
         self = super(FuncDef, cls).__new__(
             cls,
@@ -277,6 +279,8 @@ class FuncDef(
         self.params = params or {}
         self.acquire = acquire
         self.check_aliasing = check_aliasing
+        self.check_format = check_format
+        self.check_alignment = check_alignment
         return self
 
 
@@ -1265,6 +1269,8 @@ def _parse_func(raw, path):
         doc = _check_ascii(doc, "doc", path)
     gil_release = bool(raw.get("gil_release", False))
     check_aliasing = bool(raw.get("check_aliasing", True))
+    check_format = bool(raw.get("check_format", True))
+    check_alignment = bool(raw.get("check_alignment", True))
 
     # Acquisition backend order. Maps to C2PY_PIN_* constants.
     # Default: [ndarray, buffer]
@@ -1335,6 +1341,8 @@ def _parse_func(raw, path):
         params=params,
         acquire=acquire,
         check_aliasing=check_aliasing,
+        check_format=check_format,
+        check_alignment=check_alignment,
     )
 
 
