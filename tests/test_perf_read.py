@@ -11,6 +11,7 @@ from __future__ import print_function
 
 import array
 import os
+import subprocess
 import sys
 
 import pytest
@@ -99,17 +100,6 @@ def test_get_mod_none_fallback_searches_sys_modules():
     assert _get_mod(f) is None
 
 
-def test_get_perf_ptr_zero_returns_empty():
-    class M(object):
-        _c2py_perf_ptr_wsum = 0
-
-    class F(object):
-        __self__ = M()
-        __name__ = "wsum"
-
-    assert read_perf(F()) == {"call_count": 0}
-
-
 def _import_timedmod():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cases", "timing"))
     import timedmod
@@ -145,3 +135,47 @@ def test_real_reset_and_enable():
     assert read_enabled(timedmod.wsum) == 0
     set_enabled(timedmod.wsum, 1)
     assert read_enabled(timedmod.wsum) == 1
+
+
+_BAD_HANDLE_SCRIPT = """
+import sys
+sys.path.insert(0, %r)
+import timedmod
+names = [n for n in dir(timedmod)
+         if n.startswith("_c2py_perf_ptr_") or n.startswith("_c2py_ol_ptr_")]
+n_handles = max(getattr(timedmod, n) for n in names) + 1
+buf = bytearray(11 * 8)
+for bad in (-1, n_handles, 12345, 2 ** 62):
+    for call in (lambda h: timedmod._c2py_perf_reset(h),
+                 lambda h: timedmod._c2py_perf_read(h, buf),
+                 lambda h: timedmod._c2py_perf_meta(h)):
+        try:
+            call(bad)
+        except ValueError as e:
+            assert "invalid perf handle" in str(e), str(e)
+        else:
+            raise SystemExit("no ValueError for handle %%r" %% (bad,))
+print("ok")
+"""
+
+
+def test_invalid_perf_handles_raise_valueerror():
+    here = os.path.dirname(os.path.abspath(__file__))
+    script = _BAD_HANDLE_SCRIPT % os.path.join(here, "cases", "timing")
+    p = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    assert p.returncode == 0, (p.returncode, out, err)
+    assert b"ok" in out
+
+
+def test_perf_handles_report_call_counts():
+    timedmod = _import_timedmod()
+    import ctypes
+
+    data = (ctypes.c_double * 3)(1.0, 2.0, 3.0)
+    reset_perf(timedmod.wsum)
+    reset_perf(timedmod.wsum, variant="weighted_sum")
+    for _ in range(5):
+        timedmod.wsum(data, 2.0)
+    assert read_perf(timedmod.wsum)["call_count"] == 5
+    assert read_perf(timedmod.wsum, variant="weighted_sum")["call_count"] == 5

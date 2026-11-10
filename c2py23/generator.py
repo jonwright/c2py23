@@ -2213,25 +2213,29 @@ def _emit_constants(b, mod):
     if mod.timing:
         b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
         b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")
+        handles = _perf_handles(mod)
+        n_static = len(handles)
+        active_funcs = _perf_active_funcs(mod)
         for func in mod.functions:
             b.emit('        c2py_set_module_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
-            b.emit("            PyLong_FromVoidPtr(&_perf_{0}));".format(func.name))
+            b.emit("            PyLong_FromLong({0}L));".format(handles["_perf_" + func.name]))
             for ol in func.overloads:
                 if ol.variants:
+                    ai = active_funcs.index(func.name)
                     b.emit('        c2py_set_module_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
-                    b.emit("            PyLong_FromVoidPtr((void*)&_active_perf_{0}));".format(func.name))
+                    b.emit("            PyLong_FromLong({0}L));".format(n_static + ai))
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split("(")[0].strip().split()[-1]
                         perf_name = "_perf_{0}__{1}".format(func.name, c_name)
                         b.emit(
                             '        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
                         )
-                        b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
+                        b.emit("            PyLong_FromLong({0}L));".format(handles[perf_name]))
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split("(")[0].strip().split()[-1]
                     perf_name = "_perf_{0}__{1}".format(func.name, c_name)
                     b.emit('        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
-                    b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
+                    b.emit("            PyLong_FromLong({0}L));".format(handles[perf_name]))
     if has_gil:
         b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_enabled",')
         b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));")
@@ -2241,16 +2245,80 @@ def _emit_constants(b, mod):
                 b.emit("            PyLong_FromVoidPtr(&_gil_release_{0}));".format(func.name))
 
 
+def _perf_counter_names(mod):
+    """Ordered, de-duplicated C names of every static c2py_perf_t in a
+    timing-enabled module (wrapper counter first, then its overloads)."""
+    names = []
+    for func in mod.functions:
+        names.append("_perf_{0}".format(func.name))
+        for ol in func.overloads:
+            for item in ol.variants if ol.variants else [ol]:
+                c_name = item.c_name if item.c_name is not None else item.sig_str.split("(")[0].strip().split()[-1]
+                names.append("_perf_{0}__{1}".format(func.name, c_name))
+    seen = set()
+    out = []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _perf_handles(mod):
+    """Map static perf counter C name -> index in _c2py_perf_table."""
+    return dict((n, i) for i, n in enumerate(_perf_counter_names(mod)))
+
+
+def _perf_active_funcs(mod):
+    """Names of functions that have variant groups (and so an
+    _active_perf_<f> pointer).  Their handles follow the static ones."""
+    return [f.name for f in mod.functions if any(ol.variants for ol in f.overloads)]
+
+
 # ---- Module support ----
-def _emit_perf_accessors(b):
+def _emit_perf_accessors(b, mod):
     """Emit Python-callable C functions: _c2py_perf_read, _c2py_perf_meta,
-    _c2py_perf_reset, _c2py_perf_get_enabled, _c2py_perf_set_enabled."""
+    _c2py_perf_reset, _c2py_perf_get_enabled, _c2py_perf_set_enabled.
+
+    Counters are addressed by a small integer handle (an index into a
+    static table), never by a raw address."""
     b.emit("/* ---- Perf accessor functions (no ctypes needed) ---- */")
+    b.emit("")
+    names = _perf_counter_names(mod)
+    active = _perf_active_funcs(mod)
+    b.emit("/* Handle table: handle i < N is a static counter. */")
+    b.emit("static c2py_perf_t * const _c2py_perf_table[] = {")
+    for n in names:
+        b.emit("    &{0},".format(n))
+    b.emit("    NULL")
+    b.emit("};")
+    b.emit("#define C2PY_PERF_NSTATIC {0}".format(len(names)))
+    if active:
+        b.emit("/* Handles N.. are the currently-selected variant of a function. */")
+        b.emit("static c2py_perf_t ** const _c2py_perf_active_table[] = {")
+        for f in active:
+            b.emit("    &_active_perf_{0},".format(f))
+        b.emit("    NULL")
+        b.emit("};")
+    b.emit("#define C2PY_PERF_NACTIVE {0}".format(len(active)))
+    b.emit("")
+    b.emit("/* Range-checked handle lookup; NULL when invalid. */")
+    b.emit("static c2py_perf_t*")
+    b.emit("_c2py_perf_lookup(unsigned long long h) {")
+    b.emit("    if (h < (unsigned long long)C2PY_PERF_NSTATIC)")
+    b.emit("        return _c2py_perf_table[h];")
+    if active:
+        b.emit("    h -= (unsigned long long)C2PY_PERF_NSTATIC;")
+        b.emit("    if (h < (unsigned long long)C2PY_PERF_NACTIVE)")
+        b.emit("        return *_c2py_perf_active_table[h];")
+    b.emit("    return NULL;")
+    b.emit("}")
     b.emit("")
     b.emit("/* Fill a uint64 array with perf fields from the given pointer. */")
     b.emit("static PyObject*")
     b.emit("_c2py_perf_read(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
+    b.emit("    c2py_perf_t *perf;")
     b.emit("    PyObject *buf_obj;")
     b.emit("    c2py_buf_pin pin;")
     b.emit("    Py_buffer *buf = &pin.buf;")
@@ -2258,6 +2326,11 @@ def _emit_perf_accessors(b):
     b.emit("    memset(&pin.buf, 0, C2PY.pybuffer_size);")
     b.emit('    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))')
     b.emit("        return NULL;")
+    b.emit("    perf = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (perf == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
     b.emit("    if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)")
     b.emit("        return NULL;")
     b.emit("    if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {")
@@ -2266,8 +2339,7 @@ def _emit_perf_accessors(b):
     b.emit('            "buffer too small for perf data (need 11 uint64)");')
     b.emit("        return NULL;")
     b.emit("    }")
-    b.emit("    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,")
-    b.emit("                           (uint64_t*)buf->buf);")
+    b.emit("    c2py_perf_extract_u64(perf, (uint64_t*)buf->buf);")
     b.emit("    PyBuffer_Release(buf);")
     b.emit("    Py_RETURN_NONE;")
     b.emit("}")
@@ -2281,7 +2353,11 @@ def _emit_perf_accessors(b):
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
     b.emit("        return NULL;")
-    b.emit("    p = (c2py_perf_t*)(uintptr_t)ptr_val;")
+    b.emit("    p = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (p == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
     b.emit("    tuple = PyTuple_New(3);")
     b.emit("    if (!tuple) return NULL;")
     b.emit("    /* Extract to locals: nested p->variant inside PyLong_FromLong")
@@ -2304,10 +2380,16 @@ def _emit_perf_accessors(b):
     b.emit("static PyObject*")
     b.emit("_c2py_perf_reset(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
+    b.emit("    c2py_perf_t *perf;")
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
     b.emit("        return NULL;")
-    b.emit("    c2py_perf_reset((c2py_perf_t*)(uintptr_t)ptr_val);")
+    b.emit("    perf = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (perf == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
+    b.emit("    c2py_perf_reset(perf);")
     b.emit("    Py_RETURN_NONE;")
     b.emit("}")
     b.emit("")
@@ -2417,7 +2499,7 @@ def _emit_timing_decls(b, mod):
     b.emit("}")
     b.emit("")
     # Perf accessor functions
-    _emit_perf_accessors(b)
+    _emit_perf_accessors(b, mod)
 
 
 # ---- Docstring generation ----

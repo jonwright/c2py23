@@ -2,8 +2,8 @@
 
 Reads c2py_perf_t data via module-level C accessor functions -- no ctypes
 required.  Modules built with `timing: true` expose `_c2py_perf_read`,
-`_c2py_perf_meta`, `_c2py_perf_reset` and pointer attributes on the module
-so that `read_perf()` can locate the right perf counter from the wrapper
+`_c2py_perf_meta`, `_c2py_perf_reset` and handle attributes on the module
+(small integers indexing a per-module table; opaque to callers) so that `read_perf()` can locate the right perf counter from the wrapper
 function object alone.
 
 Usage::
@@ -101,7 +101,7 @@ def _to_ns(ticks, freq_hz):
 
 
 def _get_perf_ptr(func, variant=None):
-    """Resolve the raw perf-struct pointer for *func*.
+    """Resolve the opaque perf-counter handle for *func*.
 
     Parameters
     ----------
@@ -115,7 +115,8 @@ def _get_perf_ptr(func, variant=None):
     Returns
     -------
     int
-        Raw pointer value (Python int).
+        Opaque handle (a small table index; 0 is valid).  Pass it only to
+        the module's ``_c2py_perf_*`` accessors, which reject bad values.
     """
     name = func.__name__
     mod = _get_mod(func)
@@ -140,7 +141,7 @@ def read_perf(func, freq_hz=None, variant=None):
     ----------
     func : callable
         Wrapper function on a timing-enabled module (e.g. ``mod.wsum``).
-        The module is found via ``func.__self__`` and the counter pointer
+        The module is found via ``func.__self__`` and the counter handle
         is looked up by ``func.__name__`` on the module.
     freq_hz : int or None, optional
         Tick source frequency in Hz.  When None or 0, the raw tick values
@@ -171,9 +172,6 @@ def read_perf(func, freq_hz=None, variant=None):
         wrap_min_cycles, wrap_max_cycles, wrap_mean_cycles.
     """
     ptr = _get_perf_ptr(func, variant)
-    if ptr == 0:
-        return {"call_count": 0}
-
     mod = _get_mod(func)
 
     buf = _make_perf_buf()
@@ -238,8 +236,6 @@ def reset_perf(func, variant=None):
         Selects which counter to reset.  See :func:`read_perf`.
     """
     ptr = _get_perf_ptr(func, variant)
-    if ptr == 0:
-        return
     mod = _get_mod(func)
     mod._c2py_perf_reset(ptr)
 

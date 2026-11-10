@@ -72,10 +72,29 @@ __c2py_set_tick_source(PyObject *self, PyObject *args) {
 
 /* ---- Perf accessor functions (no ctypes needed) ---- */
 
+/* Handle table: handle i < N is a static counter. */
+static c2py_perf_t * const _c2py_perf_table[] = {
+    &_perf_transform,
+    &_perf_transform__transform_aos,
+    &_perf_transform__transform_soa,
+    NULL
+};
+#define C2PY_PERF_NSTATIC 3
+#define C2PY_PERF_NACTIVE 0
+
+/* Range-checked handle lookup; NULL when invalid. */
+static c2py_perf_t*
+_c2py_perf_lookup(unsigned long long h) {
+    if (h < (unsigned long long)C2PY_PERF_NSTATIC)
+        return _c2py_perf_table[h];
+    return NULL;
+}
+
 /* Fill a uint64 array with perf fields from the given pointer. */
 static PyObject*
 _c2py_perf_read(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
+    c2py_perf_t *perf;
     PyObject *buf_obj;
     c2py_buf_pin pin;
     Py_buffer *buf = &pin.buf;
@@ -83,6 +102,11 @@ _c2py_perf_read(PyObject *self, PyObject *args) {
     memset(&pin.buf, 0, C2PY.pybuffer_size);
     if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))
         return NULL;
+    perf = _c2py_perf_lookup(ptr_val);
+    if (perf == NULL) {
+        PyErr_SetString(PyExc_ValueError, "invalid perf handle");
+        return NULL;
+    }
     if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)
         return NULL;
     if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {
@@ -91,8 +115,7 @@ _c2py_perf_read(PyObject *self, PyObject *args) {
             "buffer too small for perf data (need 11 uint64)");
         return NULL;
     }
-    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,
-                           (uint64_t*)buf->buf);
+    c2py_perf_extract_u64(perf, (uint64_t*)buf->buf);
     PyBuffer_Release(buf);
     Py_RETURN_NONE;
 }
@@ -106,7 +129,11 @@ _c2py_perf_meta(PyObject *self, PyObject *args) {
     (void)self;
     if (!PyArg_ParseTuple(args, "K", &ptr_val))
         return NULL;
-    p = (c2py_perf_t*)(uintptr_t)ptr_val;
+    p = _c2py_perf_lookup(ptr_val);
+    if (p == NULL) {
+        PyErr_SetString(PyExc_ValueError, "invalid perf handle");
+        return NULL;
+    }
     tuple = PyTuple_New(3);
     if (!tuple) return NULL;
     /* Extract to locals: nested p->variant inside PyLong_FromLong
@@ -129,10 +156,16 @@ _c2py_perf_meta(PyObject *self, PyObject *args) {
 static PyObject*
 _c2py_perf_reset(PyObject *self, PyObject *args) {
     unsigned long long ptr_val;
+    c2py_perf_t *perf;
     (void)self;
     if (!PyArg_ParseTuple(args, "K", &ptr_val))
         return NULL;
-    c2py_perf_reset((c2py_perf_t*)(uintptr_t)ptr_val);
+    perf = _c2py_perf_lookup(ptr_val);
+    if (perf == NULL) {
+        PyErr_SetString(PyExc_ValueError, "invalid perf handle");
+        return NULL;
+    }
+    c2py_perf_reset(perf);
     Py_RETURN_NONE;
 }
 
@@ -428,11 +461,11 @@ C2PY_EXPORT PyObject* PyInit_xfrm(void) {
         c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
         c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
-            PyLong_FromVoidPtr(&_perf_transform));
+            PyLong_FromLong(0L));
         c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
-            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+            PyLong_FromLong(1L));
         c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
-            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
+            PyLong_FromLong(2L));
         if (C2PY.Unstable_Module_SetGIL != NULL) {
             C2PY.Unstable_Module_SetGIL(module, (void*)1);  /* Py_MOD_GIL_NOT_USED */
         }
@@ -451,10 +484,10 @@ C2PY_EXPORT void initxfrm(void) {
         c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",
             PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));
         c2py_set_module_attr(module, "_c2py_perf_ptr_transform",
-            PyLong_FromVoidPtr(&_perf_transform));
+            PyLong_FromLong(0L));
         c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_aos",
-            PyLong_FromVoidPtr(&_perf_transform__transform_aos));
+            PyLong_FromLong(1L));
         c2py_set_module_attr(module, "_c2py_ol_ptr_transform__transform_soa",
-            PyLong_FromVoidPtr(&_perf_transform__transform_soa));
+            PyLong_FromLong(2L));
     }
 }
