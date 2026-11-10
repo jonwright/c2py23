@@ -6,7 +6,7 @@
 
 /* ---- C2PY global ---- */
 
-c2py_api_t C2PY = {0};
+C2PY_HIDDEN c2py_api_t C2PY = {0};
 
 /* ---- Python 2.7 module init helper ---- */
 
@@ -26,13 +26,13 @@ _c2py_pythonh_init_module(const char *name, PyMethodDef *methods)
 /* ---- c2py_runtime_init ---- */
 
 /* The Python.h backend cannot fail to initialise; kept for API parity. */
-void c2py_runtime_init_failed(const char *modname)
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname)
 {
     PyErr_Format(PyExc_ImportError, "cannot import %s: c2py_runtime "
                  "initialisation failed", modname);
 }
 
-int c2py_runtime_init(void)
+C2PY_HIDDEN int c2py_runtime_init(void)
 {
     /* CPU feature probing (shared with dlsym backend) */
     _c2py_probe_cpu_features();

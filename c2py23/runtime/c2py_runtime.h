@@ -11,6 +11,19 @@
 #ifndef C2PY_RUNTIME_H
 #define C2PY_RUNTIME_H
 
+/* Runtime globals and functions must never be exported from the module:
+ * under RTLD_GLOBAL a second c2py23 module would bind to the first one's
+ * tables.  Independent of the user's compiler flags.  Defined identically
+ * (and guarded) in every runtime header so any include order works. */
+#ifndef C2PY_HIDDEN
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32)
+#define C2PY_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define C2PY_HIDDEN
+#endif
+#endif
+
+
 /* ---- Pick one backend ---- */
 
 #ifdef C2PY_USE_PYTHON_H
@@ -130,7 +143,7 @@ typedef struct {
 } c2py_api_t;
 
 /* The global API table */
-extern c2py_api_t C2PY;
+extern C2PY_HIDDEN c2py_api_t C2PY;
 
 /* ------------------------------------------------------------------ */
 /* Nimpy-only convenience macros  (Python.h provides these in pythonh mode) */
@@ -638,7 +651,7 @@ typedef struct {
     int probed;             /* 1 = layout known, 0 = probing deferred */
 } c2py_ndarray_layout_t;
 
-extern c2py_ndarray_layout_t C2PY_NDARRAY;
+extern C2PY_HIDDEN c2py_ndarray_layout_t C2PY_NDARRAY;
 
 /* NPY_ARRAY_WRITEABLE = 0x0400 (stable since numpy 1.0) */
 #define C2PY_NPY_WRITEABLE  0x0400
@@ -1369,13 +1382,13 @@ typedef struct {
  * 0 = wall clock (default): nanosecond ticks, freq = 1e9
  * 1 = CPU cycle counter: raw cycles, converted to ns via c2py_ticks_to_ns()
  *     Requires c2py_cycle_counter_frequency_hz > 0. */
-extern int _c2py_use_cycle_counter;
+extern C2PY_HIDDEN int _c2py_use_cycle_counter;
 
 /* Detected CPU cycle counter frequency in Hz, probed once at init.
  * 0 if the platform does not support cycle counters or detection failed.
  * When the cycle counter is selected (use_cycle_counter=1), the active
  * frequency is copied to c2py_tick_frequency_hz. */
-extern uint64_t c2py_cycle_counter_frequency_hz;
+extern C2PY_HIDDEN uint64_t c2py_cycle_counter_frequency_hz;
 
 /* Helper: raw cycle counter read (used internally by c2py_ticks when
  * _c2py_use_cycle_counter is set). */
@@ -1462,7 +1475,7 @@ static inline uint64_t c2py_ticks(void) {
  * Default (wall clock): 1,000,000,000 (ns ticks).
  * Cycle counter mode: detected cycle counter frequency, or 0 if
  * the platform cannot be probed. */
-extern uint64_t c2py_tick_frequency_hz;
+extern C2PY_HIDDEN uint64_t c2py_tick_frequency_hz;
 
 /* Returns the active tick source frequency in Hz.  Generated wrapper
  * code uses this to convert tick deltas to nanoseconds. */
@@ -1616,9 +1629,9 @@ static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
 /* Init function                                                      */
 /* ------------------------------------------------------------------ */
 
-int c2py_runtime_init(void);
+C2PY_HIDDEN int c2py_runtime_init(void);
 /* Raise ImportError(reason) after c2py_runtime_init() failed. */
-void c2py_runtime_init_failed(const char *modname);
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname);
 
 #ifdef __cplusplus
 }

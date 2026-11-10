@@ -149,7 +149,7 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 #pragma warning(push)
 #pragma warning(disable:4152)
 #endif
-void c2py_runtime_init_failed(const char *modname)
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname)
 {
     typedef void (*set_str_fn)(void*, const char*);
     char msg[640];

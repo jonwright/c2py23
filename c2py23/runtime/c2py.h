@@ -15,6 +15,30 @@
 #ifndef C2PY_H
 #define C2PY_H
 
+/* c2py_runtime.h - CPython C-extension wrapper runtime
+ *
+ * Two backends:
+ *   Default (nimpy):  dlopen(NULL) + dlsym(), one .so per Python 2.7-3.15
+ *   --pythonh mode:   #include <Python.h> direct, one .so per version
+ *
+ * Include this header in generated wrapper .c files.  Never include
+ * the backend headers (c2py_dlsym.h / c2py_pythonh.h) directly.
+ */
+
+
+/* Runtime globals and functions must never be exported from the module:
+ * under RTLD_GLOBAL a second c2py23 module would bind to the first one's
+ * tables.  Independent of the user's compiler flags.  Defined identically
+ * (and guarded) in every runtime header so any include order works. */
+#ifndef C2PY_HIDDEN
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32)
+#define C2PY_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define C2PY_HIDDEN
+#endif
+#endif
+
+
 /* ---- Pick one backend ---- */
 
 #ifdef C2PY_USE_PYTHON_H
@@ -104,9 +128,9 @@ typedef struct {
 #define c2py_set_module_attr(mod, name, val) \
     PyObject_SetAttrString((PyObject*)(mod), (name), (PyObject*)(val))
 
-int c2py_runtime_init(void);
+C2PY_HIDDEN int c2py_runtime_init(void);
 /* Raise ImportError(reason) after c2py_runtime_init() failed. */
-void c2py_runtime_init_failed(const char *modname);
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname);
 
 #else
 /* c2py_dlsym.h - nimpy-style dlsym backend
@@ -514,7 +538,7 @@ typedef struct {
 } c2py_api_t;
 
 /* The global API table */
-extern c2py_api_t C2PY;
+extern C2PY_HIDDEN c2py_api_t C2PY;
 
 /* ------------------------------------------------------------------ */
 /* Nimpy-only convenience macros  (Python.h provides these in pythonh mode) */
@@ -1022,7 +1046,7 @@ typedef struct {
     int probed;             /* 1 = layout known, 0 = probing deferred */
 } c2py_ndarray_layout_t;
 
-extern c2py_ndarray_layout_t C2PY_NDARRAY;
+extern C2PY_HIDDEN c2py_ndarray_layout_t C2PY_NDARRAY;
 
 /* NPY_ARRAY_WRITEABLE = 0x0400 (stable since numpy 1.0) */
 #define C2PY_NPY_WRITEABLE  0x0400
@@ -1753,13 +1777,13 @@ typedef struct {
  * 0 = wall clock (default): nanosecond ticks, freq = 1e9
  * 1 = CPU cycle counter: raw cycles, converted to ns via c2py_ticks_to_ns()
  *     Requires c2py_cycle_counter_frequency_hz > 0. */
-extern int _c2py_use_cycle_counter;
+extern C2PY_HIDDEN int _c2py_use_cycle_counter;
 
 /* Detected CPU cycle counter frequency in Hz, probed once at init.
  * 0 if the platform does not support cycle counters or detection failed.
  * When the cycle counter is selected (use_cycle_counter=1), the active
  * frequency is copied to c2py_tick_frequency_hz. */
-extern uint64_t c2py_cycle_counter_frequency_hz;
+extern C2PY_HIDDEN uint64_t c2py_cycle_counter_frequency_hz;
 
 /* Helper: raw cycle counter read (used internally by c2py_ticks when
  * _c2py_use_cycle_counter is set). */
@@ -1846,7 +1870,7 @@ static inline uint64_t c2py_ticks(void) {
  * Default (wall clock): 1,000,000,000 (ns ticks).
  * Cycle counter mode: detected cycle counter frequency, or 0 if
  * the platform cannot be probed. */
-extern uint64_t c2py_tick_frequency_hz;
+extern C2PY_HIDDEN uint64_t c2py_tick_frequency_hz;
 
 /* Returns the active tick source frequency in Hz.  Generated wrapper
  * code uses this to convert tick deltas to nanoseconds. */
@@ -2000,9 +2024,9 @@ static inline int c2py_cpuid_bit(int leaf, int subleaf, int reg, int bit) {
 /* Init function                                                      */
 /* ------------------------------------------------------------------ */
 
-int c2py_runtime_init(void);
+C2PY_HIDDEN int c2py_runtime_init(void);
 /* Raise ImportError(reason) after c2py_runtime_init() failed. */
-void c2py_runtime_init_failed(const char *modname);
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname);
 
 #ifdef __cplusplus
 }
@@ -2069,77 +2093,77 @@ void c2py_runtime_init_failed(const char *modname);
 /* CPU feature flags  --  always defined so .c2py files can reference
  * any arch features without link errors.  Non-matching arches stay 0. */
 
-int c2py_amd64_mmx = 0;
-int c2py_amd64_sse = 0;
-int c2py_amd64_sse2 = 0;
-int c2py_amd64_sse3 = 0;
-int c2py_amd64_ssse3 = 0;
-int c2py_amd64_sse4_1 = 0;
-int c2py_amd64_sse4_2 = 0;
-int c2py_amd64_avx = 0;
-int c2py_amd64_avx2 = 0;
-int c2py_amd64_fma = 0;
-int c2py_amd64_avx512f = 0;
-int c2py_amd64_avx512bw = 0;
-int c2py_amd64_avx512dq = 0;
-int c2py_amd64_avx512vl = 0;
-int c2py_amd64_bmi1 = 0;
-int c2py_amd64_bmi2 = 0;
-int c2py_amd64_popcnt = 0;
-int c2py_amd64_lzcnt = 0;
-int c2py_amd64_vendor_intel = 0;
-int c2py_amd64_vendor_amd = 0;
-int c2py_amd64_f16c = 0;
-int c2py_amd64_movbe = 0;
-int c2py_amd64_adx = 0;
-int c2py_amd64_aes = 0;
-int c2py_amd64_pclmulqdq = 0;
-int c2py_amd64_sha_ni = 0;
-int c2py_amd64_gfni = 0;
-int c2py_amd64_vaes = 0;
-int c2py_amd64_vpclmulqdq = 0;
-int c2py_amd64_avx_vnni = 0;
-int c2py_amd64_avx512cd = 0;
-int c2py_amd64_avx512ifma = 0;
-int c2py_amd64_avx512vbmi = 0;
-int c2py_amd64_avx512vbmi2 = 0;
-int c2py_amd64_avx512vnni = 0;
-int c2py_amd64_avx512bitalg = 0;
-int c2py_amd64_avx512vpopcntdq = 0;
+C2PY_HIDDEN int c2py_amd64_mmx = 0;
+C2PY_HIDDEN int c2py_amd64_sse = 0;
+C2PY_HIDDEN int c2py_amd64_sse2 = 0;
+C2PY_HIDDEN int c2py_amd64_sse3 = 0;
+C2PY_HIDDEN int c2py_amd64_ssse3 = 0;
+C2PY_HIDDEN int c2py_amd64_sse4_1 = 0;
+C2PY_HIDDEN int c2py_amd64_sse4_2 = 0;
+C2PY_HIDDEN int c2py_amd64_avx = 0;
+C2PY_HIDDEN int c2py_amd64_avx2 = 0;
+C2PY_HIDDEN int c2py_amd64_fma = 0;
+C2PY_HIDDEN int c2py_amd64_avx512f = 0;
+C2PY_HIDDEN int c2py_amd64_avx512bw = 0;
+C2PY_HIDDEN int c2py_amd64_avx512dq = 0;
+C2PY_HIDDEN int c2py_amd64_avx512vl = 0;
+C2PY_HIDDEN int c2py_amd64_bmi1 = 0;
+C2PY_HIDDEN int c2py_amd64_bmi2 = 0;
+C2PY_HIDDEN int c2py_amd64_popcnt = 0;
+C2PY_HIDDEN int c2py_amd64_lzcnt = 0;
+C2PY_HIDDEN int c2py_amd64_vendor_intel = 0;
+C2PY_HIDDEN int c2py_amd64_vendor_amd = 0;
+C2PY_HIDDEN int c2py_amd64_f16c = 0;
+C2PY_HIDDEN int c2py_amd64_movbe = 0;
+C2PY_HIDDEN int c2py_amd64_adx = 0;
+C2PY_HIDDEN int c2py_amd64_aes = 0;
+C2PY_HIDDEN int c2py_amd64_pclmulqdq = 0;
+C2PY_HIDDEN int c2py_amd64_sha_ni = 0;
+C2PY_HIDDEN int c2py_amd64_gfni = 0;
+C2PY_HIDDEN int c2py_amd64_vaes = 0;
+C2PY_HIDDEN int c2py_amd64_vpclmulqdq = 0;
+C2PY_HIDDEN int c2py_amd64_avx_vnni = 0;
+C2PY_HIDDEN int c2py_amd64_avx512cd = 0;
+C2PY_HIDDEN int c2py_amd64_avx512ifma = 0;
+C2PY_HIDDEN int c2py_amd64_avx512vbmi = 0;
+C2PY_HIDDEN int c2py_amd64_avx512vbmi2 = 0;
+C2PY_HIDDEN int c2py_amd64_avx512vnni = 0;
+C2PY_HIDDEN int c2py_amd64_avx512bitalg = 0;
+C2PY_HIDDEN int c2py_amd64_avx512vpopcntdq = 0;
 
-int c2py_arm64_fp = 0;
-int c2py_arm64_asimd = 0;
-int c2py_arm64_aes = 0;
-int c2py_arm64_pmull = 0;
-int c2py_arm64_sha1 = 0;
-int c2py_arm64_sha2 = 0;
-int c2py_arm64_crc32 = 0;
-int c2py_arm64_sve = 0;
-int c2py_arm64_sve2 = 0;
-int c2py_arm64_atomics = 0;
-int c2py_arm64_fphp = 0;
-int c2py_arm64_asimdhp = 0;
-int c2py_arm64_asimddp = 0;
-int c2py_arm64_i8mm = 0;
-int c2py_arm64_bf16 = 0;
+C2PY_HIDDEN int c2py_arm64_fp = 0;
+C2PY_HIDDEN int c2py_arm64_asimd = 0;
+C2PY_HIDDEN int c2py_arm64_aes = 0;
+C2PY_HIDDEN int c2py_arm64_pmull = 0;
+C2PY_HIDDEN int c2py_arm64_sha1 = 0;
+C2PY_HIDDEN int c2py_arm64_sha2 = 0;
+C2PY_HIDDEN int c2py_arm64_crc32 = 0;
+C2PY_HIDDEN int c2py_arm64_sve = 0;
+C2PY_HIDDEN int c2py_arm64_sve2 = 0;
+C2PY_HIDDEN int c2py_arm64_atomics = 0;
+C2PY_HIDDEN int c2py_arm64_fphp = 0;
+C2PY_HIDDEN int c2py_arm64_asimdhp = 0;
+C2PY_HIDDEN int c2py_arm64_asimddp = 0;
+C2PY_HIDDEN int c2py_arm64_i8mm = 0;
+C2PY_HIDDEN int c2py_arm64_bf16 = 0;
 
-int c2py_ppc64_altivec = 0;
-int c2py_ppc64_vsx = 0;
-int c2py_ppc64_power8 = 0;
-int c2py_ppc64_power9 = 0;
+C2PY_HIDDEN int c2py_ppc64_altivec = 0;
+C2PY_HIDDEN int c2py_ppc64_vsx = 0;
+C2PY_HIDDEN int c2py_ppc64_power8 = 0;
+C2PY_HIDDEN int c2py_ppc64_power9 = 0;
 
 /* Tick source: 0 = wall clock (default), 1 = CPU cycle counter */
-int _c2py_use_cycle_counter = 0;
+C2PY_HIDDEN int _c2py_use_cycle_counter = 0;
 
 /* Detected cycle counter frequency, or 0 if unknown (probed at init). */
-uint64_t c2py_cycle_counter_frequency_hz = 0;
+C2PY_HIDDEN uint64_t c2py_cycle_counter_frequency_hz = 0;
 
 /* Active tick source frequency in Hz. */
-uint64_t c2py_tick_frequency_hz = 0;
+C2PY_HIDDEN uint64_t c2py_tick_frequency_hz = 0;
 
 /* Runtime-discovered numpy ndarray layout (zero = not yet probed).
  * Shared by both backends (extern in c2py_runtime.h). */
-c2py_ndarray_layout_t C2PY_NDARRAY = {0};
+C2PY_HIDDEN c2py_ndarray_layout_t C2PY_NDARRAY = {0};
 
 /* ---- Shared CPU feature probing (called by both backends) ---- */
 
@@ -2474,7 +2498,7 @@ x86_done:
 
 /* ---- C2PY global ---- */
 
-c2py_api_t C2PY = {0};
+C2PY_HIDDEN c2py_api_t C2PY = {0};
 
 /* ---- Python 2.7 module init helper ---- */
 
@@ -2494,13 +2518,13 @@ _c2py_pythonh_init_module(const char *name, PyMethodDef *methods)
 /* ---- c2py_runtime_init ---- */
 
 /* The Python.h backend cannot fail to initialise; kept for API parity. */
-void c2py_runtime_init_failed(const char *modname)
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname)
 {
     PyErr_Format(PyExc_ImportError, "cannot import %s: c2py_runtime "
                  "initialisation failed", modname);
 }
 
-int c2py_runtime_init(void)
+C2PY_HIDDEN int c2py_runtime_init(void)
 {
     /* CPU feature probing (shared with dlsym backend) */
     _c2py_probe_cpu_features();
@@ -2778,7 +2802,7 @@ _init_module_2_7(const char *name, PyMethodDef *methods)
 #pragma warning(push)
 #pragma warning(disable:4152)
 #endif
-void c2py_runtime_init_failed(const char *modname)
+C2PY_HIDDEN void c2py_runtime_init_failed(const char *modname)
 {
     typedef void (*set_str_fn)(void*, const char*);
     char msg[640];
