@@ -7,6 +7,19 @@ Wrap C99 functions as Python C extensions via the buffer protocol.
 One compiled `.so` works on Python 2.7 through 3.15 with no recompilation.
 Zero copies, zero allocations. No numpy required.
 
+An f2py-style wrapper generator for C, with two additions:
+
+- one binary per platform for every Python (the
+  [nimpy](https://github.com/yglukhov/nimpy) trick: no libpython link,
+  the CPython API is resolved at import);
+- CPU-architecture variants (SSE2/AVX2/AVX-512, NEON, Altivec) selected
+  at run time.
+
+The C it wraps looks like Fortran: scalars and flat arrays owned by the
+caller.  No structs, strings, callbacks, keyword arguments or allocation.
+If you need those, or only target recent CPython, use something else 
+instead.  See `docs/design.md`.
+
 ## Install
 
 ```bash
@@ -39,9 +52,8 @@ Write the interface file:
         {
             "py_sig": "array_sum(a: buffer, b: buffer, out: buffer) -> int",
             "checks": [
-                "a.format == 'd'",
-                "b.format == 'd'",
-                "out.format == 'd'",
+                "b.n == a.n",
+                "out.n >= a.n",
             ],
             "c_overloads": [
                 {
@@ -62,26 +74,27 @@ Write the interface file:
 Build and use:
 
 ```bash
-# Generate the wrapper
-c2py23 arraysum.c2py -o arraysum_wrapper.c
+# Generate the wrapper and the single-header runtime (c2py.h) next to it
+c2py23 arraysum.c2py -o arraysum_wrapper.c --emit-header
 
-# Compile (dlsym mode  --  portable, no libpython)
-cc -shared -fPIC -I c2py23/runtime/ arraysum_wrapper.c arraysum.c \
-   c2py23/runtime/c2py_runtime.c -ldl -lm -o arraysum.so
-
-# Or build via setuptools
-python setup.py build_ext --inplace
+# Compile  --  no libpython, no include path
+cc -O2 -shared -fPIC arraysum_wrapper.c arraysum.c -ldl -lm -o arraysum.so
 
 python3 -c "
-import ctypes, sys; sys.path.insert(0, '.')
+import ctypes
 import arraysum
 a = (ctypes.c_double * 4)(1, 2, 3, 4)
 b = (ctypes.c_double * 4)(5, 6, 7, 8)
-r = (ctypes.c_double * 4)(0, 0, 0, 0)
+r = (ctypes.c_double * 4)()
 arraysum.array_sum(a, b, r)
 print(list(r))  # [6.0, 8.0, 10.0, 12.0]
 "
 ```
+
+The wrapper checks element type, alignment, contiguity and overlap of
+writable buffers on every call.  It cannot know how far your C code reads
+or writes: every output buffer needs a size check in `checks:`.  See
+"Writing Safe .c2py Definitions" in `docs/user_guide.md`.
 
 ## Usage
 
@@ -123,6 +136,15 @@ The [GitHub repository](https://github.com/jonwright/c2py23) includes build exam
 - `docs/getting_started.md` -- installation and first build
 - `docs/developer_guide.md` -- testing with snakepit containers, CI, ABI matrix
 - `AGENTS.md` -- contributor guidelines for LLM agents
+
+## Status
+
+Beta.  Built for the author's own production use
+([c2ImageD11](https://github.com/jonwright/c2ImageD11),
+[bslz4_to_sparse](https://github.com/jonwright/bslz4_to_sparse)).
+Refuses to import on a Python newer than the last one audited (3.15).
+Tested on 2.7, 3.6-3.15, 3.14t and 3.15t; reviews and the crashes they
+found are in `archive/`.
 
 ## License
 

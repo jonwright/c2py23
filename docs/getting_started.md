@@ -3,10 +3,11 @@
 ## Installation
 
 ```bash
-pip install -e .
+pip install c2py23
 ```
 
-Or from a wheel (once published to PyPI).
+Requires a C99 compiler (gcc, clang, or MSVC on Windows).  For a development
+checkout use `pip install -e .` instead.
 
 ## Your First Module
 
@@ -31,11 +32,8 @@ void add_d(const double *a, const double *b, int n, double *out) {
         {
             "py_sig": "add_arrays(a: buffer, b: buffer, out: buffer) -> void",
             "checks": [
-                "a.format == 'd'",
-                "b.format == 'd'",
-                "out.format == 'd'",
                 "a.n == b.n",
-                "b.n == out.n",
+                "out.n >= a.n",
             ],
             "c_overloads": [
                 {
@@ -56,13 +54,18 @@ void add_d(const double *a, const double *b, int n, double *out) {
 Generate and compile it:
 
 ```bash
-# Generate the C wrapper
-c2py23 myadd.c2py -o myadd_wrapper.c
+# Generate the C wrapper and the single-header runtime (c2py.h) next to it
+c2py23 myadd.c2py -o myadd_wrapper.c --emit-header
 
-# Compile (see docs/building.md for all options)
-cc -shared -fPIC c2py23/runtime/c2py_runtime.c myadd_wrapper.c myadd.c \
-    -I c2py23/runtime -o myadd.so -ldl -lm
+# Compile  --  no libpython, no include path (see building.md for all options)
+cc -O2 -shared -fPIC myadd_wrapper.c myadd.c -ldl -lm -o myadd.so
 ```
+
+The wrapper checks element type, alignment, contiguity and overlap of
+writable buffers on every call (derived from the C signature).  It cannot
+know how far your C code reads or writes: every output buffer needs a size
+check in `checks:`.  See
+[Writing Safe .c2py Definitions](user_guide.md#writing-safe-c2py-definitions).
 
 Use it from Python:
 
