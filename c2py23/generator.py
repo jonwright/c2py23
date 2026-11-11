@@ -308,27 +308,31 @@ def _has_implied_ndim(overloads, buf_params, func=None):
 # itemsize == sizeof(long) && itemsize == 4 as a constant contradiction.
 # void gets no check; other pointee types (intptr_t, ptrdiff_t, size_t,
 # _Bool) get none either and a generation-time warning.
-_POINTEE_FORMAT_CHECK = {
-    "double": "{0}.format == 'd'",
-    "float": "{0}.format == 'f'",
-    "int8_t": "{0}.format == 'b'",
-    "uint8_t": "{0}.format == 'B'",
-    "char": "{0}.itemsize == 1",
-    "int16_t": "{0}.format == 'h'",
-    "uint16_t": "{0}.format == 'H'",
-    "int32_t": "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4",
-    "int": "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4",
-    "uint32_t": "({0}.format == 'I' or {0}.format == 'L') and {0}.itemsize == 4",
-    "int64_t": "({0}.format == 'q' or {0}.format == 'l') and {0}.itemsize == 8",
-    "uint64_t": "({0}.format == 'Q' or {0}.format == 'L') and {0}.itemsize == 8",
-}
+# Ordered: _pointee_types_for() quotes these names in error messages, and a
+# dict has no defined order before Python 3.7 (generated C must not depend
+# on the interpreter that ran the generator).
+_POINTEE_FORMAT_TABLE = (
+    ("double", "{0}.format == 'd'"),
+    ("float", "{0}.format == 'f'"),
+    ("int8_t", "{0}.format == 'b'"),
+    ("uint8_t", "{0}.format == 'B'"),
+    ("char", "{0}.itemsize == 1"),
+    ("int16_t", "{0}.format == 'h'"),
+    ("uint16_t", "{0}.format == 'H'"),
+    ("int32_t", "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4"),
+    ("int", "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4"),
+    ("uint32_t", "({0}.format == 'I' or {0}.format == 'L') and {0}.itemsize == 4"),
+    ("int64_t", "({0}.format == 'q' or {0}.format == 'l') and {0}.itemsize == 8"),
+    ("uint64_t", "({0}.format == 'Q' or {0}.format == 'L') and {0}.itemsize == 8"),
+)
+_POINTEE_FORMAT_CHECK = dict(_POINTEE_FORMAT_TABLE)
 
 
 def _pointee_types_for(buf_name, src):
     """C pointee types whose derived check for buf_name is src, in table
     order (int32_t and int share one check)."""
     return [
-        t for t, tpl in _POINTEE_FORMAT_CHECK.items() if _expr_to_source(parse_expr(tpl.format(buf_name))) == src
+        t for t, tpl in _POINTEE_FORMAT_TABLE if _expr_to_source(parse_expr(tpl.format(buf_name))) == src
     ]
 
 
