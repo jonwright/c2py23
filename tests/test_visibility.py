@@ -20,6 +20,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(HERE)
 CASES = os.path.join(HERE, "cases")
 BUILD_DIR = os.path.join(HERE, "build", "visibility")
+sys.path.insert(0, HERE)
+
+from _extload import extload_prelude  # noqa: E402
 
 PREFIXES = ("C2PY", "c2py_", "_c2py_")
 
@@ -83,13 +86,13 @@ def test_plain_module_hides_runtime():
     _check_module("arraysum", "arraysum", ["array_sum"])
 
 
-_GLOBAL_SCRIPT = r"""
+_GLOBAL_SCRIPT = (
+    extload_prelude()
+    + r"""
 import ctypes, os, sys
 sys.setdlopenflags(getattr(os, "RTLD_NOW", 2) | getattr(os, "RTLD_GLOBAL", 0x100))
-sys.path.insert(0, %(arraysum)r)
-sys.path.insert(0, %(timing)r)
-import arraysum
-import timedmod
+arraysum = c2py_load("arraysum", %(arraysum)r)
+timedmod = c2py_load("timedmod", %(timing)r)
 a = (ctypes.c_double * 3)(1.0, 2.0, 3.0)
 b = (ctypes.c_double * 3)(10.0, 20.0, 30.0)
 r = (ctypes.c_double * 3)()
@@ -99,6 +102,7 @@ w = timedmod.wsum(a, 2.0)
 assert w == 12.0, w
 print("OK")
 """
+)
 
 
 def test_two_modules_rtld_global():

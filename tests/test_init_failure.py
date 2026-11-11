@@ -21,12 +21,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(HERE)
 RUNTIME = os.path.join(PROJECT, "c2py23", "runtime")
 CASE = os.path.join(HERE, "cases", "ptralign")
+sys.path.insert(0, HERE)
 
-_IMPORT = """
+from _extload import extload_prelude  # noqa: E402
+
+_IMPORT = (
+    extload_prelude()
+    + """
 import sys
-sys.path.insert(0, %r)
 try:
-    import ptralignmod
+    c2py_load("ptralignmod", %r)
 except ImportError as e:
     print("ImportError: %%s" %% e)
     sys.exit(0)
@@ -36,6 +40,7 @@ except BaseException as e:
 print("imported")
 sys.exit(1)
 """
+)
 
 
 def _run(cmd, cwd=None, env=None):

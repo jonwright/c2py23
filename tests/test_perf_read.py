@@ -17,7 +17,9 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from _extload import extload_prelude  # noqa: E402
 from c2py23.perf import (
     _to_ns,
     _make_perf_buf,
@@ -110,9 +112,20 @@ def _import_timedmod():
 def test_real_read_perf_variants():
     timedmod = _import_timedmod()
     stats = read_perf(timedmod.wsum, freq_hz=1000000000)
-    for key in ("call_count", "c_dur_ns", "wrap_dur_ns", "c_min_ns", "c_max_ns",
-                "c_mean_ns", "wrap_min_ns", "wrap_max_ns", "wrap_mean_ns",
-                "variant", "group_idx", "variant_name"):
+    for key in (
+        "call_count",
+        "c_dur_ns",
+        "wrap_dur_ns",
+        "c_min_ns",
+        "c_max_ns",
+        "c_mean_ns",
+        "wrap_min_ns",
+        "wrap_max_ns",
+        "wrap_mean_ns",
+        "variant",
+        "group_idx",
+        "variant_name",
+    ):
         assert key in stats, "missing key %s" % key
 
     # named overload
@@ -137,10 +150,11 @@ def test_real_reset_and_enable():
     assert read_enabled(timedmod.wsum) == 1
 
 
-_BAD_HANDLE_SCRIPT = """
+_BAD_HANDLE_SCRIPT = (
+    extload_prelude()
+    + """
 import sys
-sys.path.insert(0, %r)
-import timedmod
+timedmod = c2py_load("timedmod", %r)
 names = [n for n in dir(timedmod)
          if n.startswith("_c2py_perf_ptr_") or n.startswith("_c2py_ol_ptr_")]
 n_handles = max(getattr(timedmod, n) for n in names) + 1
@@ -157,6 +171,7 @@ for bad in (-1, n_handles, 12345, 2 ** 62):
             raise SystemExit("no ValueError for handle %%r" %% (bad,))
 print("ok")
 """
+)
 
 
 def test_invalid_perf_handles_raise_valueerror():

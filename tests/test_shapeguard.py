@@ -15,16 +15,20 @@ import sys
 
 import numpy as np
 
-_CASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases", "shapeguard")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_CASE = os.path.join(_HERE, "cases", "shapeguard")
 sys.path.insert(0, _CASE)
+sys.path.insert(0, _HERE)
 
 import shapeguardmod  # noqa: E402
+from _extload import extload_prelude  # noqa: E402
 
-_SNIPPET = """
+_SNIPPET = (
+    extload_prelude()
+    + """
 import array, sys
-sys.path.insert(0, %r)
 import numpy as np
-import shapeguardmod as m
+m = c2py_load("shapeguardmod", %r)
 bad = [np.zeros(5), np.zeros(()), array.array('d', [1.0, 2.0, 3.0]), bytearray(24)]
 for fn in (m.get_cols, m.get_stride1):
     for a in bad:
@@ -37,6 +41,7 @@ for fn in (m.get_cols, m.get_stride1):
         sys.exit(3)
 sys.exit(0)
 """
+)
 
 
 def _subprocess_ok():

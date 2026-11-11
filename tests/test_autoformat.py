@@ -26,8 +26,10 @@ _PROJECT = os.path.dirname(_HERE)
 _CASE = os.path.join(_HERE, "cases", "autoformat")
 sys.path.insert(0, _CASE)
 sys.path.insert(0, _PROJECT)
+sys.path.insert(0, _HERE)
 
 import autoformatmod as m  # noqa: E402
+from _extload import extload_prelude  # noqa: E402
 from c2py23.parser import from_c2py_dict  # noqa: E402
 from c2py23.generator import generate  # noqa: E402
 
@@ -72,11 +74,12 @@ def test_noncontiguous_message_names_arg_and_fix():
     assert "numpy.ascontiguousarray" in msg, msg
 
 
-_FILL_SNIPPET = """
+_FILL_SNIPPET = (
+    extload_prelude()
+    + """
 import sys
-sys.path.insert(0, %r)
 import numpy as np
-import autoformatmod as m
+m = c2py_load("autoformatmod", %r)
 a = np.zeros(1000, np.uint8)
 try:
     m.filld(a, 1.0)
@@ -84,6 +87,7 @@ except ValueError:
     sys.exit(0)
 sys.exit(3)
 """
+)
 
 
 def test_uint8_fill_raises_not_crash():
@@ -197,9 +201,11 @@ def test_overloads_dispatch_on_pointee_type():
     b = np.ones(3, dtype="f8")
     assert m.scale(b, 3.0) == 64
     assert list(b) == [3.0] * 3
-    msg = _value_error(lambda x: m.scale(x, 1.0), np.ones(3, dtype="i4"))
+    bad = np.ones(3, dtype="i4")
+    msg = _value_error(lambda x: m.scale(x, 1.0), bad)
     assert "scale: no overload matches" in msg, msg
-    assert "(got 'a' format='i' itemsize=4 ndim=1)" in msg, msg
+    expected = "(got 'a' format=%r itemsize=%d ndim=%d)" % (memoryview(bad).format, bad.itemsize, bad.ndim)
+    assert expected in msg, msg
 
 
 # --- opt-outs ------------------------------------------------------------
