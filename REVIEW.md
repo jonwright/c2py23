@@ -404,3 +404,43 @@ GitHub CI state.
    probe against PEP 3118, reconsider it as the default.
 9. D3, D4: design.md -- add the abi3/abi3t comparison, fix the
    METH_KEYWORDS rationale.
+
+## Status after fixups (2026-11-11, branch fable-review)
+
+Each finding against the commit that addressed it.  "Doc" means documented
+rather than changed, by decision.
+
+| Finding | Status | Commit |
+|---|---|---|
+| A1 BufferError resolved after use | fixed | 303e682 (WP5) |
+| A2 runtime globals exported | fixed | 39b69e5 (WP6) |
+| A3 dead manual refcount fallback | removed | 8de81b3 (WP7) |
+| A4 layout probe that cannot fail | replaced by a real check | 8de81b3 (WP7) |
+| A5 Py_buffer size probing | removed | 8de81b3 (WP7) |
+| A6 fast path points into the array | shape/strides copied; race narrowed, not closed | 76cfbd0 (WP8) |
+| A7 probe not validated | validated against PEP 3118 | 76cfbd0 (WP8) |
+| A8 DLPack allocation checks | fixed | 303e682 (WP5) |
+| A9 Windows init race | not done (unreachable, untestable here) | -- |
+| A10 dlopen(NULL) needs global symbols | Doc | d965704 (WP10) |
+| A11 perf counters not thread-safe | Doc | d965704 (WP10) |
+| B1 no element-type check by default | fixed (derived checks, opt-out key) | fd447cf (WP2) |
+| B2 shape[k] without ndim guard | fixed | 82be3ec (WP1) |
+| B3 perf accessors take raw addresses | fixed | 1d9b5cb (WP4) |
+| B4 pin.kind read uninitialised | fixed | 303e682 (WP5), 8de81b3 (WP7) |
+| B5 reference leaks at module init | fixed (valgrind confirmed) | 303e682 (WP5) |
+| B6 rebind bypasses when: | Doc | d965704 (WP10) |
+| B7 int -> void* is a raw address | Doc | d965704 (WP10) |
+| B8 arithmetic on .ptr | rejected; "ptr % N" made to work | 3eb8a7d (WP3), 303e682 (WP5) |
+| B9 no alignment check | fixed (opt-out key) | fd447cf (WP2) |
+| B10 init failure gives SystemError | fixed (ImportError with reason) | 303e682 (WP5) |
+| D3 no abi3 comparison | Doc | d965704 (WP10) |
+| D4 METH_KEYWORDS rationale | Doc | d965704 (WP10) |
+| D5 PyPy in dlsym mode | parked (WP9 not run) | -- |
+| D6 PEP 3118 as default | rejected by owner (performance) | -- |
+
+Verification on the finished branch: 352 tests pass with gcc, gcc -O0 -Wall
+-Werror and clang on CPython 3.12; the container matrix passes on 2.7,
+3.6-3.15, 3.14t and 3.15t (13/13); manylinux2014 cross-test 14/14; valgrind
+shows no invalid or uninitialised reads and no leaks in c2py23 frames.
+Two downstream projects build and pass their test suites unchanged.
+Not verified: Windows, macOS, aarch64 (needs CI), PyPy, GraalPy, WASM.
