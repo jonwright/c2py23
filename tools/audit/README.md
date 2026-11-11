@@ -91,7 +91,7 @@ The pre-check runs three phases before exporting:
 
 The audit files are designed for continuous LLM-based peer review.
 The previous review (three referee reports, June 2026) is documented in
-`tools/audit/referee_reports_2026-06-15.md`. The workflow below can be
+`archive/2026-06_referee_reports.md`. The workflow below can be
 repeated for each new revision of the code.
 
 ### Step 1: Upload the Runtime Support Code
@@ -136,7 +136,7 @@ Keep a running list of issues found. For each issue note:
 - Proposed fix
 
 Use the summary table format from
-`tools/audit/referee_reports_2026-06-15.md` (lines 17--33).
+`archive/2026-06_referee_reports.md` (lines 17--33).
 
 ### Step 4: Re-Review After Fixes
 

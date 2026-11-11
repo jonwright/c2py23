@@ -43,7 +43,7 @@ wall-clock time measures buffer acquisition + checks + release.
 Compares:
 - `gold vnorm fastcall` -- handwritten CPython using `PyObject_GetBuffer`
 - `gold numpy fastcall` -- handwritten CPython using PyArray C API
-- `c2py23 bare` -- generated wrapper, no checks, no timing
+- `c2py23 bare` -- generated wrapper, no user checks, derived checks opted out, no timing
 - `c2py23` -- generated wrapper with checks and timing combinations
 
 ## Feature cost breakdown

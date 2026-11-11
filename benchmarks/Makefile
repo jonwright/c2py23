@@ -1,9 +1,9 @@
 # benchmarks/Makefile -- build gold-standard CPython extensions and run benchmarks.
-# c2py23 modules are built by 'python tests/setup.py build_ext' (dlsym) or
-# 'python tests/setup.py build_ext --pythonh'.  See tests/runner.py.
+# c2py23 modules are built in dlsym mode by tests/runner.py (which drives
+# tests/Makefile and writes benchmarks/build/*.so).
 #
 # Usage:
-#   make -C benchmarks                 # build gold + all c2py23 (dlsym + pythonh)
+#   make -C benchmarks golds c2py      # build gold + c2py23 (dlsym) modules
 #   make -C benchmarks bench           # run all benchmarks
 #   make -C benchmarks bench-noargs    # run noargs benchmark only
 
@@ -42,27 +42,28 @@ gold_numpy_vnorm: $(BUILDDIR)/gold_numpy_vnorm.so
 gold_getitem: $(BUILDDIR)/gold_getitem.so
 golds: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem
 
-# ---- c2py23 modules (built by tests/setup.py) ----
+# ---- c2py23 modules (dlsym mode, built by tests/runner.py) ----
 
 c2py:
-	cd .. && CC=$(CC) LIBS="-ldl -lm" $(PYTHON) tests/setup.py build_ext
+	cd .. && CC=$(CC) PYTHONPATH=.:$$PYTHONPATH $(PYTHON) tests/runner.py --no-test
 
+# pythonh-mode builds land in ../build/lib.*; no benchmark reads them yet.
 c2py_ph:
-	cd .. && $(PYTHON) tests/setup.py build_ext --pythonh
+	cd .. && PYTHONPATH=.:$$PYTHONPATH $(PYTHON) tests/setup.py build_ext --pythonh
 
 # ---- Run benchmarks ----
 
-bench: golds c2py c2py_ph
-	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py test_vnorm_overhead.py test_getitem_overhead.py -v -s
+bench: golds c2py
+	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py test_vnorm_overhead.py test_getitem_overhead.py -v -s
 
 bench-getitem: gold_getitem c2py
-	taskset -c 0 $(PYTHON) -m pytest test_getitem_overhead.py -v -s
+	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_getitem_overhead.py -v -s
 
 bench-noargs: gold_noargs c2py
-	taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py -v -s
+	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py -v -s
 
 bench-vnorm: gold_vnorm gold_numpy_vnorm c2py
-	taskset -c 0 $(PYTHON) -m pytest test_vnorm_overhead.py -v -s
+	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_vnorm_overhead.py -v -s
 
 # ---- Clean ----
 

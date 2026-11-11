@@ -72,7 +72,7 @@ sys.exit(3)
 
 
 def test_uint8_fill_raises_not_crash():
-    """REVIEW.md B1: filld(uint8[1000]) wrote 8000 bytes and killed the process."""
+    """Review finding B1 (archive/2026-11_review.md): filld(uint8[1000]) wrote 8000 bytes and killed the process."""
     p = subprocess.Popen([sys.executable, "-c", _FILL_SNIPPET % (_CASE,)])
     assert p.wait() == 0
     a = np.zeros(5)
