@@ -112,6 +112,12 @@ def build_single_header():
     else:
         after_gate = "\n".join(runtime_h_lines)
 
+    # Everything in c2py_runtime.h ahead of the backend gate (the C2PY_HIDDEN
+    # macro) must precede the inlined backend headers, which use it.
+    pre_gate = ""
+    if gate_start is not None:
+        pre_gate = "\n".join(runtime_h_lines[:gate_start])
+
     header = []
     header.append("/* c2py.h - Single-header c2py23 runtime")
     header.append(" *")
@@ -130,6 +136,7 @@ def build_single_header():
     header.append("#ifndef C2PY_H")
     header.append("#define C2PY_H")
     header.append("")
+    header.append(pre_gate)
     header.append("/* ---- Pick one backend ---- */")
     header.append("")
     header.append("#ifdef C2PY_USE_PYTHON_H")

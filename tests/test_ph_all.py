@@ -12,8 +12,13 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Built modules go to a scratch directory that is removed at exit.  They must
+# not be left under tests/cases/: conftest.py preloads every .so it finds
+# there, and a version-specific pythonh build crashes other interpreters.
+OUT = tempfile.mkdtemp(prefix="c2py_ph_all_")
 
 
 def _generate():
@@ -45,7 +50,7 @@ def _build_dlsym():
             "fill_wrapper.c",
         ]
     )
-    if "cl" in os.path.basename(cc):
+    if os.path.basename(cc.split()[0]).lower() in ("cl", "cl.exe", "clang-cl", "clang-cl.exe"):
         subprocess.check_call(
             [
                 cc,
@@ -58,7 +63,7 @@ def _build_dlsym():
                 "fill_wrapper.c",
                 os.path.join(HERE, "cases", "fill", "fill.c"),
                 "/link",
-                "/OUT:fillmod.dlsym_test.pyd",
+                "/OUT:" + os.path.join(OUT, "fillmod.dlsym_test.pyd"),
             ],
             env=env,
         )
@@ -76,7 +81,7 @@ def _build_dlsym():
                 "fill_wrapper.c",
                 os.path.join(HERE, "cases", "fill", "fill.c"),
                 "-o",
-                "fillmod.dlsym_test.so",
+                os.path.join(OUT, "fillmod.dlsym_test.so"),
                 "-ldl",
                 "-lm",
             ],
@@ -155,13 +160,8 @@ def main():
     # ---- Dlsym build ----
     try:
         _build_dlsym()
-        import glob
-
-        candidates = glob.glob("build/lib.*/fillmod.so")
-        dlsym_path = os.path.join(os.path.dirname(__file__), "cases", "fill", "fillmod.dlsym_test.so")
-        if candidates:
-            shutil.copy2(candidates[0], dlsym_path)
-        load_and_check(dlsym_path, "fillmod.dlsym_test.so")
+        dlsym_name = "fillmod.dlsym_test" + (".pyd" if os.name == "nt" else ".so")
+        load_and_check(os.path.join(OUT, dlsym_name), dlsym_name)
         results.append("dlsym:PASS")
     except Exception as e:
         msg = str(e).split("\n")[0][:80]
@@ -175,7 +175,7 @@ def main():
 
         ext = sysconfig.get_config_var("EXT_SUFFIX") or ".so"
         candidates = glob.glob("build/lib.*/fillmod" + ext)
-        pythonh_path = os.path.join(os.path.dirname(__file__), "cases", "fill", "fillmod.pythonh_test" + ext)
+        pythonh_path = os.path.join(OUT, "fillmod.pythonh_test" + ext)
         if candidates:
             shutil.copy2(candidates[0], pythonh_path)
         load_and_check(pythonh_path, "fillmod.pythonh_test" + ext)
@@ -188,6 +188,7 @@ def main():
     for f in ["fill_wrapper.c"]:
         if os.path.exists(f):
             os.unlink(f)
+    shutil.rmtree(OUT, ignore_errors=True)
 
     print("  %-6s %s" % (ver, "  ".join(results)))
     if any("FAIL" in r for r in results):

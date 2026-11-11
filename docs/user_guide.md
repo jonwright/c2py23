@@ -103,6 +103,22 @@ for cmake, meson, and setuptools build integration.
 }
 ```
 
+## Variant Rebind and the `when:` Guard
+
+A variant is one member of a grouped overload (a `group:` with several
+`variants:`).  By default the wrapper selects the active variant in order,
+evaluating the `when:` condition of each.  `_rebind_<name>("variant")` forces
+a variant by name WITHOUT evaluating its `when:` condition, so Python code can
+select a kernel the current CPU does not support (for example forcing an
+AVX-512 variant on a CPU without AVX-512).  That can SIGILL.  It is intended
+for benchmarking, so treat it as a sharp edge and restore auto-dispatch with
+`_rebind_<name>(None)`:
+
+```python
+polysimd._rebind_poly("poly_f32_scalar")  # force the scalar fallback
+polysimd._rebind_poly(None)               # back to auto-dispatch on when:
+```
+
 ## For Python Programmers: A C Tutorial
 
 c2py23 wraps C99 functions. The C you need to write is deliberately simple:
@@ -262,6 +278,126 @@ lower-dimensional buffer than the C signature expects: just add a `1`
 dimension on the Python side. It is always valid because `shape == 1`
 dimensions contribute zero stride difference in contiguous layouts.
 
+## Writing Safe .c2py Definitions
+
+**Always validate buffer dimensions in `checks:` blocks.**  Without size
+checks, a caller can pass a too-small output buffer, causing the C function
+to write past the end and produce a segfault or silent memory corruption.
+
+The C function receives raw pointers with no bounds information. If the
+Python caller passes a 100-element output buffer for a function expecting
+1000 elements, the C code will write 900 elements past the buffer end.
+There is no runtime instrumentation to catch this; the ONLY defence is the
+`checks:` block together with the element-type and alignment checks below.
+
+### Checks the generator derives for you
+
+c2py23 derives several checks automatically, so the default is safe and an
+explicit `checks:` block is an addition rather than the only defence:
+
+1. **Element type.**  For every C pointer parameter mapped to exactly
+   `buf.ptr`, the generator derives an element-type check from the pointee
+   type (`double *` -> `'d'`, `int32_t *` -> `'i'`/`'l'` with itemsize 4,
+   `char *` -> itemsize 1, `void *` -> none; the table is in
+   `docs/specification.md`).  An explicit `"buf.format == 'd'"` check is
+   still allowed and replaces the derived one for that buffer, keeping the
+   same dispatch.  Pointee types outside the table get a generation-time
+   warning and no check -- write the check yourself.  Set
+   `"check_format": False` on a function to opt out (for example to
+   reinterpret raw bytes as `double *`).
+2. **Dimensionality.**  `"buf.ndim == 1"` or `"buf.ndim == 2"` rejects
+   unexpected shapes.
+3. **Alignment.**  Every non-empty buffer mapped as `buf.ptr` must be
+   aligned for the C pointer type it is passed as (`double *` -> 8,
+   `int32_t *` -> 4; `char *`, `uint8_t *` and `void *` accept any
+   address, whatever the buffer's own element type).  This is checked
+   automatically before the C call and raises
+   `ValueError: f: arg 'a': buffer not aligned for the C parameter type
+   double * (alignment 8, address % 8 == 1); pass an aligned copy, ...`.  Set
+   `"check_alignment": False` when your C code tolerates unaligned pointers.
+   For stricter SIMD alignment use `"buf.ptr % 32 == 0"` in a `when:`
+   condition.
+4. **Size relationships.**  `"ibuf.n == obuf.n"` or `"obuf.n >= ibuf.n + 2"`
+   -- the single most important check for preventing segfaults.
+
+### Bounds-safe shape and stride access
+
+`buf.shape[k]` and `buf.strides[k]` are bounds-safe.  Reading an out-of-range
+`k` never reads out of bounds, and an overload whose `map:` reads `buf.shape[k]`
+or `buf.strides[k]` is only eligible when the buffer has more than `k`
+dimensions.  If no overload accepts the buffer, the wrapper raises `ValueError`
+naming the buffer and the `ndim` it needs rather than crashing.
+
+### How arithmetic on `buf.ptr` is treated
+
+`buf.ptr` is a raw pointer.  Arithmetic on it is rejected: `buf.ptr + off`,
+`buf.ptr - 1` and `off + buf.ptr` all raise `ValueError` at generation time
+(pass the offset to the C function as a separate argument instead).  The one
+exception is the alignment idiom `buf.ptr % N` in a `when:` condition, which
+selects an overload on pointer alignment, e.g. `"a.ptr % 32 == 0"` for a SIMD
+kernel.  `N` must be a positive integer literal or scalar, and the generator
+reduces the pointer in `uintptr_t`.
+
+### Example: safe output buffer sizing
+
+```python
+# Correct: validates output is large enough
+checks:
+  - "a.format == 'f'"
+  - "out.format == 'f'"
+  - "out.n >= a.n"          # output at least as large as input
+
+# Wrong: missing size check -- segfault if out is too small
+checks:
+  - "a.format == 'f'"
+  - "out.format == 'f'"
+```
+
+### Additional safe checks to consider
+
+- **Contiguity:** c2py23 enforces C/F-contiguity automatically, but check for
+  specific expectations (e.g., C-order only)
+- **Non-empty:** `"buf.n > 0"` when zero-length would be invalid
+- **Alias:** c2py23 checks writable buffer aliasing at runtime; add
+  `default_raise:` for a clear error message.  Set `check_aliasing: false`
+  only when the caller guarantees non-overlap and the check is hot.
+
+### Format char portability: never use `'l'` or `'L'` for fixed-width dispatch
+
+The PEP 3118 format characters `'l'` (signed long) and `'L'` (unsigned long)
+are **platform-sized**: `sizeof(long)` differs between LP64 (Linux/macOS, 8
+bytes) and LLP64 (Windows 64-bit, 4 bytes).  A buffer with format `'l'` has
+8-byte elements on Linux but 4-byte elements on Windows.
+
+**Do not rely on `'l'`/`'L'` for fixed-width dispatch.**  Use the format
+characters that have guaranteed sizes on all platforms:
+
+| Format | C type | Size (all platforms) |
+|--------|--------|---------------------|
+| `'i'` / `'I'` | `int32_t` / `uint32_t` | 4 bytes |
+| `'q'` / `'Q'` | `int64_t` / `uint64_t` | 8 bytes |
+
+c2py23 generates a runtime `itemsize == sizeof(long)` check alongside format
+comparisons for `'l'`/`'L'`, so these characters remain usable if you need
+platform-native `long` semantics.  But the generated `.so` or `.pyd` will
+dispatch to different C code on different platforms -- do not depend on
+`'l'`/`'L'` mapping to a specific fixed-width type.
+
+### Buffer writability and overload dispatch
+
+When a function has multiple overloads, the wrapper acquires each buffer with
+`PyBUF_WRITABLE` if **any** overload writes to it. If you add a read-only
+overload alongside a writable overload for the same buffer parameter, callers
+will be forced to provide writable buffers for the read-only path. Keep this
+in mind when mixing read and write overloads.
+
+### Subclasses and masked arrays
+
+numpy subclasses use their base class's buffer layout, not the subclass.  A
+`numpy.ma.MaskedArray` is passed to your C function as its underlying data
+with the mask silently ignored -- the mask is not checked and is not passed.
+If a mask matters, validate it yourself on the Python side.
+
 ## For C Programmers: A Python Tutorial
 
 ### The Buffer Protocol
@@ -330,6 +466,15 @@ c2py23 bridges Python and C types as follows:
 | `int` | `int` | Python `int` |
 | `float` | `double` or `float` | Python `float` |
 
+### `void*` parameters are raw addresses
+
+An `int` parameter mapped to a C `void*` (or any other pointer) accepts ANY
+integer as a raw address.  This is the documented pass-through feature for
+GPU handles and custom allocators, and there is no validation.  Passing a
+wrong value hands an invalid pointer to your C code and can crash the process.
+Use it only for handles your own C code produced; never compute an address in
+Python.
+
 ## Tour of Examples
 
 The `examples/` directory contains worked examples demonstrating different
@@ -388,6 +533,14 @@ when timing is disabled or not compiled in.
 See `specification.md` for per-overload timing, the full perf struct schema,
 and the `c2py23.perf` Python-side decoder.
 
+### Timing counters are not thread-safe
+
+The timing counters are updated without locks or atomics, so they are not
+thread-safe.  With `gil_release` or on a free-threaded build, two threads can
+race on a function's call count and min/max timings, making the reported
+numbers unreliable (ThreadSanitizer will flag them).  They never crash the
+process, but do not use per-function timing to compare two concurrent paths.
+
 ## Thread Safety
 
 ### GIL Release
@@ -424,10 +577,20 @@ disabled:
 }
 ```
 
-**You must verify that your C code is thread-safe before enabling this.**
-c2py23 does not analyze your C code for thread safety. All wrapper-internal
-global state (timing counters, dispatch caches, feature flags) is race-safe
-by design; the only source of crashes is user C code with thread-safety bugs.
+**`"free_threading": True` is a promise that every wrapped C function is
+reentrant.**  c2py23 does not analyze your C code for thread safety.  The flag
+asserts that each wrapped function uses no hidden statics and no non-reentrant
+library calls; if it breaks that promise, two threads can race inside it and
+c2py23 will not detect it.  The alias check is per call, not per thread: two
+threads writing the same array in two calls is a data race that c2py23 does
+not catch.
+
+The wrapper's own counters are not all thread-safe either.  Timing counters
+and the variant selectors are updated without atomics, so the reported timing
+numbers are unreliable when several threads call a timing-enabled function at
+once (ThreadSanitizer will flag them).  They cannot crash the process, but do
+not treat concurrent timing output as exact.  User C code with thread-safety
+bugs -- not the wrapper state -- is where a free-threaded crash comes from.
 
 ### Common Unsafe Patterns in C
 

@@ -262,6 +262,8 @@ class FuncDef(
         params=None,
         acquire=None,
         check_aliasing=True,
+        check_format=True,
+        check_alignment=True,
     ):
         self = super(FuncDef, cls).__new__(
             cls,
@@ -277,6 +279,8 @@ class FuncDef(
         self.params = params or {}
         self.acquire = acquire
         self.check_aliasing = check_aliasing
+        self.check_format = check_format
+        self.check_alignment = check_alignment
         return self
 
 
@@ -1082,6 +1086,46 @@ def _coerce_expr_value(val, context, path):
     raise ValueError("Expected string or number for %s value in %s, got %s" % (context, path, type(val).__name__))
 
 
+def _has_ptr_arith(expr):
+    """True if a .ptr attribute is an operand of +, -, * or / (or the divisor of %)
+    anywhere in expr."""
+    if isinstance(expr, BinOp):
+        if expr.op in ("+", "-", "*", "/"):
+            for side in (expr.left, expr.right):
+                if _is_ptr_expr(side):
+                    return True
+        elif expr.op == "%" and _is_ptr_expr(expr.right):
+            # <buf>.ptr % N is the one supported form (alignment test);
+            # .ptr as the divisor is meaningless.
+            return True
+        return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
+    if isinstance(expr, Compare):
+        return _has_ptr_arith(expr.left) or _has_ptr_arith(expr.right)
+    if isinstance(expr, UnaryOp):
+        if expr.op in ("+", "-") and _is_ptr_expr(expr.operand):
+            return True
+        return _has_ptr_arith(expr.operand)
+    return False
+
+
+def _reject_ptr_arith(name, checks, overloads, path):
+    """Raise ValueError if any map:/when:/checks: expr does arithmetic on .ptr."""
+    exprs = list(checks)
+    for ol in overloads:
+        exprs.append(ol.when_expr)
+        exprs.extend(ol.map_exprs.values())
+        for v in ol.variants or ():
+            exprs.append(v.when_expr)
+    for e in exprs:
+        if e is not None and _has_ptr_arith(e):
+            raise ValueError(
+                "Function '%s' in %s: arithmetic on a buffer .ptr (+, -, *, /, or .ptr as "
+                "the divisor of %%) is not supported.  Only '<buf>.ptr %% N' (alignment) "
+                "is.  Pointer offsets belong in the C function: pass the offset "
+                "as a separate argument." % (name, path)
+            )
+
+
 def _parse_func(raw, path):
     py_sig_str = _get_required(raw, "py_sig", path)
     name, py_params, ret_type = _parse_py_sig(py_sig_str, path)
@@ -1265,6 +1309,8 @@ def _parse_func(raw, path):
         doc = _check_ascii(doc, "doc", path)
     gil_release = bool(raw.get("gil_release", False))
     check_aliasing = bool(raw.get("check_aliasing", True))
+    check_format = bool(raw.get("check_format", True))
+    check_alignment = bool(raw.get("check_alignment", True))
 
     # Acquisition backend order. Maps to C2PY_PIN_* constants.
     # Default: [ndarray, buffer]
@@ -1323,6 +1369,8 @@ def _parse_func(raw, path):
             pdesc = str(params[pname]) if not isinstance(params[pname], _STRING_TYPES) else params[pname]
             params[pname] = _check_ascii(pdesc, "params.{}".format(pname), path)
 
+    _reject_ptr_arith(name, checks, overloads, path)
+
     return FuncDef(
         name,
         py_params,
@@ -1335,6 +1383,8 @@ def _parse_func(raw, path):
         params=params,
         acquire=acquire,
         check_aliasing=check_aliasing,
+        check_format=check_format,
+        check_alignment=check_alignment,
     )
 
 
@@ -1777,15 +1827,20 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
         elif attr == "fast_axis":
             return "_c2py_fast_axis_" + obj
         elif attr == "slow_dim":
-            return "{0}->shape[_c2py_slow_axis_{0}]".format(obj)
+            return "c2py_shape_at({0}, _c2py_slow_axis_{0})".format(obj)
         elif attr == "fast_dim":
-            return "{0}->shape[_c2py_fast_axis_{0}]".format(obj)
+            return "c2py_shape_at({0}, _c2py_fast_axis_{0})".format(obj)
         else:
             return obj + "->" + attr
 
     elif isinstance(expr, Subscript):
-        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
         idx = expr.index
+        if isinstance(expr.obj, Attr) and expr.obj.attr in ("shape", "strides"):
+            # Bounds-safe: shape[k] / strides[k] must never index past ndim.
+            base = _expr_to_c(expr.obj.obj, buf_params, scalar_params, current_ol)
+            helper = "c2py_shape_at" if expr.obj.attr == "shape" else "c2py_stride_at"
+            return "{}({}, {})".format(helper, base, idx)
+        obj = _expr_to_c(expr.obj, buf_params, scalar_params, current_ol)
         return "{}[{}]".format(obj, idx)
 
     elif isinstance(expr, IntLit):
@@ -1859,6 +1914,16 @@ def _expr_to_c(expr, buf_params, scalar_params, current_ol):
             return "({}) && ({})".format(left, right)
         elif expr.op == "or":
             return "({}) || ({})".format(left, right)
+        elif expr.op == "%" and _is_ptr_expr(expr.left):
+            # Alignment test: the address is taken modulo in uintptr_t, never
+            # through the signed long long helpers.  A literal divisor is
+            # emitted as is; any other divisor goes through c2py_ptr_mod,
+            # which cannot divide by zero.
+            if isinstance(expr.right, IntLit):
+                if expr.right.value <= 0:
+                    raise ValueError("'.ptr %% N' needs a positive literal N, got %d" % expr.right.value)
+                return "((uintptr_t){} % (uintptr_t){})".format(left, right)
+            return "c2py_ptr_mod({}, {})".format(left, right)
         elif expr.op in _LL_HELPERS:
             if _is_checked_arith(expr, scalar_params):
                 return "{0}({1}, {2}, &_c2py_ovf)".format(_LL_HELPERS[expr.op], left, right)

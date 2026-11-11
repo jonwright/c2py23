@@ -247,10 +247,10 @@ def test_timing():
     py_count0 = py0["call_count"]
     ov_count0 = ov0["call_count"]
 
-    arr = (ct.c_double * 5)(1.0, 2.0, 3.0, 4.0, 5.0)
+    arr = (ct.c_double * 100000)(*([1.0] * 100000))
     for i in range(10):
         r = timedmod.wsum(arr, 2.0)
-        assert abs(r - 30.0) < 0.001
+        assert abs(r - 200000.0) < 0.001
 
     py = read_perf(timedmod.wsum)
     ov = read_perf(timedmod.wsum, variant="weighted_sum")

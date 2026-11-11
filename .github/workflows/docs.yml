@@ -1,15 +1,16 @@
-name: Deploy Docs
+name: Docs
 
+# Build on every push so a broken docs build is caught on the PR branch.
+# Deploy to GitHub Pages only from main.
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  deploy:
+  docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 
@@ -35,4 +36,5 @@ jobs:
         run: mkdocs build --clean
 
       - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
         run: mkdocs gh-deploy --force

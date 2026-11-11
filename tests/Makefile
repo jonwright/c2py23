@@ -29,8 +29,9 @@ RUNTIME_HDRS := c2py23/runtime/c2py_runtime.h \
 C2PY_FLAGS   :=
 endif
 
-# Auto-detect MSVC from CC or env var
-ifneq ($(or $(MSVC),$(findstring cl,$(CC))),)
+# Auto-detect MSVC from CC or env var.  Match the compiler name exactly:
+# a substring test for "cl" also matches clang.
+ifneq ($(or $(MSVC),$(filter cl cl.exe clang-cl clang-cl.exe,$(notdir $(firstword $(CC))))),)
   EXT      ?= .pyd
   LIBS     ?=
 else
@@ -128,6 +129,10 @@ MODULES := \
 	tests/cases/simd_dispatch/simd_fillmod$(EXT) \
 	tests/cases/variants/varcmod$(EXT) \
 	tests/cases/widths/widthmod$(EXT) \
+	tests/cases/shapeguard/shapeguardmod$(EXT) \
+	tests/cases/ptralign/ptralignmod$(EXT) \
+	tests/cases/autoformat/autoformatmod$(EXT) \
+	tests/cases/fakendarray/fakendmod$(EXT) \
 	examples/kissfft_wrap/kissfftmod$(EXT) \
 	examples/lz4_wrap/lz4mod$(EXT) \
 	$(BENCH_TARGETS)

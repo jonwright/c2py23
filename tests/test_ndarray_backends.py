@@ -5,7 +5,7 @@ types and that non-numpy types correctly fall through to buffer protocol.
 Requires numpy (skipped gracefully via importorskip when absent)."""
 
 from __future__ import print_function
-import sys, os, array, ctypes
+import sys, os, array, ctypes, threading
 
 import pytest
 
@@ -533,6 +533,246 @@ class TestComplexRejection:
             c2py_vnorm_buffer.vnorm(rec, make_mods())
 
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_CASES = os.path.join(_HERE, "cases")
+
+
+def _run_script(script, *args):
+    """Run script in a fresh interpreter (the ndarray layout probe runs
+    once per process); return (exit code, output)."""
+    import subprocess
+
+    p = subprocess.Popen([sys.executable, "-c", script] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    # A deadlocked child must fail the test, not hang the run.  A Timer
+    # rather than communicate(timeout=...), which Python 2.7 lacks.
+    killer = threading.Timer(120.0, p.kill)
+    killer.start()
+    try:
+        out = p.communicate()[0].decode("ascii", "replace")
+    finally:
+        killer.cancel()
+    return p.returncode, out
+
+
+class TestNdarrayHardening:
+    """Finding A6: the fast path copies shape and strides into the pin
+    (bounded by C2PY_MAX_NDIM) instead of pointing into the array.
+    Finding A7: the first probe checks the struct reading against the
+    PEP 3118 answer and turns the fast path off if they disagree."""
+
+    def test_many_dims(self):
+        """More dimensions than C2PY_MAX_NDIM (32): the fast path declines
+        and PEP 3118 serves the call, or a clean exception -- never a write
+        past the pin's 32-entry shape copy.  As the first array (probe) and
+        after the probe.  numpy 2 allows 64 dimensions, numpy < 2 only 32:
+        there 33 and 64 cannot exist and 32 is the largest case."""
+        script = r"""
+from __future__ import print_function
+import sys
+sys.path.insert(0, sys.argv[1])
+sys.path.insert(0, sys.argv[2])
+import numpy as np
+import arraysum, fakendmod
+
+def big(nd, dtype):
+    return np.ones((1,) * nd, dtype=dtype)
+
+ndims = []
+for nd in (64, 33):
+    try:
+        big(nd, "f8")
+        ndims.append(nd)
+    except ValueError:
+        assert not np.__version__.startswith(("2.", "3.")), np.__version__
+ndims.append(32)
+
+for nd in ndims + [1] + ndims:      # first use probes, then fast path is live
+    one, out = np.ones(1), np.zeros(1)
+    assert arraysum.array_sum(big(nd, "f8"), one, out) == 1, nd
+    assert out[0] == 2.0, (nd, out)
+    a8 = big(nd, "u1")
+    if nd == 1:
+        assert fakendmod.bytesum_nd(a8) == 1
+        continue
+    try:
+        fakendmod.bytesum(a8)
+        raise AssertionError("ndim check passed for %d dims" % nd)
+    except ValueError:
+        pass
+    try:
+        print(nd, "bytesum_nd", fakendmod.bytesum_nd(a8))
+    except (TypeError, ValueError) as e:
+        print(nd, "bytesum_nd", type(e).__name__, e)
+print("DONE")
+"""
+        rc, out = _run_script(script, os.path.join(_CASES, "arraysum"), os.path.join(_CASES, "fakendarray"))
+        assert rc == 0 and "DONE" in out, out
+
+    def test_reshape_while_reading(self):
+        """Reader threads call a wrapped function while another thread
+        reshapes the same array in place among (4096,), (2, 2048) and
+        (2, 2, 2, 512).  The data never moves, so every call that passes
+        its checks must return exactly the input; calls that see a torn
+        shape may raise ValueError.  No crash (subprocess exit code).
+
+        In-place a.shape = ... is deprecated in numpy 2.5 (the warning is
+        silenced here); if a numpy refuses it, a.resize(shape,
+        refcheck=False) -- same size, so the data stays put -- does the
+        same in-place reshape."""
+        script = r"""
+from __future__ import print_function
+import sys, threading, warnings
+sys.path.insert(0, sys.argv[1])
+import numpy as np
+import arraysum
+
+warnings.simplefilter("ignore", DeprecationWarning)
+N = 4096
+SHAPES = [(N,), (2, N // 2), (2, 2, 2, N // 8)]
+want = np.arange(float(N))
+a = want.copy()
+
+def set_shape(arr, s):
+    arr.shape = s
+
+try:
+    set_shape(np.zeros(N), SHAPES[1])
+except Exception as e:   # a numpy that no longer allows it
+    print("shape assignment refused (%s); using resize" % e)
+    def set_shape(arr, s):
+        arr.resize(s, refcheck=False)
+
+zero, out = np.zeros(N), np.zeros(N)
+assert arraysum.array_sum(a, zero, out) == N      # probe before the race
+stop = threading.Event()
+bad, ok, rejected = [], [0], [0]
+
+def reader():
+    zero, out = np.zeros(N), np.zeros(N)
+    while not stop.is_set():
+        out[:] = -1.0
+        try:
+            r = arraysum.array_sum(a, zero, out)
+        except ValueError:
+            rejected[0] += 1
+            continue
+        if r != N or not np.array_equal(out, want):
+            bad.append(r)
+        ok[0] += 1
+
+def writer():
+    k = 0
+    while not stop.is_set():
+        set_shape(a, SHAPES[k % 3])
+        k += 1
+
+threads = [threading.Thread(target=reader) for _ in range(4)]
+threads.append(threading.Thread(target=writer))
+for t in threads:
+    t.start()
+stop.wait(2.0)
+stop.set()
+for t in threads:
+    t.join()
+print("ok", ok[0], "rejected", rejected[0], "bad", len(bad))
+sys.exit(1 if bad or not ok[0] else 0)
+"""
+        rc, out = _run_script(script, os.path.join(_CASES, "arraysum"))
+        assert rc == 0, out
+
+    _FAKE = r"""
+from __future__ import print_function
+import sys, ctypes
+sys.path.insert(0, sys.argv[1])
+import numpy as np
+import fakendmod as m
+
+variant = sys.argv[2]
+P = ctypes.sizeof(ctypes.c_void_p)
+HDR = object.__basicsize__                 # C2PY.pyobject_size
+SVAL = sys.getsizeof(b"") - 1              # offsetof(PyBytesObject, ob_sval)
+DATA = (SVAL + P - 1) // P * P             # data pointer slot found by the scan
+ND, DIMS, STRIDES, DESCR, FLAGS = P, 2 * P, 3 * P, 5 * P, 6 * P
+LEN = DATA - SVAL + FLAGS + 4 + 16         # content bytes
+
+class Fake(bytes):
+    # bytes keeps its content inside the object, so the bytes the probe
+    # reads as PyArrayObject fields are ours; PEP 3118 sees a 1-D 'B'
+    # buffer of LEN bytes.
+    __slots__ = ()
+Fake.__name__ = "numpy.ndarray"
+
+nd, dims, strides, tchar = 1, [LEN], [1], b"B"
+if variant == "nd":
+    nd, dims, strides = 2, [LEN, 1], [1, 1]
+elif variant == "itemsize":
+    tchar = b"d"
+elif variant == "type":
+    tchar = b"b"
+elif variant == "shape":
+    dims = [LEN - 8]
+elif variant == "strides":
+    strides = [2]
+c_dims = (ctypes.c_ssize_t * nd)(*dims)
+c_strides = (ctypes.c_ssize_t * nd)(*strides)
+descr = ctypes.create_string_buffer(64)
+descr[HDR + P + 1] = tchar                 # PyArray_Descr.type
+descr[HDR + P + 2] = b"="                  # PyArray_Descr.byteorder
+
+def make():
+    f = Fake(bytes(bytearray(range(1, LEN + 1))))
+    base = id(f)
+    assert ctypes.string_at(base + SVAL, 4) == bytes(bytearray([1, 2, 3, 4]))
+    def put(off, ctype, value):
+        ctypes.memmove(base + off, ctypes.byref(ctype(value)), ctypes.sizeof(ctype))
+    put(DATA, ctypes.c_void_p, base + SVAL)
+    put(DATA + ND, ctypes.c_int, nd)
+    put(DATA + DIMS, ctypes.c_void_p, ctypes.addressof(c_dims))
+    put(DATA + STRIDES, ctypes.c_void_p, ctypes.addressof(c_strides))
+    put(DATA + DESCR, ctypes.c_void_p, ctypes.addressof(descr))
+    put(DATA + FLAGS, ctypes.c_int, 0x0400)
+    return f
+
+def expect_type_error(fn, x):
+    try:
+        r = fn(x)
+    except TypeError as e:
+        assert "all backends exhausted" in str(e), e
+        return
+    raise AssertionError("fast path used: %s -> %r" % (fn.__name__, r))
+
+real = np.arange(200, dtype=np.uint8)
+if variant == "control":
+    assert m.bytesum_nd(real) == int(real.sum())     # fast path on
+    f = make()
+    assert m.bytesum(f) == sum(bytearray(f))
+    expect_type_error(m.bytesum_nd, f)                # not the ndarray type
+else:
+    f = make()
+    want = sum(bytearray(f))
+    assert m.bytesum(f) == want                       # probe: PEP 3118 answer
+    assert m.bytesum(f) == want                       # still PEP 3118
+    expect_type_error(m.bytesum_nd, f)                # fast path off ...
+    expect_type_error(m.bytesum_nd, make())
+    assert m.bytesum(real) == int(real.sum())         # real arrays still work
+    expect_type_error(m.bytesum_nd, real)             # ... for the process
+print("DONE")
+"""
+
+    @pytest.mark.parametrize("variant", ["control", "nd", "itemsize", "type", "shape", "strides"])
+    def test_fake_ndarray_type(self, variant):
+        """A bytes subclass renamed "numpy.ndarray": the probe finds its
+        data pointer at a numpy-like offset and plausible numpy fields
+        (crafted in the bytes content), but one of them disagrees with
+        the PEP 3118 answer.  The first call is served by PEP 3118, the
+        fast path then stays off for the process (an ndarray-only function
+        declines every array), and real ndarrays still work through PEP
+        3118.  "control": a real ndarray probes first and the fake is
+        never taken for one."""
+        rc, out = _run_script(self._FAKE, os.path.join(_CASES, "fakendarray"), variant)
+        assert rc == 0 and "DONE" in out, out
+
+
 def test_dlpack_abi():
     """Verify DLPack struct layouts match expectations (compile-time)."""
     import subprocess
@@ -561,53 +801,55 @@ def test_dlpack_abi():
 def test_numpy_abi():
     """Verify NumPy ndarray struct layouts match the runtime's offsets.
 
-    Built from sysconfig (python-config is often absent, e.g. in CI), so
-    it runs wherever there is a C compiler and the Python headers --
-    including free-threaded builds, whose larger object header moves the
-    descriptor and tp_name offsets."""
+    The probe is built as a shared object with no libpython link (like a
+    c2py23 module) and run inside this interpreter via ctypes.PyDLL, in
+    a child process so its stdout is captured.  It needs only a C
+    compiler and the Python and numpy headers -- not python-config (often
+    absent, e.g. in CI) and not a libpython (absent for static
+    interpreters such as conda-forge 3.15 on ppc64le, whose sysconfig
+    still names one).  Covers free-threaded builds, whose larger object
+    header moves the descriptor and tp_name offsets."""
     import subprocess
     import sysconfig
     import tempfile
     import shutil
 
     if sys.platform == "win32":
-        pytest.skip("check_numpy_abi.c embeds Python via gcc; Windows CI has MSVC only")
+        pytest.skip("check_numpy_abi.c is built with gcc; Windows CI has MSVC only")
     src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_numpy_abi.c")
     # INCLUDEPY: distro-patched interpreters (Debian/Ubuntu 2.7) report a
     # wrong get_paths()["include"] (/usr/local/...); INCLUDEPY is where
     # Python.h really is.
     include = sysconfig.get_config_var("INCLUDEPY") or sysconfig.get_paths()["include"]
-    libdir = sysconfig.get_config_var("LIBDIR") or ""
-    ldlib = sysconfig.get_config_var("LDLIBRARY") or ""
-    if sysconfig.get_config_var("PYTHONFRAMEWORK") and ".framework" in ldlib:
-        # macOS framework build: LDLIBRARY is Python.framework/Versions/X.Y/Python.
-        # Link that file itself: "-framework Python" takes Versions/Current,
-        # which is some other Python when several are installed (CI runners).
-        link = [os.path.join(sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX"), ldlib)]
-    else:
-        # libpython3.14t.so / libpython3.12.a / libpython3.12.dylib -> -lpython3.14t
-        libname = ldlib[3:].split(".so")[0].split(".a")[0].split(".dylib")[0]
-        link = ["-L" + libdir, "-Wl,-rpath," + libdir, "-l" + libname]
-    extra = (sysconfig.get_config_var("LIBS") or "").split() + (sysconfig.get_config_var("SYSLIBS") or "").split()
+    # Python symbols resolve against the loading interpreter at dlopen.
+    undefined = ["-undefined", "dynamic_lookup"] if sys.platform == "darwin" else []
     tmp = tempfile.mkdtemp()
     try:
-        exe = os.path.join(tmp, "check_numpy_abi")
-        cmd = [os.environ.get("CC", "gcc"), src, "-I" + include, "-I" + np.get_include(), "-o", exe] + link + extra
+        lib = os.path.join(tmp, "check_numpy_abi.so")
+        cmd = [
+            os.environ.get("CC", "gcc"),
+            "-shared",
+            "-fPIC",
+            "-DC2PY_ABI_PROBE_SHARED",
+            src,
+            "-I" + include,
+            "-I" + np.get_include(),
+            "-o",
+            lib,
+        ] + undefined
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = p.communicate()[0].decode("ascii", "replace")
         assert p.returncode == 0, "cannot compile check_numpy_abi.c:\n%s\n%s" % (" ".join(cmd), out)
-        # The embedded interpreter must be this one: same prefix (an
-        # interpreter outside the default prefix cannot find its stdlib
-        # otherwise) and same path (numpy may be in the user site).
+        # Same interpreter, same path (numpy may be in the user site or
+        # on a path added at runtime).
         env = dict(os.environ)
-        env["PYTHONHOME"] = os.pathsep.join([sys.prefix, sys.exec_prefix])
         env["PYTHONPATH"] = os.pathsep.join(q for q in sys.path if q)
-        p = subprocess.Popen([exe], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        code = "import ctypes, sys; sys.stdout.flush(); sys.exit(ctypes.PyDLL(sys.argv[1]).c2py_check_numpy_abi())"
+        p = subprocess.Popen([sys.executable, "-c", code, lib], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         out = p.communicate()[0].decode("ascii", "replace")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    # The probe must have embedded this very interpreter (not another
-    # libpython found by the linker); say so plainly if not.
+    # Sanity: the probe ran in this very interpreter.
     want = "PYVER " + sys.version.split()[0]
     assert want in out, "probe embedded a different Python (want %r):\n%s" % (want, out)
     assert "NUMPY_ABI_OK 1" in out, "NumPy ABI check failed:\n" + out

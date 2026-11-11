@@ -87,6 +87,29 @@ cl /LD /I c2py23/runtime \
     /Fe:mymod.pyd
 ```
 
+### dlsym mode needs the interpreter's symbols in the global scope
+
+`dlopen(NULL)` + `dlsym()` only finds CPython's functions when the interpreter
+makes them visible in the global symbol scope.  A host that embeds Python by
+`dlopen("libpython", RTLD_LOCAL)` hides those symbols, so the module fails to
+import at runtime (the reason is printed to stderr, or set as `ImportError`).
+Such hosts are not supported in dlsym mode; build with `--pythonh`
+([pythonh.md](pythonh.md)) instead.
+
+### Runtime symbols are not exported
+
+The runtime globals and functions (`C2PY`, the `c2py_amd64_*`, `c2py_arm64_*`
+and `c2py_ppc64_*` CPU flags, `c2py_runtime_init`, and the tick/`_c2py_*`
+symbols) are compiled with hidden visibility, so they are NOT listed in the
+built module's dynamic symbol table.  Python code cannot read them with
+`ctypes.in_dll`.  Your own C source, linked into the same `.so`, can still
+refer to the CPU flags directly.  If your Python-side tests need a flag,
+expose it from your C code with an accessor you export, e.g.:
+
+```c
+int mymod_dispatch_state(void) { return c2py_amd64_avx2; }
+```
+
 ## pythonh mode -- setuptools
 
 ```bash

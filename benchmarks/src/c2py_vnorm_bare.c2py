@@ -1,4 +1,7 @@
-# Python dict format equivalent of c2py_vnorm_bare.c2py
+# "Bare" wrapper: no user checks and every derived check opted out, to
+# measure interpreter call overhead plus buffer acquisition.  The only checks
+# left are the shape/contiguity ones implied by the vec[][3] array notation.
+# Do not copy this into real code -- the caller is trusted to pass float64.
 {
     "module": "c2py_vnorm_bare",
     "source": ["tiny_kernel.c"],
@@ -7,6 +10,9 @@
     "functions": [
         {
             "py_sig": "vnorm(vec: buffer, mods: buffer) -> void",
+            "check_aliasing": False,
+            "check_format": False,
+            "check_alignment": False,
             "c_overloads": [
                 {
                     "sig": "vnorm(const double vec[][3], double mods[], ptrdiff_t n)",

@@ -1,6 +1,6 @@
 """CPU feature flags: agree with /proc/cpuinfo and respect implications.
 
-Uses the simd_fillmod test module, which exports the c2py_amd64_* globals.
+Uses the simd_fillmod test module, whose C code exposes the (hidden) c2py_amd64_* globals.
 Linux x86_64 only; skipped elsewhere.
 """
 
@@ -53,7 +53,11 @@ def _read_flags():
     import simd_fillmod
 
     lib = ctypes.CDLL(simd_fillmod.__file__)
-    return dict((n, ctypes.c_int.in_dll(lib, "c2py_amd64_" + n).value) for n in FLAGS)
+    lib.simd_fill_amd64_flag.argtypes = [ctypes.c_char_p]
+    lib.simd_fill_amd64_flag.restype = ctypes.c_int
+    # The c2py_amd64_* globals are hidden; read them through the module's
+    # own exported C function.
+    return dict((n, lib.simd_fill_amd64_flag(n.encode("ascii"))) for n in FLAGS)
 
 
 def _cpuinfo_vendor():

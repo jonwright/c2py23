@@ -8,6 +8,8 @@ output scalars with NULL checks and PyTuple_SetItem.
 
 from __future__ import print_function
 
+import sys
+
 from c2py23 import __version__
 from c2py23.parser import (
     Var,
@@ -30,6 +32,7 @@ from c2py23.parser import (
     expr_has_checked_arith,
     _extract_fmt_from_expr,
     _extract_itemsize_from_expr,
+    parse_expr,
 )
 from c2py23.invariant_checker import verify_c_invariants
 
@@ -191,6 +194,291 @@ def _when_ovf_lines(ol, scalar_params, func_name):
     return _ovf_raise_lines(func_name, "when: " + _expr_to_source(ol.when_expr))
 
 
+def _align_lines(func, cparams, map_exprs, buf_params):
+    """Alignment checks for one C call: every pointer parameter mapped to
+    exactly <buf>.ptr needs the buffer aligned to sizeof its C pointee type.
+    The requirement comes from the C parameter, not from the buffer's
+    itemsize: a uint64 buffer may sit at any address when it is passed as
+    char * or void *, and bytes reinterpreted as double * (check_format:
+    false) still have to be 8-aligned.  void * needs nothing; a 1-byte
+    type costs nothing (the helper returns at once).  Nothing is emitted
+    when the function sets check_alignment: false."""
+    if func is None or not getattr(func, "check_alignment", True):
+        return []
+    names = set(p.name for p in buf_params)
+    lines = []
+    seen = set()
+    for cp in cparams:
+        if not cp.is_pointer or cp.base_type == "void":
+            continue
+        e = map_exprs.get(cp.name)
+        if not (isinstance(e, Attr) and e.attr == "ptr" and isinstance(e.obj, Var) and e.obj.name in names):
+            continue
+        key = (e.obj.name, cp.base_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        where = '"' + _escape_c_str("{0}: arg '{1}'".format(func.name, e.obj.name)) + '"'
+        lines.append(
+            'if (c2py_check_alignment(info_{0}, sizeof({1}), "{1}", {2}) < 0)'.format(e.obj.name, cp.base_type, where)
+        )
+        lines.append("    return NULL;")
+    return lines
+
+
+def _implied_ndim_needs(ol, buf_params):
+    """Sorted (buffer name, required ndim) pairs implied by shape[k]/strides[k]
+    in the overload's map: expressions (k + 1 dimensions needed)."""
+    names = set(p.name for p in buf_params)
+    need = {}
+
+    def walk(e):
+        if isinstance(e, Subscript):
+            o = e.obj
+            if (
+                isinstance(o, Attr)
+                and o.attr in ("shape", "strides")
+                and isinstance(o.obj, Var)
+                and o.obj.name in names
+                and e.index >= 0
+            ):
+                need[o.obj.name] = max(need.get(o.obj.name, 0), e.index + 1)
+            walk(e.obj)
+        elif isinstance(e, Attr):
+            walk(e.obj)
+        elif isinstance(e, (Compare, BinOp)):
+            walk(e.left)
+            walk(e.right)
+        elif isinstance(e, UnaryOp):
+            walk(e.operand)
+
+    for e in ol.map_exprs.values():
+        walk(e)
+    return sorted(need.items())
+
+
+def _ol_cond(ol, buf_params, scalar_params, func=None):
+    """Dispatch condition of an overload, or None if it always matches.
+
+    An overload whose map: reads shape[k]/strides[k] of a buffer is only
+    eligible when that buffer has more than k dimensions; the implied
+    ndim terms come first so the user's when: never sees a short buffer.
+    The element-type terms implied by the C pointee types follow (see
+    _implied_format_checks), then the user's when:.
+    """
+    terms = ["info_{0}->ndim >= {1}".format(n, k) for n, k in _implied_ndim_needs(ol, buf_params)]
+    if func is not None:
+        for src in _ol_format_terms(func, ol, buf_params):
+            terms.append("(" + _expr_to_c(parse_expr(src), buf_params, scalar_params, ol) + ")")
+    if ol.when_expr is not None:
+        when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
+        when_c = _when_cond(ol, when_c, scalar_params)
+        if terms:
+            when_c = "(" + when_c + ")"
+        terms.append(when_c)
+    if not terms:
+        return None
+    return " && ".join(terms)
+
+
+def _emit_ndim_fallback(b, func_name, overloads, buf_params, func=None):
+    """ValueError for a call no overload accepted because a buffer had too
+    few dimensions for the shape[k]/strides[k] its map: reads, or the wrong
+    element type for the C pointer it is passed as."""
+    needs = {}
+    for ol in overloads:
+        for n, k in _implied_ndim_needs(ol, buf_params):
+            needs[n] = min(needs.get(n, k), k)
+    parts = ["'{0}' needs ndim >= {1}".format(n, needs[n]) for n in sorted(needs)]
+    fmts = {}
+    if func is not None and not _func_level_format_checks(func, buf_params):
+        for ol in overloads:
+            for n, src in _implied_format_checks(func, ol, buf_params):
+                fmts.setdefault(n, [])
+                if src not in fmts[n]:
+                    fmts[n].append(src)
+    for n in sorted(fmts):
+        parts.append("'{0}' needs {1}".format(n, " or ".join("(" + src + ")" for src in fmts[n])))
+    parts = ", ".join(parts)
+    # Report what each named buffer actually has, so the caller can see
+    # which requirement failed.
+    got_fmt = []
+    got_args = []
+    for n in sorted(set(needs) | set(fmts)):
+        got_fmt.append("'{0}' format='%s' itemsize=\" C2PY_LLD \" ndim=%d".format(n))
+        got_args.append('info_{0}->format ? info_{0}->format : "(null)"'.format(n))
+        got_args.append("(long long)info_{0}->itemsize".format(n))
+        got_args.append("(int)info_{0}->ndim".format(n))
+    b.emit("        char _c2py_err[512];")
+    b.emit(
+        '        snprintf(_c2py_err, sizeof(_c2py_err), "{0}: no overload matches: {1} (got {2})", {3});'.format(
+            _escape_c_str(func_name).replace("%", "%%"),
+            _escape_c_str(parts).replace("%", "%%"),
+            ", ".join(got_fmt),
+            ", ".join(got_args),
+        )
+    )
+    b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
+    b.emit("        return NULL;")
+
+
+def _has_implied_ndim(overloads, buf_params, func=None):
+    """True if some overload carries an implied ndim or element-type term."""
+    if any(_implied_ndim_needs(ol, buf_params) for ol in overloads):
+        return True
+    return func is not None and any(_ol_format_terms(func, ol, buf_params) for ol in overloads)
+
+
+# Element check derived from the C pointee type of a parameter that is mapped
+# to exactly "<buf>.ptr" (B1).  Keys are the base_type spellings parser.py
+# accepts (see _C_TYPES_INT); the values are ordinary check expressions, so
+# they go through the same format matcher (_expr_to_c, c2py_format_type) as
+# user-written ones.  'l'/'L' are platform-sized: _expr_to_c already adds
+# itemsize == sizeof(long), and the itemsize term here picks the row whose
+# width matches (so 'l' is int32 where sizeof(long) == 4, int64 where it is
+# 8).  The itemsize term is ANDed outside the 'or' so that gcc does not see
+# itemsize == sizeof(long) && itemsize == 4 as a constant contradiction.
+# void gets no check; other pointee types (intptr_t, ptrdiff_t, size_t,
+# _Bool) get none either and a generation-time warning.
+# Ordered: _pointee_types_for() quotes these names in error messages, and a
+# dict has no defined order before Python 3.7 (generated C must not depend
+# on the interpreter that ran the generator).
+_POINTEE_FORMAT_TABLE = (
+    ("double", "{0}.format == 'd'"),
+    ("float", "{0}.format == 'f'"),
+    ("int8_t", "{0}.format == 'b'"),
+    ("uint8_t", "{0}.format == 'B'"),
+    ("char", "{0}.itemsize == 1"),
+    ("int16_t", "{0}.format == 'h'"),
+    ("uint16_t", "{0}.format == 'H'"),
+    ("int32_t", "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4"),
+    ("int", "({0}.format == 'i' or {0}.format == 'l') and {0}.itemsize == 4"),
+    ("uint32_t", "({0}.format == 'I' or {0}.format == 'L') and {0}.itemsize == 4"),
+    ("int64_t", "({0}.format == 'q' or {0}.format == 'l') and {0}.itemsize == 8"),
+    ("uint64_t", "({0}.format == 'Q' or {0}.format == 'L') and {0}.itemsize == 8"),
+)
+_POINTEE_FORMAT_CHECK = dict(_POINTEE_FORMAT_TABLE)
+
+
+def _pointee_types_for(buf_name, src):
+    """C pointee types whose derived check for buf_name is src, in table
+    order (int32_t and int share one check)."""
+    return [
+        t for t, tpl in _POINTEE_FORMAT_TABLE if _expr_to_source(parse_expr(tpl.format(buf_name))) == src
+    ]
+
+
+def _mentions_elem_type(expr, buf_name):
+    """True if expr reads <buf_name>.format or <buf_name>.itemsize."""
+    if expr is None:
+        return False
+    if isinstance(expr, Attr):
+        if expr.attr in ("format", "itemsize") and isinstance(expr.obj, Var) and expr.obj.name == buf_name:
+            return True
+        return _mentions_elem_type(expr.obj, buf_name)
+    if isinstance(expr, Subscript):
+        return _mentions_elem_type(expr.obj, buf_name)
+    if isinstance(expr, (Compare, BinOp)):
+        return _mentions_elem_type(expr.left, buf_name) or _mentions_elem_type(expr.right, buf_name)
+    if isinstance(expr, UnaryOp):
+        return _mentions_elem_type(expr.operand, buf_name)
+    return False
+
+
+def _pointee_checks(cparams, map_exprs, buf_name, label, warnings):
+    """Sorted check sources implied by the pointer params in cparams that are
+    mapped to exactly <buf_name>.ptr; unknown pointee types are reported in
+    `warnings` (when it is a list)."""
+    srcs = set()
+    for cp in cparams:
+        if not cp.is_pointer:
+            continue
+        e = map_exprs.get(cp.name)
+        if not (isinstance(e, Attr) and e.attr == "ptr" and isinstance(e.obj, Var) and e.obj.name == buf_name):
+            continue
+        if cp.base_type == "void":
+            continue
+        src = _POINTEE_FORMAT_CHECK.get(cp.base_type)
+        if src is None:
+            if warnings is not None:
+                warnings.append(
+                    "{0}: parameter '{1}' ({2} *) has no derived element-type check for buffer '{3}'".format(
+                        label, cp.name, cp.base_type, buf_name
+                    )
+                )
+            continue
+        srcs.add(src.format(buf_name))
+    return sorted(srcs)
+
+
+def _implied_format_checks(func, ol, buf_params, warnings=None):
+    """(buffer name, check source) pairs implied for overload ol by the C
+    pointee types of params mapped to exactly <buf>.ptr.  Nothing is implied
+    for a buffer whose format or itemsize the function's checks: or ol's
+    when: (group or variant level) already read, or when the function sets
+    check_format: false.  A grouped overload gets a term only if every
+    variant implies the same one."""
+    if not getattr(func, "check_format", True):
+        return []
+    whens = [ol.when_expr]
+    if ol.variants:
+        whens.extend(v.when_expr for v in ol.variants)
+    out = []
+    for p in buf_params:
+        b = p.name
+        if any(_mentions_elem_type(c, b) for c in func.checks) or any(_mentions_elem_type(w, b) for w in whens):
+            continue
+        if ol.variants:
+            per_variant = [
+                _pointee_checks(v.params, ol.map_exprs, b, "{0}/{1}".format(func.name, v.name), warnings)
+                for v in ol.variants
+            ]
+            implied = per_variant[0]
+            if any(s != implied for s in per_variant[1:]):
+                if warnings is not None:
+                    warnings.append(
+                        "{0}: variants of group '{1}' take different element types from buffer '{2}'; "
+                        "no derived element-type check (constrain {2}.format in when:)".format(
+                            func.name, ol.group_name or "?", b
+                        )
+                    )
+                continue
+        else:
+            implied = _pointee_checks(ol.params, ol.map_exprs, b, func.name, warnings)
+        for src in implied:
+            out.append((b, src))
+    return out
+
+
+def _func_level_format_checks(func, buf_params):
+    """Derived checks emitted as function-level checks: only for a single
+    flat unconditional overload (normal 'check failed' message).  With
+    several overloads they are ANDed into each overload's condition."""
+    ols = func.overloads
+    if len(ols) == 1 and ols[0].variants is None and ols[0].when_expr is None:
+        return [(b, parse_expr(src)) for b, src in _implied_format_checks(func, ols[0], buf_params)]
+    return []
+
+
+def _ol_format_terms(func, ol, buf_params):
+    if _func_level_format_checks(func, buf_params):
+        return []
+    return [src for _b, src in _implied_format_checks(func, ol, buf_params)]
+
+
+def _warn_unchecked_pointees(func, buf_params):
+    """Print (once per function) the pointer params that get no derived
+    element-type check because their pointee type is not in the table."""
+    warnings = []
+    for ol in func.overloads:
+        _implied_format_checks(func, ol, buf_params, warnings)
+    seen = set()
+    for w in warnings:
+        if w not in seen:
+            seen.add(w)
+            sys.stderr.write("c2py23: warning: " + w + "\n")
+
+
 class CBuilder:
     """Stateful builder for generating C wrapper code.
 
@@ -237,9 +525,9 @@ class CBuilder:
         self.emit("    c2py_buf_pin pin_{0};".format(base))
         self.emit("    c2py_ptr_info info_{0};".format(base))
 
-    def emit_buf_memset(self, buf_var):
+    def emit_buf_pin_init(self, buf_var):
         base = buf_var.replace("info_", "", 1)
-        self.emit("    memset(&pin_{0}.buf, 0, C2PY.pybuffer_size);".format(base))
+        self.emit("    c2py_pin_init(&pin_{0});".format(base))
 
     def acquire_buffer(self, buf_var, py_var, flags, func_name):
         """Emits c2py_pin with correct failure path.
@@ -368,12 +656,13 @@ class CBuilder:
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(p.name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(p.name))
 
-    def emit_contiguity_checks(self, buf_params):
+    def emit_contiguity_checks(self, buf_params, func_name):
         """Emit contiguity validation for each buffer.
 
         Also emits _c2py_slow_axis_buf_{name} -- the index of the slowest
         varying axis (0 for C-contiguous, ndim-1 for F-contiguous).
         Set to -1 if the buffer is not C or F contiguous (rejected anyway).
+        Alignment is checked per overload, see _align_lines().
         """
         if not buf_params:
             return
@@ -384,9 +673,10 @@ class CBuilder:
             self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
             # info_<name> is already a c2py_ptr_info* inside the impl.
+            where = '"' + _escape_c_str("{0}: arg '{1}'".format(func_name, name)) + '"'
             self.emit(
                 "    if (c2py_check_contiguity(info_{0}, &_c2py_slow_axis_info_{0}, "
-                "&_c2py_fast_axis_info_{0}) < 0)".format(name)
+                "&_c2py_fast_axis_info_{0}, {1}) < 0)".format(name, where)
             )
             self.emit("        return NULL;")
             self.emit("")
@@ -530,6 +820,8 @@ def _emit_function(b, func, module_name, timing, has_gil_release):
     b.emit("/* " + "-" * 44 + " */")
     b.emit_blank()
 
+    _warn_unchecked_pointees(func, buf_params)
+
     has_groups = any(ol.variants for ol in func.overloads)
     if has_groups:
         _emit_static_dispatch(b, func, buf_params, scalar_params, timing)
@@ -665,6 +957,7 @@ def _emit_static_dispatch(b, func, buf_params, scalar_params, timing):
         for v in ol.variants:
             all_names.append(v.name)
     b.emit("    PyObject *tuple = PyTuple_New({0});".format(len(all_names)))
+    b.emit("    if (tuple == NULL) return NULL;")
     for idx, vname in enumerate(all_names):
         b.emit(
             '        PyTuple_SetItem(tuple, {0}, PyBytes_FromStringAndSize("{1}", {2}));'.format(idx, vname, len(vname))
@@ -716,12 +1009,14 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
         b.emit_blank()
 
     # Contiguity checks (inside impl so when: conditions can use them)
-    b.emit_contiguity_checks(buf_params)
+    b.emit_contiguity_checks(buf_params, name)
 
     # Checks
     for check in func.checks:
         b.emit("    /* check: {0} */".format(_expr_to_source(check)))
         _emit_check(b, check, buf_params, scalar_params, name)
+    for buf, check in _func_level_format_checks(func, buf_params):
+        _emit_derived_check(b, buf, check, buf_params, scalar_params, name)
 
     # Overload dispatch
     _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_release)
@@ -757,22 +1052,21 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
 
     has_groups = any(ol.variants for ol in overloads)
     if not has_groups:
-        _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise)
+        _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise, func)
         return
 
     group_index = 0
     for i, ol in enumerate(overloads):
         is_group = ol.variants is not None
+        cond = _ol_cond(ol, buf_params, scalar_params, func)
         if i == 0:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    if (" + cond + ") {")
             else:
                 b.emit("    if (1) {  /* group 0 (always) */")
         else:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    } else if (" + cond + ") {")
             else:
                 b.emit("    }} else {{  /* group {0} (always) */".format(i))
 
@@ -804,6 +1098,7 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
                     name,
                     gil,
                     indent="                ",
+                    pre_lines=_align_lines(func, v.params, ol.map_exprs, buf_params),
                 )
                 b.emit("            break;")
                 b.emit("        }")
@@ -821,12 +1116,16 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
                 name,
                 gil,
                 indent="        ",
-                pre_lines=_when_ovf_lines(ol, scalar_params, name),
+                pre_lines=_when_ovf_lines(ol, scalar_params, name)
+                + _align_lines(func, ol.params, ol.map_exprs, buf_params),
             )
 
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
+    elif _has_implied_ndim(overloads, buf_params, func):
+        b.emit("    } else {")
+        _emit_ndim_fallback(b, name, overloads, buf_params, func)
     b.emit("    }")
 
 
@@ -835,35 +1134,54 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
 # ---------------------------------------------------------------------------
 
 
-def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise):
-    if len(overloads) == 1 and overloads[0].when_expr is None:
+def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, gil, default_raise, func=None):
+    if len(overloads) == 1 and _ol_cond(overloads[0], buf_params, scalar_params, func) is None:
         b.emit("    /* overload 0 (always) */")
         b.emit("    {")
-        _emit_c_call(b, overloads[0], buf_params, scalar_params, timing, name, gil)
+        _emit_c_call(
+            b,
+            overloads[0],
+            buf_params,
+            scalar_params,
+            timing,
+            name,
+            gil,
+            pre_lines=_align_lines(func, overloads[0].params, overloads[0].map_exprs, buf_params),
+        )
         b.emit("    }")
         return
 
     for i, ol in enumerate(overloads):
+        cond = _ol_cond(ol, buf_params, scalar_params, func)
         if i == 0:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    if (" + cond + ") {")
             else:
                 b.emit("    if (1) {  /* overload 0 (always) */")
         else:
-            if ol.when_expr is not None:
-                when_c = _expr_to_c(ol.when_expr, buf_params, scalar_params, ol)
-                b.emit("    } else if (" + _when_cond(ol, when_c, scalar_params) + ") {")
+            if cond is not None:
+                b.emit("    } else if (" + cond + ") {")
             else:
                 b.emit("    }} else {{  /* overload {0} (always) */".format(i))
         b.emit("        /* {0} */".format(ol.sig_str))
         _emit_c_call(
-            b, ol, buf_params, scalar_params, timing, name, gil, pre_lines=_when_ovf_lines(ol, scalar_params, name)
+            b,
+            ol,
+            buf_params,
+            scalar_params,
+            timing,
+            name,
+            gil,
+            pre_lines=_when_ovf_lines(ol, scalar_params, name)
+            + _align_lines(func, ol.params, ol.map_exprs, buf_params),
         )
 
     if default_raise:
         b.emit("    } else {")
         _emit_default_raise_body(b, default_raise, buf_params)
+    elif _has_implied_ndim(overloads, buf_params, func):
+        b.emit("    } else {")
+        _emit_ndim_fallback(b, name, overloads, buf_params, func)
     b.emit("    }")
 
 
@@ -1191,13 +1509,25 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
             if any(ol.variants for ol in func.overloads):
                 resolve_calls.append("    _resolve_{}();".format(func.name))
 
+    if has_attrs:
+        # Takes ownership of val (SetAttrString does not steal) and
+        # reports a NULL val, i.e. a failed constructor, as failure.
+        b.emit("static int _c2py_set_attr(PyObject *module, const char *name,")
+        b.emit("                          PyObject *val) {")
+        b.emit("    if (val == NULL) return -1;")
+        b.emit("    c2py_set_module_attr(module, name, val);")
+        b.emit("    Py_DECREF(val);")
+        b.emit("    return PyErr_Occurred() ? -1 : 0;")
+        b.emit("}")
+        b.emit("")
     # PyInit (Python 3)
     b.emit("C2PY_EXPORT PyObject* PyInit_{}(void) {{".format(name))
     b.emit("    PyObject *module = NULL;")
     b.emit("    PyMethodDef *methods;")
     b.emit("")
     b.emit("    if (c2py_runtime_init() != 0) {")
-    b.emit("        return NULL;  /* Python will raise ImportError */")
+    b.emit('        c2py_runtime_init_failed("{}");'.format(name))
+    b.emit("        return NULL;  /* ImportError is set */")
     b.emit("    }")
     for rc in resolve_calls:
         b.emit(rc)
@@ -1227,7 +1557,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("    }")
     b.emit("")
     b.emit("    if (module != NULL) {")
-    _emit_constants(b, module_def)
+    _emit_constants(b, module_def, "{ Py_DECREF(module); return NULL; }")
     if has_free_threading:
         b.emit("        if (C2PY.Unstable_Module_SetGIL != NULL) {")
         b.emit("            C2PY.Unstable_Module_SetGIL(module, (void*)1);" "  /* Py_MOD_GIL_NOT_USED */")
@@ -1241,7 +1571,10 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit("C2PY_EXPORT void init{}(void) {{".format(name))
     b.emit("    PyObject *module;")
     b.emit("")
-    b.emit("    c2py_runtime_init();")
+    b.emit("    if (c2py_runtime_init() != 0) {")
+    b.emit('        c2py_runtime_init_failed("{}");'.format(name))
+    b.emit("        return;")
+    b.emit("    }")
     for rc in resolve_calls:
         b.emit(rc)
     # Match original: resolve_calls always emitted (even if empty, adds blank line)
@@ -1250,7 +1583,7 @@ def _emit_module_init(b, module_def, has_free_threading, has_gil_release):
     b.emit('    module = C2PY.InitModule_2_7("{}",'.format(name))
     b.emit("        C2PY.use_fastcall ? _methods_fastcall : _methods_varargs);")
     b.emit("    if (module != NULL) {")
-    _emit_constants(b, module_def)
+    _emit_constants(b, module_def, "return;")  # module is borrowed on 2.7
     b.emit("    }")
     b.emit("}")
 
@@ -1462,6 +1795,34 @@ def _emit_check(b, check, buf_params, scalar_params, name):
     b.emit("    }")
 
 
+def _emit_derived_check(b, buf, check, buf_params, scalar_params, name):
+    """Emit a check derived from a C pointee type (see _implied_format_checks).
+
+    Same shape as _emit_check, but the message always quotes the whole
+    derived condition and reports both the format and the itemsize."""
+    src = _expr_to_source(check)
+    ctypes = _pointee_types_for(buf, src)
+    if ctypes:
+        hint = "; the C parameter is {0} *: pass a buffer of that element type".format(" or ".join(ctypes))
+    else:
+        hint = "; pass a buffer of the C parameter's element type"
+    hint += ", or set check_format: False in the .c2py to reinterpret the memory"
+    b.emit("    /* derived check: {0} */".format(src))
+    b.emit("    if (!(" + _expr_to_c(check, buf_params, scalar_params, None) + ")) {")
+    b.emit("        char _c2py_err[512];")
+    b.emit('        const char *_fmt = info_{0}->format ? info_{0}->format : "(null)";'.format(buf))
+    b.emit(
+        "        snprintf(_c2py_err, sizeof(_c2py_err), "
+        "\"{0}: arg '{1}' check failed: {2} (got format='%s', itemsize=\" C2PY_LLD \"){3}\", "
+        "_fmt, (long long)info_{1}->itemsize);".format(
+            name, buf, _escape_c_str(src), _escape_c_str(hint).replace("%", "%%")
+        )
+    )
+    b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
+    b.emit("        return NULL;")
+    b.emit("    }")
+
+
 # ---- Check emission and diagnostics ----
 def _emit_default_raise_body(b, default_raise, buf_params=None):
     """Emit the body of a default raise block."""
@@ -1643,9 +2004,9 @@ def _emit_wrapper_body(b, func, buf_params, scalar_params, name, timing=False):
     """Emit the shared wrapper body: buffer init, acquire, checks, impl call, cleanup."""
     perf_name = "_perf_" + name
 
-    # Zero-initialize buffer pins (size varies by runtime: CPython 80/96, PyPy ~660)
+    # Reset buffer pins (zeroed Py_buffer, kind NONE) so cleanup is a no-op
     for p in buf_params:
-        b.emit_buf_memset("info_" + p.name)
+        b.emit_buf_pin_init("info_" + p.name)
     b.emit("")
 
     buf_formats = _collect_buf_formats(func)
@@ -1939,65 +2300,145 @@ def _derive_param_info(param_name, checks, overloads):
 
 
 # ---- Module support ----
-def _emit_constants(b, mod):
+def _emit_constants(b, mod, fail):
     """Emit PyObject_SetAttrString calls for module-level integer constants,
     timing perf struct pointers (deprecated raw attrs + new _c2py_ attrs),
-    and GIL release flags."""
+    and GIL release flags.  Each is set through _c2py_set_attr, which owns
+    the new object; fail is the statement run when one fails."""
     has_gil = any(f.gil_release for f in mod.functions)
     if not mod.constants and not mod.timing and not has_gil:
         return
     if mod.constants:
         for cname, cvalue in sorted(mod.constants.items()):
-            b.emit('        c2py_set_module_attr(module, "{}",'.format(_escape_c_str(cname)))
-            b.emit("            PyLong_FromLongLong({}));".format(_int_literal(cvalue)))
+            b.emit('        if (_c2py_set_attr(module, "{}",'.format(_escape_c_str(cname)))
+            b.emit("            PyLong_FromLongLong({})) != 0)".format(_int_literal(cvalue)))
+            b.emit("            " + fail)
     if mod.timing:
-        b.emit('        c2py_set_module_attr(module, "_c2py_cycle_counter_frequency",')
-        b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz));")
+        b.emit('        if (_c2py_set_attr(module, "_c2py_cycle_counter_frequency",')
+        b.emit("            PyLong_FromUnsignedLongLong(c2py_cycle_counter_frequency_hz)) != 0)")
+        b.emit("            " + fail)
+        handles = _perf_handles(mod)
+        n_static = len(handles)
+        active_funcs = _perf_active_funcs(mod)
         for func in mod.functions:
-            b.emit('        c2py_set_module_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
-            b.emit("            PyLong_FromVoidPtr(&_perf_{0}));".format(func.name))
+            b.emit('        if (_c2py_set_attr(module, "_c2py_perf_ptr_{0}",'.format(func.name))
+            b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles["_perf_" + func.name]))
+            b.emit("            " + fail)
             for ol in func.overloads:
                 if ol.variants:
-                    b.emit('        c2py_set_module_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
-                    b.emit("            PyLong_FromVoidPtr((void*)&_active_perf_{0}));".format(func.name))
+                    ai = active_funcs.index(func.name)
+                    b.emit('        if (_c2py_set_attr(module, "_c2py_active_ptr_{0}",'.format(func.name))
+                    b.emit("            PyLong_FromLong({0}L)) != 0)".format(n_static + ai))
+                    b.emit("            " + fail)
                     for v in ol.variants:
                         c_name = v.c_name if v.c_name is not None else v.sig_str.split("(")[0].strip().split()[-1]
                         perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                        b.emit(
-                            '        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name)
-                        )
-                        b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
+                        b.emit('        if (_c2py_set_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                        b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles[perf_name]))
+                        b.emit("            " + fail)
                 else:
                     c_name = ol.c_name if ol.c_name is not None else ol.sig_str.split("(")[0].strip().split()[-1]
                     perf_name = "_perf_{0}__{1}".format(func.name, c_name)
-                    b.emit('        c2py_set_module_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
-                    b.emit("            PyLong_FromVoidPtr(&{}));".format(perf_name))
+                    b.emit('        if (_c2py_set_attr(module, "_c2py_ol_ptr_{0}__{1}",'.format(func.name, c_name))
+                    b.emit("            PyLong_FromLong({0}L)) != 0)".format(handles[perf_name]))
+                    b.emit("            " + fail)
     if has_gil:
-        b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_enabled",')
-        b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled));")
+        b.emit('        if (_c2py_set_attr(module, "_c2py_gil_release_enabled",')
+        b.emit("            PyLong_FromVoidPtr(&_c2py_gil_release_enabled)) != 0)")
+        b.emit("            " + fail)
         for func in mod.functions:
             if func.gil_release:
-                b.emit('        c2py_set_module_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
-                b.emit("            PyLong_FromVoidPtr(&_gil_release_{0}));".format(func.name))
+                b.emit('        if (_c2py_set_attr(module, "_c2py_gil_release_{0}",'.format(func.name))
+                b.emit("            PyLong_FromVoidPtr(&_gil_release_{0})) != 0)".format(func.name))
+                b.emit("            " + fail)
+
+
+def _perf_counter_names(mod):
+    """Ordered, de-duplicated C names of every static c2py_perf_t in a
+    timing-enabled module (wrapper counter first, then its overloads)."""
+    names = []
+    for func in mod.functions:
+        names.append("_perf_{0}".format(func.name))
+        for ol in func.overloads:
+            for item in ol.variants if ol.variants else [ol]:
+                c_name = item.c_name if item.c_name is not None else item.sig_str.split("(")[0].strip().split()[-1]
+                names.append("_perf_{0}__{1}".format(func.name, c_name))
+    seen = set()
+    out = []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _perf_handles(mod):
+    """Map static perf counter C name -> index in _c2py_perf_table."""
+    return dict((n, i) for i, n in enumerate(_perf_counter_names(mod)))
+
+
+def _perf_active_funcs(mod):
+    """Names of functions that have variant groups (and so an
+    _active_perf_<f> pointer).  Their handles follow the static ones."""
+    return [f.name for f in mod.functions if any(ol.variants for ol in f.overloads)]
 
 
 # ---- Module support ----
-def _emit_perf_accessors(b):
+def _emit_perf_accessors(b, mod):
     """Emit Python-callable C functions: _c2py_perf_read, _c2py_perf_meta,
-    _c2py_perf_reset, _c2py_perf_get_enabled, _c2py_perf_set_enabled."""
+    _c2py_perf_reset, _c2py_perf_get_enabled, _c2py_perf_set_enabled.
+
+    Counters are addressed by a small integer handle (an index into a
+    static table), never by a raw address."""
     b.emit("/* ---- Perf accessor functions (no ctypes needed) ---- */")
+    b.emit("")
+    names = _perf_counter_names(mod)
+    active = _perf_active_funcs(mod)
+    b.emit("/* Handle table: handle i < N is a static counter. */")
+    b.emit("static c2py_perf_t * const _c2py_perf_table[] = {")
+    for n in names:
+        b.emit("    &{0},".format(n))
+    b.emit("    NULL")
+    b.emit("};")
+    b.emit("#define C2PY_PERF_NSTATIC {0}".format(len(names)))
+    if active:
+        b.emit("/* Handles N.. are the currently-selected variant of a function. */")
+        b.emit("static c2py_perf_t ** const _c2py_perf_active_table[] = {")
+        for f in active:
+            b.emit("    &_active_perf_{0},".format(f))
+        b.emit("    NULL")
+        b.emit("};")
+    b.emit("#define C2PY_PERF_NACTIVE {0}".format(len(active)))
+    b.emit("")
+    b.emit("/* Range-checked handle lookup; NULL when invalid. */")
+    b.emit("static c2py_perf_t*")
+    b.emit("_c2py_perf_lookup(unsigned long long h) {")
+    b.emit("    if (h < (unsigned long long)C2PY_PERF_NSTATIC)")
+    b.emit("        return _c2py_perf_table[h];")
+    if active:
+        b.emit("    h -= (unsigned long long)C2PY_PERF_NSTATIC;")
+        b.emit("    if (h < (unsigned long long)C2PY_PERF_NACTIVE)")
+        b.emit("        return *_c2py_perf_active_table[h];")
+    b.emit("    return NULL;")
+    b.emit("}")
     b.emit("")
     b.emit("/* Fill a uint64 array with perf fields from the given pointer. */")
     b.emit("static PyObject*")
     b.emit("_c2py_perf_read(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
+    b.emit("    c2py_perf_t *perf;")
     b.emit("    PyObject *buf_obj;")
     b.emit("    c2py_buf_pin pin;")
     b.emit("    Py_buffer *buf = &pin.buf;")
     b.emit("    (void)self;")
-    b.emit("    memset(&pin.buf, 0, C2PY.pybuffer_size);")
+    b.emit("    c2py_pin_init(&pin);")
     b.emit('    if (!PyArg_ParseTuple(args, "KO", &ptr_val, &buf_obj))')
     b.emit("        return NULL;")
+    b.emit("    perf = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (perf == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
     b.emit("    if (PyObject_GetBuffer(buf_obj, buf, PyBUF_SIMPLE) != 0)")
     b.emit("        return NULL;")
     b.emit("    if (buf->len < (Py_ssize_t)(11 * sizeof(uint64_t))) {")
@@ -2006,8 +2447,7 @@ def _emit_perf_accessors(b):
     b.emit('            "buffer too small for perf data (need 11 uint64)");')
     b.emit("        return NULL;")
     b.emit("    }")
-    b.emit("    c2py_perf_extract_u64((c2py_perf_t*)(uintptr_t)ptr_val,")
-    b.emit("                           (uint64_t*)buf->buf);")
+    b.emit("    c2py_perf_extract_u64(perf, (uint64_t*)buf->buf);")
     b.emit("    PyBuffer_Release(buf);")
     b.emit("    Py_RETURN_NONE;")
     b.emit("}")
@@ -2021,7 +2461,11 @@ def _emit_perf_accessors(b):
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
     b.emit("        return NULL;")
-    b.emit("    p = (c2py_perf_t*)(uintptr_t)ptr_val;")
+    b.emit("    p = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (p == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
     b.emit("    tuple = PyTuple_New(3);")
     b.emit("    if (!tuple) return NULL;")
     b.emit("    /* Extract to locals: nested p->variant inside PyLong_FromLong")
@@ -2044,10 +2488,16 @@ def _emit_perf_accessors(b):
     b.emit("static PyObject*")
     b.emit("_c2py_perf_reset(PyObject *self, PyObject *args) {")
     b.emit("    unsigned long long ptr_val;")
+    b.emit("    c2py_perf_t *perf;")
     b.emit("    (void)self;")
     b.emit('    if (!PyArg_ParseTuple(args, "K", &ptr_val))')
     b.emit("        return NULL;")
-    b.emit("    c2py_perf_reset((c2py_perf_t*)(uintptr_t)ptr_val);")
+    b.emit("    perf = _c2py_perf_lookup(ptr_val);")
+    b.emit("    if (perf == NULL) {")
+    b.emit('        PyErr_SetString(PyExc_ValueError, "invalid perf handle");')
+    b.emit("        return NULL;")
+    b.emit("    }")
+    b.emit("    c2py_perf_reset(perf);")
     b.emit("    Py_RETURN_NONE;")
     b.emit("}")
     b.emit("")
@@ -2157,7 +2607,7 @@ def _emit_timing_decls(b, mod):
     b.emit("}")
     b.emit("")
     # Perf accessor functions
-    _emit_perf_accessors(b)
+    _emit_perf_accessors(b, mod)
 
 
 # ---- Docstring generation ----

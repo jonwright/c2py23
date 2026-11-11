@@ -54,6 +54,23 @@ tests/cases/arraysum/arraysum$(EXT): tests/cases/arraysum/arraysum_wrapper.c tes
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/autoformat/autoformatmod_wrapper.c: tests/cases/autoformat/autoformat.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/autoformat/autoformat.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/autoformat/autoformatmod$(EXT): tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/autoformat \
+		tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/autoformat/autoformatmod$(EXT): tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/autoformat \
+		tests/cases/autoformat/autoformatmod_wrapper.c tests/cases/autoformat/autoformat.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
 tests/cases/constants/constmod_wrapper.c: tests/cases/constants/constants.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 tests/cases/constants/constants.c2py -o $@ $(C2PY_FLAGS)
 
@@ -102,6 +119,23 @@ ifdef MSVC
 tests/cases/dot/dotmod$(EXT): tests/cases/dot/dotmod_wrapper.c tests/cases/dot/dot.c $(RUNTIME_SRC)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/dot \
 		tests/cases/dot/dotmod_wrapper.c tests/cases/dot/dot.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
+tests/cases/fakendarray/fakendmod_wrapper.c: tests/cases/fakendarray/fakend.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/fakendarray/fakend.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/fakendarray/fakendmod$(EXT): tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/fakendarray \
+		tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/fakendarray/fakendmod$(EXT): tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/fakendarray \
+		tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC) \
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
@@ -173,6 +207,23 @@ tests/cases/optional/optmod$(EXT): tests/cases/optional/optmod_wrapper.c tests/c
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/ptralign/ptralignmod_wrapper.c: tests/cases/ptralign/ptralign.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/ptralign/ptralign.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/ptralign/ptralignmod$(EXT): tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/ptralign \
+		tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/ptralign/ptralignmod$(EXT): tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/ptralign \
+		tests/cases/ptralign/ptralignmod_wrapper.c tests/cases/ptralign/ptralign.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
 tests/cases/scalar_output/statmod_wrapper.c: tests/cases/scalar_output/stats.c2py $(RUNTIME_HDRS)
 	python3 -m c2py23 tests/cases/scalar_output/stats.c2py -o $@ $(C2PY_FLAGS)
 
@@ -187,6 +238,23 @@ ifdef MSVC
 tests/cases/scalar_output/statmod$(EXT): tests/cases/scalar_output/statmod_wrapper.c tests/cases/scalar_output/stats.c $(RUNTIME_SRC)
 	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/scalar_output \
 		tests/cases/scalar_output/statmod_wrapper.c tests/cases/scalar_output/stats.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
+tests/cases/shapeguard/shapeguardmod_wrapper.c: tests/cases/shapeguard/shapeguard.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/shapeguard/shapeguard.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/shapeguard/shapeguardmod$(EXT): tests/cases/shapeguard/shapeguardmod_wrapper.c tests/cases/shapeguard/shapeguard.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/shapeguard \
+		tests/cases/shapeguard/shapeguardmod_wrapper.c tests/cases/shapeguard/shapeguard.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/shapeguard/shapeguardmod$(EXT): tests/cases/shapeguard/shapeguardmod_wrapper.c tests/cases/shapeguard/shapeguard.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/shapeguard \
+		tests/cases/shapeguard/shapeguardmod_wrapper.c tests/cases/shapeguard/shapeguard.c $(RUNTIME_SRC) \
 		/link /OUT:$@ $(LDFLAGS)
 endif
 

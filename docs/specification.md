@@ -200,6 +200,8 @@ Additional per-key details:
 | `"params"` | `dict[str, str]` | no | per-parameter descriptions |
 | `"gil_release"` | `bool` | no | release the GIL during C calls |
 | `"check_aliasing"` | `bool` | no | reject overlapping writable buffers (default: `True`) |
+| `"check_format"` | `bool` | no | derive element-type checks from C pointee types (default: `True`) |
+| `"check_alignment"` | `bool` | no | reject buffers not aligned for the C pointer type they are passed as (default: `True`) |
 | `"acquire"` | `list[str]` | no | acquisition backend order (default: `["ndarray", "buffer"]`) |
 | `"expand"` | `dict[str, list[str]]` | no | template expansion variables |
 | `"checks"` | `list[str]` | no | pre-condition expressions |
@@ -1320,9 +1322,9 @@ and module creation. No other CPython APIs are exposed or used.
 4. CPython types (`PyObject`, `Py_buffer`, `PyMethodDef`, `PyModuleDef`) are
    redefined with ABI-stable layouts in `c2py_runtime.h`
 
-5. The `Py_buffer` struct supports both 96-byte (Python 2.7, with smalltable)
-   and 80-byte (Python 3.x, without smalltable) layouts; the runtime selects
-   the correct size based on the Python version
+5. The `Py_buffer` struct is declared with `smalltable[2]` (present in Python
+   2.7-3.2, removed in 3.3), so its 96-byte size covers both the 96-byte and
+   the 80-byte layouts; the fields c2py23 reads are at the same offsets in both
 
 6. `c2py_acquire_buffer()` is a version-aware wrapper: on Python 3.x it uses
    `PyObject_GetBuffer` with `PyBUF_STRIDES | PyBUF_FORMAT` flags; on Python 2.7
@@ -1339,7 +1341,6 @@ typedef struct {
 
     int use_fastcall;               /* 1 = use METH_FASTCALL wrappers (Python >= 3.12) */
     int is_free_threaded;           /* 1 = Python built with --disable-gil */
-    Py_ssize_t pybuffer_size;       /* actual sizeof(Py_buffer) for this version */
     Py_ssize_t pyobject_size;       /* actual sizeof(PyObject) for this version */
     ptrdiff_t ob_refcnt_offset;     /* offset of refcount field within PyObject */
 
@@ -1421,6 +1422,54 @@ for any glibc-linked binary.
   (user C code may use them internally; allocated memory must be freed before return)
 - No copies or transposes in the wrapper -- all memory is passed through
 - All buffers must be contiguous (C-contiguous or F-contiguous as appropriate)
+- Element types are checked even when `checks:` says nothing about them.
+  For every C pointer parameter mapped to exactly `<buf>.ptr`, the generator
+  derives a check from the pointee type:
+
+  | Pointee type | Accepted buffer |
+  |---|---|
+  | `double` | format `'d'` |
+  | `float` | format `'f'` |
+  | `int8_t` | format `'b'` |
+  | `uint8_t` | format `'B'` |
+  | `char` | itemsize 1 (any of `b`, `B`, `c`, `?`) |
+  | `int16_t` / `uint16_t` | format `'h'` / `'H'` |
+  | `int32_t`, `int` | format `'i'` or `'l'`, itemsize 4 |
+  | `uint32_t` | format `'I'` or `'L'`, itemsize 4 |
+  | `int64_t` | format `'q'` or `'l'`, itemsize 8 |
+  | `uint64_t` | format `'Q'` or `'L'`, itemsize 8 |
+  | `void` | no check |
+
+  `'l'`/`'L'` are `sizeof(long)` wide, so they match the 32-bit rows on
+  LLP64 (Windows) and the 64-bit rows on LP64.  Other pointee types
+  (`intptr_t`, `ptrdiff_t`, `size_t`, `_Bool`) get no check and a warning on
+  stderr at generation time.  Nothing is derived for a buffer whose
+  `.format` or `.itemsize` the function's `checks:` or the overload's
+  `when:` already reads, so explicit checks keep their exact dispatch.
+  With a single unconditional overload the derived check is a normal
+  check (`ValueError: f: arg 'a' check failed: a.format == 'd' (got
+  format=..., itemsize=...); the C parameter is double *: pass a buffer of
+  that element type, or set check_format: False ...`); with several
+  overloads it is ANDed into each overload's condition, so overloads
+  without `when:` dispatch on the pointee type, and a call no overload
+  accepts raises `ValueError` listing what each buffer needs and what it
+  got (`f: no overload matches: 'a' needs (a.format == 'd') or
+  (a.format == 'f') (got 'a' format='i' itemsize=4 ndim=1)`), unless
+  `default_raise:` is given.  A grouped overload gets the term only when
+  all its variants agree on the pointee type.  Set `check_format: false` on
+  a function to opt out (e.g. to reinterpret raw bytes as `double *`).
+- A non-empty buffer mapped as `buf.ptr` must be aligned to the size of the
+  C pointee type of the parameter it is passed to (`ValueError: f: arg 'a':
+  buffer not aligned for the C parameter type double * (alignment 8,
+  address % 8 == 1); pass an aligned copy, ...`), checked in the selected
+  overload just before the C call.  The requirement comes from the C
+  signature, not from the buffer: `char *`, `uint8_t *` and `void *`
+  parameters accept a buffer at any address whatever its element type,
+  while bytes passed as `double *` under `check_format: false` must still
+  be 8-aligned.  A non-contiguous buffer raises
+  `ValueError: f: arg 'a': buffer not contiguous (C or Fortran contiguous
+  required); pass a contiguous copy, e.g. numpy.ascontiguousarray(x)`.  Set `check_alignment: false` on a
+  function whose C code tolerates unaligned pointers.
 - The GIL is held during all C function calls by default (see [GIL Release](#gil-release-and-thread-safety))
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`.
 

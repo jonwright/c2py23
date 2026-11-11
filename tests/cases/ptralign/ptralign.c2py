@@ -1,0 +1,41 @@
+# <buf>.ptr % N in when: selects an overload on pointer alignment.
+{
+    "module": "ptralignmod",
+    "source": ["ptralign.c"],
+    "functions": [
+        {
+            "py_sig": "which(a: buffer) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "tag_aligned(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "when": "a.ptr % 32 == 0",
+                    "outputs": {"out": "int64_t"},
+                },
+                {
+                    "sig": "tag_fallback(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "which_n(a: buffer, align: int) -> void",
+            "checks": ["a.format == 'd'"],
+            "c_overloads": [
+                {
+                    "sig": "tag_aligned(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "when": "a.ptr % align == 0",
+                    "outputs": {"out": "int64_t"},
+                },
+                {
+                    "sig": "tag_fallback(const double *a, int64_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.n"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+    ],
+}

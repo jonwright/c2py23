@@ -49,6 +49,7 @@ nav:
   - User Guide: user_guide.md
   - Getting Started: getting_started.md
   - Building Extensions: building.md
+  - Direct Python.h Builds: pythonh.md
   - Design Decisions: design.md
   - Developer Guide: developer_guide.md
   - Benchmark Results: benchmarks.md

@@ -176,7 +176,7 @@ def test_build_wheel(tmpdir):
     env.setdefault("CC", "gcc")
     cc = env["CC"]
 
-    if "cl" in os.path.basename(cc):
+    if os.path.basename(cc.split()[0]).lower() in ("cl", "cl.exe", "clang-cl", "clang-cl.exe"):
         build_cmd = [
             cc,
             "/LD",

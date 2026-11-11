@@ -5,6 +5,14 @@
  *               $(python3-config --ldflags) -o check_numpy_abi
  * Usage:    ./check_numpy_abi
  *
+ * With -DC2PY_ABI_PROBE_SHARED it builds as a shared object instead
+ * (gcc -shared -fPIC, no libpython link) exporting
+ * c2py_check_numpy_abi(), which the test suite calls through
+ * ctypes.PyDLL inside the running interpreter.  That needs no libpython
+ * to link against: some interpreters (conda-forge 3.15 on ppc64le) are
+ * static executables whose sysconfig still names a libpython that is
+ * not installed.
+ *
  * Prints key-value pairs for machine parsing.  Run across numpy
  * versions (1.9.3 through 2.x) to verify c2py23's hardcoded
  * offsets in c2py_pin_ndarray remain correct.
@@ -58,8 +66,7 @@ static void check_ptr(const char *label, void *val) {
     printf("PTR %-35s %p\n", label, val);
 }
 
-int main(void) {
-    Py_Initialize();
+static int run_checks(void) {
     /* The test checks this against its own sys.version: a probe linked
      * to another libpython fails clearly instead of in the stdlib. */
     printf("PYVER %s\n", Py_GetVersion());
@@ -145,7 +152,6 @@ int main(void) {
         if (!abi_ok) {
             printf("NUMPY_ABI_MISMATCH 1\n");
             Py_DECREF(tmp);
-            Py_Finalize();
             return 1;
         }
 
@@ -211,10 +217,26 @@ int main(void) {
 
     if (!formula_ok) {
         printf("NUMPY_ABI_MISMATCH 1\n");
-        Py_Finalize();
         return 1;
     }
     printf("NUMPY_ABI_OK 1\n");
-    Py_Finalize();
     return 0;
 }
+
+#ifdef C2PY_ABI_PROBE_SHARED
+/* Called with the GIL held (ctypes.PyDLL) in an initialised interpreter. */
+int c2py_check_numpy_abi(void) {
+    int rc = run_checks();
+    fflush(stdout);
+    return rc;
+}
+#else
+int main(void) {
+    int rc;
+    Py_Initialize();
+    rc = run_checks();
+    fflush(stdout);
+    Py_Finalize();
+    return rc;
+}
+#endif
