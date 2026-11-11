@@ -1954,7 +1954,13 @@ static inline uint64_t c2py_ticks(void) {
 #elif !defined(__STRICT_ANSI__)
     {
         struct timespec ts;
+#if defined(__APPLE__) && defined(CLOCK_MONOTONIC_RAW)
+        /* Darwin's CLOCK_MONOTONIC ticks in microseconds, so a short C
+         * call measures as zero; the RAW clock has the full resolution. */
+        clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
         clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
         return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
     }
 #else
