@@ -801,53 +801,55 @@ def test_dlpack_abi():
 def test_numpy_abi():
     """Verify NumPy ndarray struct layouts match the runtime's offsets.
 
-    Built from sysconfig (python-config is often absent, e.g. in CI), so
-    it runs wherever there is a C compiler and the Python headers --
-    including free-threaded builds, whose larger object header moves the
-    descriptor and tp_name offsets."""
+    The probe is built as a shared object with no libpython link (like a
+    c2py23 module) and run inside this interpreter via ctypes.PyDLL, in
+    a child process so its stdout is captured.  It needs only a C
+    compiler and the Python and numpy headers -- not python-config (often
+    absent, e.g. in CI) and not a libpython (absent for static
+    interpreters such as conda-forge 3.15 on ppc64le, whose sysconfig
+    still names one).  Covers free-threaded builds, whose larger object
+    header moves the descriptor and tp_name offsets."""
     import subprocess
     import sysconfig
     import tempfile
     import shutil
 
     if sys.platform == "win32":
-        pytest.skip("check_numpy_abi.c embeds Python via gcc; Windows CI has MSVC only")
+        pytest.skip("check_numpy_abi.c is built with gcc; Windows CI has MSVC only")
     src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_numpy_abi.c")
     # INCLUDEPY: distro-patched interpreters (Debian/Ubuntu 2.7) report a
     # wrong get_paths()["include"] (/usr/local/...); INCLUDEPY is where
     # Python.h really is.
     include = sysconfig.get_config_var("INCLUDEPY") or sysconfig.get_paths()["include"]
-    libdir = sysconfig.get_config_var("LIBDIR") or ""
-    ldlib = sysconfig.get_config_var("LDLIBRARY") or ""
-    if sysconfig.get_config_var("PYTHONFRAMEWORK") and ".framework" in ldlib:
-        # macOS framework build: LDLIBRARY is Python.framework/Versions/X.Y/Python.
-        # Link that file itself: "-framework Python" takes Versions/Current,
-        # which is some other Python when several are installed (CI runners).
-        link = [os.path.join(sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX"), ldlib)]
-    else:
-        # libpython3.14t.so / libpython3.12.a / libpython3.12.dylib -> -lpython3.14t
-        libname = ldlib[3:].split(".so")[0].split(".a")[0].split(".dylib")[0]
-        link = ["-L" + libdir, "-Wl,-rpath," + libdir, "-l" + libname]
-    extra = (sysconfig.get_config_var("LIBS") or "").split() + (sysconfig.get_config_var("SYSLIBS") or "").split()
+    # Python symbols resolve against the loading interpreter at dlopen.
+    undefined = ["-undefined", "dynamic_lookup"] if sys.platform == "darwin" else []
     tmp = tempfile.mkdtemp()
     try:
-        exe = os.path.join(tmp, "check_numpy_abi")
-        cmd = [os.environ.get("CC", "gcc"), src, "-I" + include, "-I" + np.get_include(), "-o", exe] + link + extra
+        lib = os.path.join(tmp, "check_numpy_abi.so")
+        cmd = [
+            os.environ.get("CC", "gcc"),
+            "-shared",
+            "-fPIC",
+            "-DC2PY_ABI_PROBE_SHARED",
+            src,
+            "-I" + include,
+            "-I" + np.get_include(),
+            "-o",
+            lib,
+        ] + undefined
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = p.communicate()[0].decode("ascii", "replace")
         assert p.returncode == 0, "cannot compile check_numpy_abi.c:\n%s\n%s" % (" ".join(cmd), out)
-        # The embedded interpreter must be this one: same prefix (an
-        # interpreter outside the default prefix cannot find its stdlib
-        # otherwise) and same path (numpy may be in the user site).
+        # Same interpreter, same path (numpy may be in the user site or
+        # on a path added at runtime).
         env = dict(os.environ)
-        env["PYTHONHOME"] = os.pathsep.join([sys.prefix, sys.exec_prefix])
         env["PYTHONPATH"] = os.pathsep.join(q for q in sys.path if q)
-        p = subprocess.Popen([exe], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        code = "import ctypes, sys; sys.stdout.flush(); sys.exit(ctypes.PyDLL(sys.argv[1]).c2py_check_numpy_abi())"
+        p = subprocess.Popen([sys.executable, "-c", code, lib], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         out = p.communicate()[0].decode("ascii", "replace")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    # The probe must have embedded this very interpreter (not another
-    # libpython found by the linker); say so plainly if not.
+    # Sanity: the probe ran in this very interpreter.
     want = "PYVER " + sys.version.split()[0]
     assert want in out, "probe embedded a different Python (want %r):\n%s" % (want, out)
     assert "NUMPY_ABI_OK 1" in out, "NumPy ABI check failed:\n" + out
