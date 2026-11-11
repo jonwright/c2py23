@@ -5,7 +5,7 @@ types and that non-numpy types correctly fall through to buffer protocol.
 Requires numpy (skipped gracefully via importorskip when absent)."""
 
 from __future__ import print_function
-import sys, os, array, ctypes
+import sys, os, array, ctypes, threading
 
 import pytest
 
@@ -543,7 +543,14 @@ def _run_script(script, *args):
     import subprocess
 
     p = subprocess.Popen([sys.executable, "-c", script] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out = p.communicate()[0].decode("ascii", "replace")
+    # A deadlocked child must fail the test, not hang the run.  A Timer
+    # rather than communicate(timeout=...), which Python 2.7 lacks.
+    killer = threading.Timer(120.0, p.kill)
+    killer.start()
+    try:
+        out = p.communicate()[0].decode("ascii", "replace")
+    finally:
+        killer.cancel()
     return p.returncode, out
 
 
