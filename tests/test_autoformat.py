@@ -57,6 +57,21 @@ def test_message_reports_format_and_itemsize():
     assert "got format='B', itemsize=1" in msg, msg
 
 
+def test_message_says_how_to_fix_element_type():
+    msg = _value_error(m.sum_f64, np.zeros(3, dtype="f4"))
+    assert "the C parameter is double *: pass a buffer of that element type" in msg, msg
+    assert "check_format: False" in msg, msg
+    # int32_t and int share one derived check: both are named.
+    msg = _value_error(m.sum_i32, np.zeros(3, dtype="f8"))
+    assert "the C parameter is int32_t or int *" in msg, msg
+
+
+def test_noncontiguous_message_names_arg_and_fix():
+    msg = _value_error(m.sum_f64, np.zeros(8)[::2])
+    assert msg.startswith("sum_f64: arg 'a': buffer not contiguous"), msg
+    assert "numpy.ascontiguousarray" in msg, msg
+
+
 _FILL_SNIPPET = """
 import sys
 sys.path.insert(0, %r)
@@ -184,6 +199,7 @@ def test_overloads_dispatch_on_pointee_type():
     assert list(b) == [3.0] * 3
     msg = _value_error(lambda x: m.scale(x, 1.0), np.ones(3, dtype="i4"))
     assert "scale: no overload matches" in msg, msg
+    assert "(got 'a' format='i' itemsize=4 ndim=1)" in msg, msg
 
 
 # --- opt-outs ------------------------------------------------------------
@@ -202,7 +218,9 @@ def test_unaligned_buffer_raises():
     a = np.frombuffer(bytearray(33), dtype="f8", offset=1)
     assert a.ctypes.data % 8 != 0
     msg = _value_error(m.sum_f64, a)
-    assert "buffer not aligned to its element size" in msg, msg
+    assert msg.startswith("sum_f64: arg 'a': buffer not aligned to its element size"), msg
+    assert "(itemsize 8, address % 8 == 1)" in msg, msg
+    assert "aligned copy" in msg and "check_alignment: False" in msg, msg
 
 
 def test_check_alignment_false_accepts_unaligned():
@@ -251,7 +269,7 @@ def test_user_constraint_suppresses_derived_check():
 def test_derived_check_and_opt_outs_in_generated_code():
     code = _simple()
     assert "/* derived check: a.format == 'd' */" in code
-    assert "c2py_check_alignment(info_a)" in code
+    assert "c2py_check_alignment(info_a, " in code
     assert "derived check" not in _simple(check_format=False)
     assert "c2py_check_alignment" not in _simple(check_alignment=False)
 

@@ -456,9 +456,11 @@ c2py_stride_at(const c2py_ptr_info *info, int k)
  *
  * Centralizing this keeps the generated wrapper small: the check body is
  * ~40 lines per buffer and was previously inlined into every expanded
- * method.  `shape`/`strides` are read-only here. */
+ * method.  `shape`/`strides` are read-only here.  `where` names the
+ * argument in the error message ("f: arg 'a'"); NULL is allowed. */
 static inline int
-c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
+c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis,
+                      const char *where)
 {
     int _ok = 1;
     int _d;
@@ -516,8 +518,12 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
         }
     }
     if (!_ok) {
-        PyErr_SetString(PyExc_ValueError,
-            "buffer not contiguous (C or Fortran contiguous required)");
+        char _msg[320];
+        snprintf(_msg, sizeof(_msg),
+            "%s: buffer not contiguous (C or Fortran contiguous required);"
+            " pass a contiguous copy, e.g. numpy.ascontiguousarray(x)",
+            where ? where : "c2py23");
+        PyErr_SetString(PyExc_ValueError, _msg);
         return -1;
     }
     return 0;
@@ -528,16 +534,25 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
  * double* handed to C is always naturally aligned.  Only itemsizes that
  * are powers of two from 2 to 16 are checked; 1-byte and odd-sized
  * elements (structs, strings) have no natural alignment to enforce.
- * Returns 0, or -1 with ValueError set. */
+ * `where` names the argument in the error message ("f: arg 'a'"); NULL
+ * is allowed.  Returns 0, or -1 with ValueError set. */
 static inline int
-c2py_check_alignment(const c2py_ptr_info *info)
+c2py_check_alignment(const c2py_ptr_info *info, const char *where)
 {
     Py_ssize_t sz = info->itemsize;
+    uintptr_t off = (uintptr_t)info->ptr & (uintptr_t)(sz - 1);
 
     if (info->len > 0 && sz >= 2 && sz <= 16 && (sz & (sz - 1)) == 0
-        && ((uintptr_t)info->ptr & (uintptr_t)(sz - 1)) != 0) {
-        PyErr_SetString(PyExc_ValueError,
-            "buffer not aligned to its element size");
+        && off != 0) {
+        char _msg[400];
+        snprintf(_msg, sizeof(_msg),
+            "%s: buffer not aligned to its element size (itemsize " C2PY_LLD
+            ", address %% " C2PY_LLD " == " C2PY_LLD "); pass an aligned copy,"
+            " e.g. numpy.array(x), or set check_alignment: False in the .c2py"
+            " if the C code accepts unaligned data",
+            where ? where : "c2py23", (long long)sz, (long long)sz,
+            (long long)off);
+        PyErr_SetString(PyExc_ValueError, _msg);
         return -1;
     }
     return 0;

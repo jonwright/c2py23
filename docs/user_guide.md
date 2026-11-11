@@ -309,7 +309,8 @@ explicit `checks:` block is an addition rather than the only defence:
    unexpected shapes.
 3. **Alignment.**  Every non-empty buffer must be aligned to its itemsize.
    This is checked automatically right after contiguity and raises
-   `ValueError: buffer not aligned to its element size`.  Set
+   `ValueError: f: arg 'a': buffer not aligned to its element size
+   (itemsize 8, address % 8 == 1); pass an aligned copy, ...`.  Set
    `"check_alignment": False` when your C code tolerates unaligned pointers.
    For stricter SIMD alignment use `"buf.ptr % 32 == 0"` in a `when:`
    condition.

@@ -268,8 +268,25 @@ def _emit_ndim_fallback(b, func_name, overloads, buf_params, func=None):
     for n in sorted(fmts):
         parts.append("'{0}' needs {1}".format(n, " or ".join("(" + src + ")" for src in fmts[n])))
     parts = ", ".join(parts)
-    b.emit("        PyErr_SetString(PyExc_ValueError,")
-    b.emit('            "{0}: no overload matches: {1}");'.format(_escape_c_str(func_name), _escape_c_str(parts)))
+    # Report what each named buffer actually has, so the caller can see
+    # which requirement failed.
+    got_fmt = []
+    got_args = []
+    for n in sorted(set(needs) | set(fmts)):
+        got_fmt.append("'{0}' format='%s' itemsize=\" C2PY_LLD \" ndim=%d".format(n))
+        got_args.append('info_{0}->format ? info_{0}->format : "(null)"'.format(n))
+        got_args.append("(long long)info_{0}->itemsize".format(n))
+        got_args.append("(int)info_{0}->ndim".format(n))
+    b.emit("        char _c2py_err[512];")
+    b.emit(
+        '        snprintf(_c2py_err, sizeof(_c2py_err), "{0}: no overload matches: {1} (got {2})", {3});'.format(
+            _escape_c_str(func_name).replace("%", "%%"),
+            _escape_c_str(parts).replace("%", "%%"),
+            ", ".join(got_fmt),
+            ", ".join(got_args),
+        )
+    )
+    b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
     b.emit("        return NULL;")
 
 
@@ -305,6 +322,14 @@ _POINTEE_FORMAT_CHECK = {
     "int64_t": "({0}.format == 'q' or {0}.format == 'l') and {0}.itemsize == 8",
     "uint64_t": "({0}.format == 'Q' or {0}.format == 'L') and {0}.itemsize == 8",
 }
+
+
+def _pointee_types_for(buf_name, src):
+    """C pointee types whose derived check for buf_name is src, in table
+    order (int32_t and int share one check)."""
+    return [
+        t for t, tpl in _POINTEE_FORMAT_CHECK.items() if _expr_to_source(parse_expr(tpl.format(buf_name))) == src
+    ]
 
 
 def _mentions_elem_type(expr, buf_name):
@@ -595,7 +620,7 @@ class CBuilder:
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(p.name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(p.name))
 
-    def emit_contiguity_checks(self, buf_params, check_alignment=True):
+    def emit_contiguity_checks(self, buf_params, func_name, check_alignment=True):
         """Emit contiguity validation for each buffer.
 
         Also emits _c2py_slow_axis_buf_{name} -- the index of the slowest
@@ -613,13 +638,14 @@ class CBuilder:
             self.emit("    (void)_c2py_fast_axis_info_{0};".format(name))
             self.emit("    /* contiguity check: {0} */".format(name))
             # info_<name> is already a c2py_ptr_info* inside the impl.
+            where = '"' + _escape_c_str("{0}: arg '{1}'".format(func_name, name)) + '"'
             self.emit(
                 "    if (c2py_check_contiguity(info_{0}, &_c2py_slow_axis_info_{0}, "
-                "&_c2py_fast_axis_info_{0}) < 0)".format(name)
+                "&_c2py_fast_axis_info_{0}, {1}) < 0)".format(name, where)
             )
             self.emit("        return NULL;")
             if check_alignment:
-                self.emit("    if (c2py_check_alignment(info_{0}) < 0)".format(name))
+                self.emit("    if (c2py_check_alignment(info_{0}, {1}) < 0)".format(name, where))
                 self.emit("        return NULL;")
             self.emit("")
 
@@ -951,7 +977,7 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
         b.emit_blank()
 
     # Contiguity (and alignment) checks (inside impl so when: conditions can use them)
-    b.emit_contiguity_checks(buf_params, getattr(func, "check_alignment", True))
+    b.emit_contiguity_checks(buf_params, name, getattr(func, "check_alignment", True))
 
     # Checks
     for check in func.checks:
@@ -1724,14 +1750,22 @@ def _emit_derived_check(b, buf, check, buf_params, scalar_params, name):
     Same shape as _emit_check, but the message always quotes the whole
     derived condition and reports both the format and the itemsize."""
     src = _expr_to_source(check)
+    ctypes = _pointee_types_for(buf, src)
+    if ctypes:
+        hint = "; the C parameter is {0} *: pass a buffer of that element type".format(" or ".join(ctypes))
+    else:
+        hint = "; pass a buffer of the C parameter's element type"
+    hint += ", or set check_format: False in the .c2py to reinterpret the memory"
     b.emit("    /* derived check: {0} */".format(src))
     b.emit("    if (!(" + _expr_to_c(check, buf_params, scalar_params, None) + ")) {")
-    b.emit("        char _c2py_err[256];")
+    b.emit("        char _c2py_err[512];")
     b.emit('        const char *_fmt = info_{0}->format ? info_{0}->format : "(null)";'.format(buf))
     b.emit(
         "        snprintf(_c2py_err, sizeof(_c2py_err), "
-        "\"{0}: arg '{1}' check failed: {2} (got format='%s', itemsize=\" C2PY_LLD \")\", "
-        "_fmt, (long long)info_{1}->itemsize);".format(name, buf, _escape_c_str(src))
+        "\"{0}: arg '{1}' check failed: {2} (got format='%s', itemsize=\" C2PY_LLD \"){3}\", "
+        "_fmt, (long long)info_{1}->itemsize);".format(
+            name, buf, _escape_c_str(src), _escape_c_str(hint).replace("%", "%%")
+        )
     )
     b.emit("        PyErr_SetString(PyExc_ValueError, _c2py_err);")
     b.emit("        return NULL;")

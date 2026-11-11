@@ -1448,15 +1448,22 @@ for any glibc-linked binary.
   `when:` already reads, so explicit checks keep their exact dispatch.
   With a single unconditional overload the derived check is a normal
   check (`ValueError: f: arg 'a' check failed: a.format == 'd' (got
-  format=..., itemsize=...)`); with several overloads it is ANDed into each
-  overload's condition, so overloads without `when:` dispatch on the
-  pointee type, and a call no overload accepts raises `ValueError` (unless
-  `default_raise:` is given).  A grouped overload gets the term only when
+  format=..., itemsize=...); the C parameter is double *: pass a buffer of
+  that element type, or set check_format: False ...`); with several
+  overloads it is ANDed into each overload's condition, so overloads
+  without `when:` dispatch on the pointee type, and a call no overload
+  accepts raises `ValueError` listing what each buffer needs and what it
+  got (`f: no overload matches: 'a' needs (a.format == 'd') or
+  (a.format == 'f') (got 'a' format='i' itemsize=4 ndim=1)`), unless
+  `default_raise:` is given.  A grouped overload gets the term only when
   all its variants agree on the pointee type.  Set `check_format: false` on
   a function to opt out (e.g. to reinterpret raw bytes as `double *`).
 - Non-empty buffers whose itemsize is a power of two from 2 to 16 must be
-  aligned to their itemsize (`ValueError: buffer not aligned to its element
-  size`), checked right after contiguity.  Set `check_alignment: false` on a
+  aligned to their itemsize (`ValueError: f: arg 'a': buffer not aligned to
+  its element size (itemsize 8, address % 8 == 1); pass an aligned copy,
+  ...`), checked right after contiguity.  A non-contiguous buffer raises
+  `ValueError: f: arg 'a': buffer not contiguous (C or Fortran contiguous
+  required); pass a contiguous copy, e.g. numpy.ascontiguousarray(x)`.  Set `check_alignment: false` on a
   function whose C code tolerates unaligned pointers.
 - The GIL is held during all C function calls by default (see [GIL Release](#gil-release-and-thread-safety))
 - `restrict` is enforced at the wrapper level: aliasing writable buffers raises `ValueError`.
