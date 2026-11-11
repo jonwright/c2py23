@@ -57,9 +57,9 @@ jobs:
           submodules: recursive
 
       - name: Install Python 2.7
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python2 python2-dev python3-virtualenv
+          .github/scripts/apt_install.sh python2 python2-dev python3-virtualenv
           virtualenv -p python2 ${HOME}/cp27
           source ${HOME}/cp27/bin/activate
           ${HOME}/cp27/bin/python -m pip install -U pip setuptools wheel
