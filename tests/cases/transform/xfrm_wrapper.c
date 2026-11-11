@@ -210,15 +210,11 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
     /* contiguity check: points */
     if (c2py_check_contiguity(info_points, &_c2py_slow_axis_info_points, &_c2py_fast_axis_info_points, "transform: arg 'points'") < 0)
         return NULL;
-    if (c2py_check_alignment(info_points, "transform: arg 'points'") < 0)
-        return NULL;
 
     (void)_c2py_slow_axis_info_out;
     (void)_c2py_fast_axis_info_out;
     /* contiguity check: out */
     if (c2py_check_contiguity(info_out, &_c2py_slow_axis_info_out, &_c2py_fast_axis_info_out, "transform: arg 'out'") < 0)
-        return NULL;
-    if (c2py_check_alignment(info_out, "transform: arg 'out'") < 0)
         return NULL;
 
     /* check: points.format == 'd' */
@@ -260,6 +256,10 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
     }
     if (info_points->ndim >= 1 && ((c2py_shape_at(info_points, 1)) == (3))) {
         /* transform_aos(double *points, intptr_t n, double *out) */
+        if (c2py_check_alignment(info_points, sizeof(double), "double", "transform: arg 'points'") < 0)
+            return NULL;
+        if (c2py_check_alignment(info_out, sizeof(double), "double", "transform: arg 'out'") < 0)
+            return NULL;
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
         transform_aos((double *)info_points->ptr, (intptr_t)(c2py_shape_at(info_points, 0)), (double *)info_out->ptr);
         if (_c2py_do_time) {
@@ -269,6 +269,10 @@ _transform_impl(c2py_ptr_info *info_points, c2py_ptr_info *info_out)
         Py_RETURN_NONE;
     } else if (info_points->ndim >= 2 && ((c2py_shape_at(info_points, 0)) == (3))) {
         /* transform_soa(double *points, intptr_t n, double *out) */
+        if (c2py_check_alignment(info_points, sizeof(double), "double", "transform: arg 'points'") < 0)
+            return NULL;
+        if (c2py_check_alignment(info_out, sizeof(double), "double", "transform: arg 'out'") < 0)
+            return NULL;
         if (_c2py_do_time) _c2py_ct0 = c2py_ticks();
         transform_soa((double *)info_points->ptr, (intptr_t)(c2py_shape_at(info_points, 1)), (double *)info_out->ptr);
         if (_c2py_do_time) {

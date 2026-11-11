@@ -212,7 +212,7 @@ def test_overloads_dispatch_on_pointee_type():
 
 
 def test_check_format_false_restores_old_behaviour():
-    raw = np.frombuffer(np.array([1.5, 2.5]).tobytes(), dtype=np.uint8)
+    raw = np.array([1.5, 2.5]).view(np.uint8)  # aligned for double
     assert m.sum_raw(raw) == 4.0
     assert m.sum_raw(np.array([1.0, 2.0])) == 3.0
 
@@ -224,8 +224,8 @@ def test_unaligned_buffer_raises():
     a = np.frombuffer(bytearray(33), dtype="f8", offset=1)
     assert a.ctypes.data % 8 != 0
     msg = _value_error(m.sum_f64, a)
-    assert msg.startswith("sum_f64: arg 'a': buffer not aligned to its element size"), msg
-    assert "(itemsize 8, address % 8 == 1)" in msg, msg
+    assert msg.startswith("sum_f64: arg 'a': buffer not aligned for the C parameter type double *"), msg
+    assert "(alignment 8, address % 8 == 1)" in msg, msg
     assert "aligned copy" in msg and "check_alignment: False" in msg, msg
 
 
@@ -239,6 +239,38 @@ def test_check_alignment_false_accepts_unaligned():
 def test_empty_unaligned_buffer_is_accepted():
     a = np.frombuffer(bytearray(9), dtype="f8", offset=1, count=0)
     assert m.sum_f64(a) == 0.0
+
+
+def _unaligned_u64():
+    buf = bytearray(33)
+    buf[1:5] = b"\x01\x02\x03\x04"
+    a = np.frombuffer(buf, dtype="u8", offset=1)
+    assert a.ctypes.data % 8 != 0
+    return a
+
+
+def test_unaligned_u64_to_char_pointer_is_accepted():
+    # The alignment needed is that of the C parameter (char: none), not
+    # of the buffer's element type.
+    assert m.sum_chars(_unaligned_u64()) == 10
+
+
+def test_unaligned_u64_to_void_pointer_is_accepted():
+    assert m.count_bytes(_unaligned_u64()) == 32
+
+
+def test_unaligned_u64_to_uint64_pointer_raises():
+    msg = _value_error(m.sum_u64, _unaligned_u64())
+    assert "buffer not aligned for the C parameter type uint64_t *" in msg, msg
+
+
+def test_unaligned_bytes_reinterpreted_as_double_raise():
+    # check_format: False lets bytes through as double *, but the pointer
+    # still has to be aligned for double.
+    raw = np.frombuffer(bytearray(17), dtype=np.uint8, offset=1)
+    assert raw.ctypes.data % 8 != 0
+    msg = _value_error(m.sum_raw, raw)
+    assert "buffer not aligned for the C parameter type double *" in msg, msg
 
 
 # --- generator-level rules (no build) ------------------------------------
@@ -275,7 +307,7 @@ def test_user_constraint_suppresses_derived_check():
 def test_derived_check_and_opt_outs_in_generated_code():
     code = _simple()
     assert "/* derived check: a.format == 'd' */" in code
-    assert "c2py_check_alignment(info_a, " in code
+    assert 'c2py_check_alignment(info_a, sizeof(double), "double", ' in code
     assert "derived check" not in _simple(check_format=False)
     assert "c2py_check_alignment" not in _simple(check_alignment=False)
 

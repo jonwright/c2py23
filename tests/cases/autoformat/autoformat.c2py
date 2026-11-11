@@ -182,5 +182,18 @@
                 },
             ],
         },
+        # char * over any buffer's bytes: alignment follows the C parameter
+        # (1 byte), not the buffer's itemsize
+        {
+            "py_sig": "sum_chars(a: buffer) -> void",
+            "check_format": False,
+            "c_overloads": [
+                {
+                    "sig": "sum_chars(const char *a, intptr_t n, int64_t *out)",
+                    "map": {"a": "a.ptr", "n": "a.len"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
     ],
 }

@@ -201,7 +201,7 @@ Additional per-key details:
 | `"gil_release"` | `bool` | no | release the GIL during C calls |
 | `"check_aliasing"` | `bool` | no | reject overlapping writable buffers (default: `True`) |
 | `"check_format"` | `bool` | no | derive element-type checks from C pointee types (default: `True`) |
-| `"check_alignment"` | `bool` | no | reject buffers not aligned to their itemsize (default: `True`) |
+| `"check_alignment"` | `bool` | no | reject buffers not aligned for the C pointer type they are passed as (default: `True`) |
 | `"acquire"` | `list[str]` | no | acquisition backend order (default: `["ndarray", "buffer"]`) |
 | `"expand"` | `dict[str, list[str]]` | no | template expansion variables |
 | `"checks"` | `list[str]` | no | pre-condition expressions |
@@ -1458,10 +1458,15 @@ for any glibc-linked binary.
   `default_raise:` is given.  A grouped overload gets the term only when
   all its variants agree on the pointee type.  Set `check_format: false` on
   a function to opt out (e.g. to reinterpret raw bytes as `double *`).
-- Non-empty buffers whose itemsize is a power of two from 2 to 16 must be
-  aligned to their itemsize (`ValueError: f: arg 'a': buffer not aligned to
-  its element size (itemsize 8, address % 8 == 1); pass an aligned copy,
-  ...`), checked right after contiguity.  A non-contiguous buffer raises
+- A non-empty buffer mapped as `buf.ptr` must be aligned to the size of the
+  C pointee type of the parameter it is passed to (`ValueError: f: arg 'a':
+  buffer not aligned for the C parameter type double * (alignment 8,
+  address % 8 == 1); pass an aligned copy, ...`), checked in the selected
+  overload just before the C call.  The requirement comes from the C
+  signature, not from the buffer: `char *`, `uint8_t *` and `void *`
+  parameters accept a buffer at any address whatever its element type,
+  while bytes passed as `double *` under `check_format: false` must still
+  be 8-aligned.  A non-contiguous buffer raises
   `ValueError: f: arg 'a': buffer not contiguous (C or Fortran contiguous
   required); pass a contiguous copy, e.g. numpy.ascontiguousarray(x)`.  Set `check_alignment: false` on a
   function whose C code tolerates unaligned pointers.

@@ -194,6 +194,38 @@ def _when_ovf_lines(ol, scalar_params, func_name):
     return _ovf_raise_lines(func_name, "when: " + _expr_to_source(ol.when_expr))
 
 
+def _align_lines(func, cparams, map_exprs, buf_params):
+    """Alignment checks for one C call: every pointer parameter mapped to
+    exactly <buf>.ptr needs the buffer aligned to sizeof its C pointee type.
+    The requirement comes from the C parameter, not from the buffer's
+    itemsize: a uint64 buffer may sit at any address when it is passed as
+    char * or void *, and bytes reinterpreted as double * (check_format:
+    false) still have to be 8-aligned.  void * needs nothing; a 1-byte
+    type costs nothing (the helper returns at once).  Nothing is emitted
+    when the function sets check_alignment: false."""
+    if func is None or not getattr(func, "check_alignment", True):
+        return []
+    names = set(p.name for p in buf_params)
+    lines = []
+    seen = set()
+    for cp in cparams:
+        if not cp.is_pointer or cp.base_type == "void":
+            continue
+        e = map_exprs.get(cp.name)
+        if not (isinstance(e, Attr) and e.attr == "ptr" and isinstance(e.obj, Var) and e.obj.name in names):
+            continue
+        key = (e.obj.name, cp.base_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        where = '"' + _escape_c_str("{0}: arg '{1}'".format(func.name, e.obj.name)) + '"'
+        lines.append(
+            'if (c2py_check_alignment(info_{0}, sizeof({1}), "{1}", {2}) < 0)'.format(e.obj.name, cp.base_type, where)
+        )
+        lines.append("    return NULL;")
+    return lines
+
+
 def _implied_ndim_needs(ol, buf_params):
     """Sorted (buffer name, required ndim) pairs implied by shape[k]/strides[k]
     in the overload's map: expressions (k + 1 dimensions needed)."""
@@ -624,14 +656,13 @@ class CBuilder:
             self.emit("    int _c2py_slow_axis_info_{0} = -1;".format(p.name))
             self.emit("    int _c2py_fast_axis_info_{0} = -1;".format(p.name))
 
-    def emit_contiguity_checks(self, buf_params, func_name, check_alignment=True):
+    def emit_contiguity_checks(self, buf_params, func_name):
         """Emit contiguity validation for each buffer.
 
         Also emits _c2py_slow_axis_buf_{name} -- the index of the slowest
         varying axis (0 for C-contiguous, ndim-1 for F-contiguous).
         Set to -1 if the buffer is not C or F contiguous (rejected anyway).
-        Unless check_alignment is false, each buffer's pointer must also be
-        aligned to its itemsize (c2py_check_alignment).
+        Alignment is checked per overload, see _align_lines().
         """
         if not buf_params:
             return
@@ -648,9 +679,6 @@ class CBuilder:
                 "&_c2py_fast_axis_info_{0}, {1}) < 0)".format(name, where)
             )
             self.emit("        return NULL;")
-            if check_alignment:
-                self.emit("    if (c2py_check_alignment(info_{0}, {1}) < 0)".format(name, where))
-                self.emit("        return NULL;")
             self.emit("")
 
 
@@ -980,8 +1008,8 @@ def _emit_impl_func(b, func, buf_params, scalar_params, timing, has_gil_release)
         b.emit("    void *_c2py_thread_state = NULL;")
         b.emit_blank()
 
-    # Contiguity (and alignment) checks (inside impl so when: conditions can use them)
-    b.emit_contiguity_checks(buf_params, name, getattr(func, "check_alignment", True))
+    # Contiguity checks (inside impl so when: conditions can use them)
+    b.emit_contiguity_checks(buf_params, name)
 
     # Checks
     for check in func.checks:
@@ -1070,6 +1098,7 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
                     name,
                     gil,
                     indent="                ",
+                    pre_lines=_align_lines(func, v.params, ol.map_exprs, buf_params),
                 )
                 b.emit("            break;")
                 b.emit("        }")
@@ -1087,7 +1116,8 @@ def _emit_overload_dispatch(b, func, buf_params, scalar_params, timing, has_gil_
                 name,
                 gil,
                 indent="        ",
-                pre_lines=_when_ovf_lines(ol, scalar_params, name),
+                pre_lines=_when_ovf_lines(ol, scalar_params, name)
+                + _align_lines(func, ol.params, ol.map_exprs, buf_params),
             )
 
     if default_raise:
@@ -1108,7 +1138,16 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
     if len(overloads) == 1 and _ol_cond(overloads[0], buf_params, scalar_params, func) is None:
         b.emit("    /* overload 0 (always) */")
         b.emit("    {")
-        _emit_c_call(b, overloads[0], buf_params, scalar_params, timing, name, gil)
+        _emit_c_call(
+            b,
+            overloads[0],
+            buf_params,
+            scalar_params,
+            timing,
+            name,
+            gil,
+            pre_lines=_align_lines(func, overloads[0].params, overloads[0].map_exprs, buf_params),
+        )
         b.emit("    }")
         return
 
@@ -1126,7 +1165,15 @@ def _emit_flat_dispatch(b, overloads, buf_params, scalar_params, timing, name, g
                 b.emit("    }} else {{  /* overload {0} (always) */".format(i))
         b.emit("        /* {0} */".format(ol.sig_str))
         _emit_c_call(
-            b, ol, buf_params, scalar_params, timing, name, gil, pre_lines=_when_ovf_lines(ol, scalar_params, name)
+            b,
+            ol,
+            buf_params,
+            scalar_params,
+            timing,
+            name,
+            gil,
+            pre_lines=_when_ovf_lines(ol, scalar_params, name)
+            + _align_lines(func, ol.params, ol.map_exprs, buf_params),
         )
 
     if default_raise:

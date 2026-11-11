@@ -136,3 +136,13 @@ void count_bytes(const void *a, intptr_t n, int64_t *out)
     (void)a;
     *out = (int64_t)n;
 }
+
+/* Byte-wise read: valid at any address, whatever the buffer holds. */
+void sum_chars(const char *a, intptr_t n, int64_t *out)
+{
+    intptr_t i;
+    int64_t s = 0;
+    for (i = 0; i < n; i++)
+        s += (unsigned char)a[i];
+    *out = s;
+}

@@ -529,29 +529,35 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis,
     return 0;
 }
 
-/* Reject a non-empty buffer whose data pointer is not aligned to its
- * element size (e.g. np.frombuffer(..., dtype="f8", offset=1)), so a
- * double* handed to C is always naturally aligned.  Only itemsizes that
- * are powers of two from 2 to 16 are checked; 1-byte and odd-sized
- * elements (structs, strings) have no natural alignment to enforce.
- * `where` names the argument in the error message ("f: arg 'a'"); NULL
- * is allowed.  Returns 0, or -1 with ValueError set. */
+/* Reject a non-empty buffer whose data pointer is not aligned for the C
+ * parameter it is passed to (e.g. np.frombuffer(..., dtype="f8", offset=1)
+ * handed to a double*).  `align` is sizeof the C pointee type and `ctype`
+ * its name: the requirement comes from the C signature, not from the
+ * buffer's own itemsize, so a uint64 buffer at an odd address may be
+ * passed to a char* or void* parameter.  Only alignments that are powers
+ * of two from 2 to 16 are checked.  `where` names the argument in the
+ * error message ("f: arg 'a'"); NULL is allowed.  Returns 0, or -1 with
+ * ValueError set. */
 static inline int
-c2py_check_alignment(const c2py_ptr_info *info, const char *where)
+c2py_check_alignment(const c2py_ptr_info *info, size_t align,
+                     const char *ctype, const char *where)
 {
-    Py_ssize_t sz = info->itemsize;
-    uintptr_t off = (uintptr_t)info->ptr & (uintptr_t)(sz - 1);
+    uintptr_t off;
 
-    if (info->len > 0 && sz >= 2 && sz <= 16 && (sz & (sz - 1)) == 0
-        && off != 0) {
+    if (info->len <= 0 || align < 2 || align > 16
+        || (align & (align - 1)) != 0)
+        return 0;
+    off = (uintptr_t)info->ptr & (uintptr_t)(align - 1);
+    if (off != 0) {
         char _msg[400];
         snprintf(_msg, sizeof(_msg),
-            "%s: buffer not aligned to its element size (itemsize " C2PY_LLD
-            ", address %% " C2PY_LLD " == " C2PY_LLD "); pass an aligned copy,"
+            "%s: buffer not aligned for the C parameter type %s *"
+            " (alignment " C2PY_LLD ", address %% " C2PY_LLD " == " C2PY_LLD
+            "); pass an aligned copy,"
             " e.g. numpy.array(x), or set check_alignment: False in the .c2py"
             " if the C code accepts unaligned data",
-            where ? where : "c2py23", (long long)sz, (long long)sz,
-            (long long)off);
+            where ? where : "c2py23", ctype ? ctype : "?",
+            (long long)align, (long long)align, (long long)off);
         PyErr_SetString(PyExc_ValueError, _msg);
         return -1;
     }

@@ -307,10 +307,13 @@ explicit `checks:` block is an addition rather than the only defence:
    reinterpret raw bytes as `double *`).
 2. **Dimensionality.**  `"buf.ndim == 1"` or `"buf.ndim == 2"` rejects
    unexpected shapes.
-3. **Alignment.**  Every non-empty buffer must be aligned to its itemsize.
-   This is checked automatically right after contiguity and raises
-   `ValueError: f: arg 'a': buffer not aligned to its element size
-   (itemsize 8, address % 8 == 1); pass an aligned copy, ...`.  Set
+3. **Alignment.**  Every non-empty buffer mapped as `buf.ptr` must be
+   aligned for the C pointer type it is passed as (`double *` -> 8,
+   `int32_t *` -> 4; `char *`, `uint8_t *` and `void *` accept any
+   address, whatever the buffer's own element type).  This is checked
+   automatically before the C call and raises
+   `ValueError: f: arg 'a': buffer not aligned for the C parameter type
+   double * (alignment 8, address % 8 == 1); pass an aligned copy, ...`.  Set
    `"check_alignment": False` when your C code tolerates unaligned pointers.
    For stricter SIMD alignment use `"buf.ptr % 32 == 0"` in a `when:`
    condition.
