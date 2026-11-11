@@ -1,0 +1,33 @@
+# Byte sums for tests/test_ndarray_backends.py: a 'B' buffer through the
+# default backends and through the ndarray fast path alone.  The test
+# feeds the fast path's first probe an object whose type is named
+# "numpy.ndarray" but has another layout (finding A7).
+{
+    "module": "fakendmod",
+    "source": ["fakend.c"],
+    "functions": [
+        {
+            "py_sig": "bytesum(data: buffer) -> void",
+            "checks": ["data.format == 'B'", "data.ndim == 1"],
+            "c_overloads": [
+                {
+                    "sig": "bytesum(const uint8_t *data, int64_t n, int64_t *out)",
+                    "map": {"data": "data.ptr", "n": "data.n"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+        {
+            "py_sig": "bytesum_nd(data: buffer) -> void",
+            "acquire": ["ndarray"],
+            "checks": ["data.format == 'B'", "data.ndim == 1"],
+            "c_overloads": [
+                {
+                    "sig": "bytesum(const uint8_t *data, int64_t n, int64_t *out)",
+                    "map": {"data": "data.ptr", "n": "data.n"},
+                    "outputs": {"out": "int64_t"},
+                },
+            ],
+        },
+    ],
+}

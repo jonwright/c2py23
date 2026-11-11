@@ -122,6 +122,23 @@ tests/cases/dot/dotmod$(EXT): tests/cases/dot/dotmod_wrapper.c tests/cases/dot/d
 		/link /OUT:$@ $(LDFLAGS)
 endif
 
+tests/cases/fakendarray/fakendmod_wrapper.c: tests/cases/fakendarray/fakend.c2py $(RUNTIME_HDRS)
+	python3 -m c2py23 tests/cases/fakendarray/fakend.c2py -o $@ $(C2PY_FLAGS)
+
+ifndef MSVC
+tests/cases/fakendarray/fakendmod$(EXT): tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) -fPIC -shared -I$(RUNTIME_INC) -Itests/cases/fakendarray \
+		tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC) \
+		-o $@ $(LDFLAGS) $(LIBS)
+endif
+
+ifdef MSVC
+tests/cases/fakendarray/fakendmod$(EXT): tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC)
+	$(CC) $(CFLAGS) /LD /I$(RUNTIME_INC) /Itests/cases/fakendarray \
+		tests/cases/fakendarray/fakendmod_wrapper.c tests/cases/fakendarray/fakend.c $(RUNTIME_SRC) \
+		/link /OUT:$@ $(LDFLAGS)
+endif
+
 tests/cases/fill/fillmod_wrapper.c: tests/cases/fill/fill.c $(RUNTIME_HDRS)
 	python3 -m c2py23 tests/cases/fill/fill.c -o $@ $(C2PY_FLAGS)
 

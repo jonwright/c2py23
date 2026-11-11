@@ -464,7 +464,11 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
     int _d;
     Py_ssize_t _expected;
 
-    if (info->strides == NULL && info->ndim <= 1) {
+    /* NULL strides mean C order (PEP 3118).  The ndarray and DLPack
+     * backends give shape and strides whenever ndim >= 1, the 2.7 old
+     * buffer API has ndim 1 with neither; only a PEP 3118 exporter that
+     * ignores the PyBUF_STRIDES request leaves strides out otherwise. */
+    if (info->strides == NULL && (info->ndim <= 1 || info->shape != NULL)) {
         *slow_axis = 0;
         *fast_axis = (int)(info->ndim - 1);
         return 0;
@@ -474,12 +478,15 @@ c2py_check_contiguity(const c2py_ptr_info *info, int *slow_axis, int *fast_axis)
         *fast_axis = (int)(info->ndim - 1);
         return 0;
     }
+    /* A non-conforming exporter with no shape (and ndim >= 1) has no
+     * layout to check: rejected below, shape[] is never indexed. */
+    _ok = info->ndim < 1 || info->shape != NULL;
     /* An axis of length 1 is never stepped along, so its stride is
      * irrelevant: numpy leaves it raw (0 for a[None, :], junk under
      * NPY_RELAXED_STRIDES_DEBUG) and only normalises it in its PEP 3118
      * export.  C order is tested first so that an array that is both
      * (e.g. (1, N) or (N, 1)) reports the same axes on every backend. */
-    if (info->ndim >= 1) {
+    if (_ok && info->ndim >= 1) {
         /* check C-contiguous (row-major): last dim varies fastest */
         _expected = info->itemsize;
         for (_d = info->ndim - 1; _d >= 0; _d--) {
@@ -864,6 +871,125 @@ c2py_pin_buffer(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
 #define C2PY_DESCR_TYPE_CHAR_OFF (C2PY.pyobject_size + (Py_ssize_t)sizeof(void*) + 1)
 #define C2PY_DESCR_BYTEORDER_OFF (C2PY_DESCR_TYPE_CHAR_OFF + 1)
 
+/* Keeps cold code (the ndarray probe, which runs until the first
+ * suitable array and then never again) out of the hot acquire path.
+ * Not 'inline' (GCC rejects inline + noinline); 'unused' because a
+ * translation unit may never call it. */
+#if defined(__GNUC__) || defined(__clang__)
+#define C2PY_NOINLINE __attribute__((noinline, unused))
+#elif defined(_MSC_VER)
+#define C2PY_NOINLINE __declspec(noinline)
+#else
+#define C2PY_NOINLINE
+#endif
+
+/* First encounter of a numpy.ndarray (type tp): acquire via the buffer
+ * protocol, scan object memory to locate the data pointer, then check
+ * the struct reading against the buffer's answer before publishing the
+ * layout.  Returns 0 with pin->buf holding the PEP 3118 answer (the
+ * caller copies it to info: info must not escape the inlined caller, or
+ * the compiler keeps it in memory on every call), or -1 (with the
+ * exception from the buffer protocol, if any). */
+static C2PY_NOINLINE int
+c2py_probe_ndarray(PyObject *obj, void *tp, c2py_buf_pin *pin,
+                   int want_writable)
+{
+    c2py_ndarray_layout_t *L = &C2PY_NDARRAY;
+    char *base;
+    void *dptr, *descr;
+    int nd, data_off = -1;
+    Py_ssize_t nelem, i;
+    char type_char;
+
+    if (c2py_acquire_buffer(obj, &pin->buf, want_writable) != 0)
+        return -1;
+
+    base = (char*)obj;
+    {
+        int off;
+        dptr = pin->buf.buf;
+        for (off = (int)C2PY.pyobject_size;
+             off < (int)C2PY.pyobject_size + 80;
+             off += (int)sizeof(void*)) {
+            if (*(void**)(base + off) == dptr) {
+                data_off = off;
+                break;
+            }
+        }
+    }
+    /* Data pointer not found (e.g. NULL for an empty array), or
+     * an answer that cannot be compared with the struct (0-d,
+     * more dims than C2PY_MAX_NDIM, no shape, or the Python 2.7
+     * old buffer API, which has buf.obj == NULL): nothing
+     * learned, retry on a later array. */
+    if (data_off < 0 || pin->buf.obj == NULL || pin->buf.ndim < 1 ||
+        pin->buf.ndim > C2PY_MAX_NDIM || pin->buf.shape == NULL)
+        goto fail;
+
+    /* Validate the hard-coded offsets against the PEP 3118 answer
+     * (finding A7): nd, itemsize and type char of the descr, every
+     * dimension, and every stride numpy does not normalise in its
+     * export (length-1 axes and empty arrays).  On disagreement
+     * the layout is not numpy's: mark the probe done with no type
+     * published, so the fast path stays off in this process, and
+     * serve this call from the PEP 3118 answer. */
+    {
+        Py_ssize_t *dims, *strides;
+        int isz, ok = 1;
+
+        nd      = *(int*)(base + data_off + C2PY_NDARR_OFF_ND);
+        dims    = *(Py_ssize_t**)(base + data_off + C2PY_NDARR_OFF_DIMS);
+        strides = *(Py_ssize_t**)(base + data_off + C2PY_NDARR_OFF_STRIDES);
+        descr   = *(void**)(base + data_off + C2PY_NDARR_OFF_DESCR);
+        if (nd != pin->buf.ndim || dims == NULL || strides == NULL ||
+            descr == NULL) {
+            ok = 0;
+        } else {
+            type_char = ((char*)descr)[C2PY_DESCR_TYPE_CHAR_OFF];
+            isz = c2py_format_itemsize(type_char);
+            if (isz != 0) {
+                char ft = c2py_format_type(pin->buf.format);
+                if (isz != pin->buf.itemsize ||
+                    (ft != '\0' && ft != type_char))
+                    ok = 0;
+            }
+            nelem = 1;
+            for (i = 0; ok && i < nd; i++) {
+                if (dims[i] != pin->buf.shape[i])
+                    ok = 0;
+                nelem *= (dims[i] != 0);
+            }
+            if (ok && nelem && pin->buf.strides != NULL) {
+                for (i = 0; i < nd; i++) {
+                    if (dims[i] > 1 && strides[i] != pin->buf.strides[i])
+                        ok = 0;
+                }
+            }
+        }
+        if (!ok) {
+            c2py_store_int(&L->probed, 1);
+            goto use_pep3118;
+        }
+    }
+
+    /* Publish: data_off first, then the type (release), so a
+     * thread that sees the type also sees data_off.  A racing
+     * prober stores the same values. */
+    c2py_store_int(&L->data_off, data_off);
+    c2py_store_int(&L->probed, 1);
+    c2py_store_ptr_rel(&L->ndarray_type, tp);
+
+use_pep3118:
+    /* First call: served from the buffer acquired above, as the
+     * pep3118 backend, so unpin releases it. */
+    pin->kind = C2PY_PIN_PEP3118;
+    return 0;
+
+fail:
+    c2py_release_buffer(&pin->buf);
+    return -1;
+}
+
 /* Acquire via numpy ndarray struct-cast (no PyObject_GetBuffer).
  * Returns 0 on success, -1 to signal "try next backend" or real failure.
  * On first encounter of a numpy.ndarray, probes the data-pointer
@@ -901,61 +1027,10 @@ c2py_pin_ndarray(PyObject *obj, c2py_buf_pin *pin, c2py_ptr_info *info,
     if (!c2py_load_int(&L->probed) && tp) {
         const char *name = *(const char**)((char*)tp + C2PY_TP_NAME_OFF);
         if (name && strcmp(name, "numpy.ndarray") == 0) {
-            int data_off = -1;
-            /* First encounter: validate via buffer protocol, then
-             * scan object memory to locate the data pointer at runtime.
-             * Note: PyObject_GetBuffer COPIES shape/strides to temporary
-             * arrays for numpy, so we cannot verify against buf.shape. */
-            if (c2py_acquire_buffer(obj, &pin->buf, want_writable) != 0)
+            if (c2py_probe_ndarray(obj, tp, pin, want_writable) != 0)
                 return -1;
-
-            base = (char*)obj;
-            {
-                int off;
-                dptr = pin->buf.buf;
-                for (off = (int)C2PY.pyobject_size;
-                     off < (int)C2PY.pyobject_size + 80;
-                     off += (int)sizeof(void*)) {
-                    if (*(void**)(base + off) == dptr) {
-                        data_off = off;
-                        break;
-                    }
-                }
-            }
-            /* Data pointer not found (e.g. NULL for an empty array):
-             * nothing learned, retry on a later array. */
-            if (data_off < 0)
-                goto probe_fail;
-
-            /* Verify the layout against known numpy struct:
-             * data_off+OFF_ND      -> nd   (int, 0 <= nd <= 32)
-             * data_off+OFF_DIMS    -> shape ptr (reasonable pointer)
-             * data_off+OFF_DESCR   -> descr (non-NULL pointer) */
-            nd    = *(int*)(base + data_off + C2PY_NDARR_OFF_ND);
-            descr = *(void**)(base + data_off + C2PY_NDARR_OFF_DESCR);
-            if (nd < 0 || nd > C2PY_MAX_NDIM || descr == NULL)
-                goto probe_fail;
-            /* Sanity: shape pointer should be non-NULL if nd>0 */
-            if (nd > 0 && *(void**)(base + data_off + C2PY_NDARR_OFF_DIMS) == NULL)
-                goto probe_fail;
-
-            /* Publish: data_off first, then the type (release), so a
-             * thread that sees the type also sees data_off.  A racing
-             * prober stores the same values. */
-            c2py_store_int(&L->data_off, data_off);
-            c2py_store_int(&L->probed, 1);
-            c2py_store_ptr_rel(&L->ndarray_type, tp);
-
-
-            /* First call: info already filled via c2py_acquire_buffer.
-             * Return via pep3118 path so unpin releases the buffer. */
             memcpy(info, &pin->buf, sizeof(c2py_ptr_info));
-            pin->kind = C2PY_PIN_PEP3118;
             return 0;
-
-        probe_fail:
-            c2py_release_buffer(&pin->buf);
-            return -1;
         }
     }
 
@@ -965,7 +1040,7 @@ fill:
     base = (char*)obj + c2py_load_int(&L->data_off);
 
     dptr  = *(void**)base;
-    nd    = *(int*)(base + C2PY_NDARR_OFF_ND);
+    nd    = *(volatile int*)(base + C2PY_NDARR_OFF_ND);
     flags = *(int*)(base + C2PY_NDARR_OFF_FLAGS);
 
     if (want_writable && !(flags & C2PY_NPY_WRITEABLE)) {
@@ -1002,15 +1077,53 @@ fill:
         return -1;
     }
 
-    info->ptr     = dptr;
-    info->ndim    = nd;
-    info->shape   = *(Py_ssize_t**)(base + C2PY_NDARR_OFF_DIMS);
-    info->strides = *(Py_ssize_t**)(base + C2PY_NDARR_OFF_STRIDES);
+    /* Copy shape and strides into the pin (finding A6), so the wrapper
+     * holds no pointer into the array other than the data pointer.  nd
+     * and the two array pointers are each read exactly once (volatile:
+     * the compiler may not reload them), and nd is bounded before it is
+     * used, so whatever another thread does to the array (an in-place
+     * "a.shape = ..." on a free-threaded build) the copy never runs past
+     * shape_buf / stride_buf.  More than C2PY_MAX_NDIM dimensions is a
+     * real array: decline, PEP 3118 takes it.
+     *
+     * A torn read can still give a wrong shape.  A wrong but plausible
+     * one goes to the function's checks: like any other shape.  An
+     * impossible one (missing arrays, a negative dimension, an element
+     * count that overflows) raises ValueError instead of declining:
+     * numpy's own PEP 3118 export is not safe against a concurrent
+     * reshape, and a real array never gets here.  numpy frees and
+     * rewrites dims/strides during such a reshape, so the copy itself
+     * may read stale numpy memory; only numpy can close that. */
+    if ((unsigned)nd > (unsigned)C2PY_MAX_NDIM)
+        return -1;
+    info->ptr  = dptr;
+    info->ndim = nd;
+    if (nd > 0) {
+        const Py_ssize_t *dims, *strides;
+        Py_ssize_t d, neg = 0;
+        size_t prod = 1;
 
-    nelem = 1;
-    if (info->shape) {
-        for (i = 0; i < nd && info->shape[i] >= 0; i++)
-            nelem *= info->shape[i];
+        dims    = *(Py_ssize_t *volatile *)(base + C2PY_NDARR_OFF_DIMS);
+        strides = *(Py_ssize_t *volatile *)(base + C2PY_NDARR_OFF_STRIDES);
+        if ((dims == NULL) | (strides == NULL))
+            goto torn;
+        for (i = 0; i < nd; i++) {
+            d = dims[i];
+            pin->shape_buf[i]  = d;
+            pin->stride_buf[i] = strides[i];
+            neg |= d;
+            prod *= (size_t)d;
+        }
+        /* itemsize <= 8 here (c2py_format_itemsize), so len fits. */
+        if ((neg < 0) | (prod > ((size_t)C2PY_SSIZE_T_MAX >> 3)))
+            goto torn;
+        nelem = (Py_ssize_t)prod;
+        info->shape   = pin->shape_buf;
+        info->strides = pin->stride_buf;
+    } else {
+        nelem = 1;
+        info->shape   = NULL;
+        info->strides = NULL;
     }
     info->len = nelem * (Py_ssize_t)info->itemsize;
 
@@ -1021,6 +1134,11 @@ fill:
     pin->buf.obj = obj;
     pin->kind = C2PY_PIN_NDARRAY;
     return 0;
+
+torn:
+    PyErr_SetString(PyExc_ValueError,
+                    "numpy array shape changed while being read");
+    return -1;
 }
 
 /* Acquire via DLPack capsule extraction.

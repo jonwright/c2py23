@@ -132,6 +132,7 @@ MODULES := \
 	tests/cases/shapeguard/shapeguardmod$(EXT) \
 	tests/cases/ptralign/ptralignmod$(EXT) \
 	tests/cases/autoformat/autoformatmod$(EXT) \
+	tests/cases/fakendarray/fakendmod$(EXT) \
 	examples/kissfft_wrap/kissfftmod$(EXT) \
 	examples/lz4_wrap/lz4mod$(EXT) \
 	$(BENCH_TARGETS)
