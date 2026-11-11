@@ -138,9 +138,6 @@ target Python (bypasses all dlsym layout detection).
   (the perf attributes were converted to handles; these were not).
 - `tests/test_visibility.py` checks ELF symbol visibility only; it returns
   early on Windows.
-- `benchmarks/` has no pythonh-mode rows: `load_pythonh_module()` in
-  `benchmarks/conftest.py` is unused and `make -C benchmarks c2py_ph`
-  builds modules nothing reads.
 - numpy 2.5 on CPython 3.14t crashed inside its own buffer export when
   another thread reshaped the array in place (no c2py23 code involved).
   Needs a reproducer against numpy git head on 3.15t before reporting.

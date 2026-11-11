@@ -3,7 +3,7 @@
 # tests/Makefile and writes benchmarks/build/*.so).
 #
 # Usage:
-#   make -C benchmarks golds c2py      # build gold + c2py23 (dlsym) modules
+#   make -C benchmarks golds c2py c2py_ph   # build gold + c2py23 (dlsym + pythonh)
 #   make -C benchmarks bench           # run all benchmarks
 #   make -C benchmarks bench-noargs    # run noargs benchmark only
 
@@ -47,22 +47,34 @@ golds: gold_noargs gold_vnorm gold_numpy_vnorm gold_getitem
 c2py:
 	cd .. && CC=$(CC) PYTHONPATH=.:$$PYTHONPATH $(PYTHON) tests/runner.py --no-test
 
-# pythonh-mode builds land in ../build/lib.*; no benchmark reads them yet.
-c2py_ph:
-	cd .. && PYTHONPATH=.:$$PYTHONPATH $(PYTHON) tests/setup.py build_ext --pythonh
+# ---- c2py23 pythonh modules (#include <Python.h>, no dlsym) ----
+# Same generated wrappers as the dlsym build, compiled with
+# -DC2PY_USE_PYTHON_H into build_ph/ for the "c2py23 --pythonh" rows.
+
+RUNTIME_DIR = ../c2py23/runtime
+PH_MODULES = c2py_noargs c2py_vnorm
+
+$(BUILDDIR_PH):
+	mkdir -p $(BUILDDIR_PH)
+
+$(BUILDDIR_PH)/%.so: c2py $(SRCDIR)/tiny_kernel.c | $(BUILDDIR_PH)
+	$(CC) $(CPY_CFLAGS) -DC2PY_USE_PYTHON_H -I$(RUNTIME_DIR) -I$(SRCDIR) $(CPY_LDFLAGS) -o $@ \
+		$(SRCDIR)/$*_wrapper.c $(SRCDIR)/tiny_kernel.c $(RUNTIME_DIR)/c2py_runtime.c -lm
+
+c2py_ph: $(PH_MODULES:%=$(BUILDDIR_PH)/%.so)
 
 # ---- Run benchmarks ----
 
-bench: golds c2py
+bench: golds c2py c2py_ph
 	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py test_vnorm_overhead.py test_getitem_overhead.py -v -s
 
 bench-getitem: gold_getitem c2py
 	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_getitem_overhead.py -v -s
 
-bench-noargs: gold_noargs c2py
+bench-noargs: gold_noargs c2py c2py_ph
 	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_noargs_overhead.py -v -s
 
-bench-vnorm: gold_vnorm gold_numpy_vnorm c2py
+bench-vnorm: gold_vnorm gold_numpy_vnorm c2py c2py_ph
 	PYTHONPATH=..:$$PYTHONPATH taskset -c 0 $(PYTHON) -m pytest test_vnorm_overhead.py -v -s
 
 # ---- Clean ----

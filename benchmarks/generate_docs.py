@@ -88,6 +88,12 @@ def render():
         L("200,000 calls to `vnorm(vec, mods)` with a single 3D vector.")
         L("The C kernel runs in ~1 ns; wall-clock time is pure wrapper overhead.")
         L()
+        L("`c2py23 bare` has no user `checks:` and opts out of the derived")
+        L("element-type, alignment and aliasing checks (`check_format`,")
+        L("`check_alignment`, `check_aliasing` all false).  It still runs the")
+        L("contiguity and shape checks implied by the `vec[][3]` signature, which")
+        L("have no opt-out.  The other c2py23 rows keep every default check.")
+        L()
         L("| wrapper | acquire | checks | timing | ns/call |")
         L("|---------|---------|--------|--------|---------|")
         for r in V:
@@ -121,7 +127,7 @@ def render():
     if G:
         L("## Getitem overhead (per-call buffer acquisition)")
         L()
-        L("500,000 calls extracting one element from a double buffer and returning")
+        L("200,000 calls extracting one element from a double buffer and returning")
         L("it as a Python float.  Each call acquires the buffer, reads one element,")
         L("constructs a Python float, and releases the buffer.")
         L()
