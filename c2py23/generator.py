@@ -105,6 +105,11 @@ def _is_ptr_ret(ret):
     return ret in ("void *", "const void *")
 
 
+def _is_value_ret(ret):
+    """True if a C return type yields a Python value (anything but void)."""
+    return ret in ("int", "float", "double") or _is_ptr_ret(ret)
+
+
 def _int_literal(value):
     """C literal for a Python int in the int64 range (C89-safe, no suffix)."""
     value = int(value)
@@ -1302,7 +1307,7 @@ def _emit_c_call(
     if not has_outputs:
         if ol.return_type in ("void", None):
             emitl(call_str + ";")
-        elif ol.return_type in ("int", "float", "double") or _is_ptr_ret(ol.return_type):
+        elif _is_value_ret(ol.return_type):
             # C89: open a block so the result variable heads it
             emitl("{")
             emitl("    {0} _ret;".format(ol.return_type))
@@ -1347,14 +1352,14 @@ def _emit_c_call(
     emitl("{")
     if has_ret:
         ret_var = "_c2py_retval"
-        rtype = ol.return_type if (ol.return_type in ("int", "float", "double") or _is_ptr_ret(ol.return_type)) else "int"
+        rtype = ol.return_type if _is_value_ret(ol.return_type) else "int"
         emitl("    {0} {1};".format(rtype, ret_var))
     if n_out > 1:
         emitl("    PyObject *_c2py_tup;")
         for i in range(n_out):
             emitl("    PyObject *_c2py_obj{0};".format(i))
     if has_ret:
-        if ol.return_type in ("int", "float", "double") or _is_ptr_ret(ol.return_type):
+        if _is_value_ret(ol.return_type):
             emitl("    {0} = {1};".format(ret_var, call_str))
         else:
             emitl("/* unknown return type: {0} */".format(ol.return_type))

@@ -166,6 +166,30 @@ def test_non_void_ptr_prefix_returns_rejected(sig):
         from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig(sig)]})
 
 
+@pytest.mark.parametrize("py_ret", ["void", "float"])
+def test_void_ptr_return_needs_py_int(py_ret):
+    func = _vptr_sig("proc(void *ptr) -> void *", py_ret=py_ret)
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [func]})
+    assert "-> int" in str(ei.value), "error should ask for '-> int': %s" % ei.value
+
+
+def test_void_ptr_return_in_variant_needs_py_int():
+    func = {
+        "py_sig": "proc(ptr: int) -> void",
+        "c_overloads": [
+            {
+                "map": {"ptr": "ptr"},
+                "group": "g",
+                "variants": [{"sig": "void *proc_a(void *ptr)", "default": True}],
+            }
+        ],
+    }
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [func]})
+    assert "-> int" in str(ei.value), "error should ask for '-> int': %s" % ei.value
+
+
 def test_ptr_return_error_message_lists_only_void():
     with pytest.raises(ValueError) as ei:
         from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig("proc(char *ptr) -> double *")]})

@@ -377,12 +377,14 @@ way.  No other pointer return type is accepted: `char *`, `double *`, `int *`,
 etc. raise a parser error, and the message states that only `void *` pointer
 returns are supported.
 
-The Python return type in `py_sig` for such a function is `int`.  Because the
-wrapper converts the return value from the C signature alone, a `py_sig` that
-says `-> void` or `-> float` for a `void *` return type is not caught at parse
-time -- the Python value is always an `int` (a bare address), regardless of what
-`py_sig` claims.  (This is the same non-enforcement the codebase applies to
-other py/C return mismatches, e.g. `py_sig -> float` with a C `-> int`.)
+The Python return type in `py_sig` for such a function must be `int`; the
+parser rejects `-> void` or `-> float` with a `void *` C return.
+
+The int is the address as a signed, pointer-width value (`intptr_t`), which is
+what the `void *` parameter path accepts.  On 64-bit platforms user-space
+addresses are positive and equal `ctypes.addressof()`.  On a 32-bit platform
+an address at or above 2 GiB comes back negative; pass it back unchanged and
+compare addresses modulo `2**32` there.
 
 **The int is a bare address.**  c2py23 does not track ownership, type, or
 lifetime of the returned pointer.  The wrapper never dereferences it.  Passing

@@ -30,6 +30,15 @@ void *address_with_out(void *ptr, int marker, int *out) {
     return ptr;
 }
 
+/* Two variants of one group, both returning void *. */
+void *address_var_a(void *ptr) {
+    return (void *)((char *)ptr + 1);
+}
+
+void *address_var_b(void *ptr) {
+    return (void *)((char *)ptr + 2);
+}
+
 /* void * return that releases the GIL around the call. */
 void *address_gil(void *ptr, int offset) {
     return (void *)((char *)ptr + offset);

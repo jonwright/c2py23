@@ -64,6 +64,19 @@
             ],
         },
         {
+            "py_sig": "address_var(ptr: int) -> int",
+            "c_overloads": [
+                {
+                    "map": {"ptr": "ptr"},
+                    "group": "g",
+                    "variants": [
+                        {"sig": "void *address_var_a(void *ptr)", "default": True},
+                        {"sig": "address_var_b(void *ptr) -> void *", "default": False},
+                    ],
+                },
+            ],
+        },
+        {
             "py_sig": "address_gil(ptr: int, offset: int) -> int",
             "gil_release": True,
             "c_overloads": [

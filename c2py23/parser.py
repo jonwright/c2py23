@@ -622,9 +622,8 @@ def _parse_c_sig(sig_str, path):
     if return_type is not None and return_type not in _SUPPORTED_RETURN_TYPES:
         raise ValueError(
             "Unsupported return type '{}' in C signature '{}' in {}. "
-            "Supported return types: void, int, float, double. "
-            "Only the pointer return type 'void *' (returned to Python as an int) "
-            "is supported; use outputs: for other types.".format(return_type, sig_str, path)
+            "Supported return types: void, int, float, double, void *. "
+            "Use outputs: for other types.".format(return_type, sig_str, path)
         )
 
     # Parse params
@@ -1416,6 +1415,17 @@ def _parse_func(raw, path):
             params[pname] = _check_ascii(pdesc, "params.{}".format(pname), path)
 
     _reject_ptr_arith(name, checks, overloads, path)
+
+    # A void * return reaches Python as an int (a bare address); py_sig must
+    # say so, since the docstring and __text_signature__ come from py_sig.
+    if ret_type != "int":
+        for ol in overloads:
+            for cand in ol.variants if ol.variants is not None else [ol]:
+                if _is_void_ptr_ret(cand.return_type or ""):
+                    raise ValueError(
+                        "'{}' returns {} from C, which is returned to Python as an int: "
+                        "py_sig must end '-> int', not '-> {}' in {}".format(name, cand.return_type, ret_type, path)
+                    )
 
     return FuncDef(
         name,

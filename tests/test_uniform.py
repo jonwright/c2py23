@@ -554,6 +554,17 @@ def test_address():
     assert out_ret[0] == ptr, "tuple[0] (void* return) = %d, expected %d" % (out_ret[0], ptr)
     assert out_ret[1] == 12, "tuple[1] (output) = %d, expected 12" % out_ret[1]
 
+    # The int is the signed pointer-width value: an all-ones pointer such as
+    # MAP_FAILED is -1, and goes back in unchanged
+    assert addressmod.address_same(-1) == -1, "address_same(-1) = %d" % addressmod.address_same(-1)
+
+    # Variant group: both variants return void *, each reachable by rebind
+    assert addressmod.address_var(ptr) == ptr + 1, "address_var default variant"
+    addressmod._rebind_address_var("address_var_b")
+    assert addressmod.address_var(ptr) == ptr + 2, "address_var rebound to variant b"
+    addressmod._rebind_address_var(None)
+    assert addressmod.address_var(ptr) == ptr + 1, "address_var reset to default"
+
     # gil_release true still returns a void * as int
     assert addressmod.address_gil(ptr, step) == ptr + step, "address_gil(ptr,%d) != ptr+%d" % (step, step)
 
