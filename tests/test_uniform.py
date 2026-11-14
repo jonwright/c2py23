@@ -521,6 +521,42 @@ def test_address():
     assert buf[0] == 0, "buf[0] was modified, expected 0"
     assert buf[9] == 0, "buf[9] was modified, expected 0"
 
+    # --- void * return (suffix '-> void *'): delivered to Python as int ---
+    step = 3 * ctypes.sizeof(ctypes.c_int)  # bytes to buf[3]
+    off = addressmod.address_offset(ptr, step)
+    assert off == ptr + step, "address_offset(ptr,%d)=%d, expected %d" % (step, off, ptr + step)
+    assert addressmod.address_offset(ptr, 0) == ptr, "address_offset(ptr,0) != ptr"
+
+    # The returned value is a bare int (long on Python 2), never a float
+    assert not isinstance(off, float), "address_offset returned a float"
+    if IS_PY2:
+        assert isinstance(off, (int, long)), "address_offset returned %s, not int/long" % type(off)
+    else:
+        assert isinstance(off, int), "address_offset returned %s, not int" % type(off)
+
+    # Round trip: feed the returned int back in as a void* param; C reaches
+    # the same memory (buf[3]).
+    ret = addressmod.address_store(off, 42, 0)
+    assert ret == 0, "address_store(returned_ptr, 42, 0) returned %d" % ret
+    assert buf[3] == 42, "buf[3] = %d, expected 42 via returned pointer" % buf[3]
+    buf[3] = 0
+
+    # NULL return gives Python 0; the wrapper does not raise
+    assert addressmod.address_null() == 0, "address_null() != 0"
+
+    # const void * return (prefix form) round-trips the same pointer
+    assert addressmod.address_same(ptr) == ptr, "address_same(ptr) != ptr"
+
+    # Tuple ordering: void* return first, then the scalar output
+    out_ret = addressmod.address_with_out(ptr, 5)
+    assert isinstance(out_ret, tuple), "address_with_out should return a tuple, got %s" % type(out_ret)
+    assert len(out_ret) == 2, "address_with_out returned %d items" % len(out_ret)
+    assert out_ret[0] == ptr, "tuple[0] (void* return) = %d, expected %d" % (out_ret[0], ptr)
+    assert out_ret[1] == 12, "tuple[1] (output) = %d, expected 12" % out_ret[1]
+
+    # gil_release true still returns a void * as int
+    assert addressmod.address_gil(ptr, step) == ptr + step, "address_gil(ptr,%d) != ptr+%d" % (step, step)
+
     print("PASS: address")
 
 

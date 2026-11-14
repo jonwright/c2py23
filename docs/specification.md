@@ -352,6 +352,44 @@ The `void*` parameter is a pure address passthrough for user-managed memory
 (GPU buffers, custom allocators, etc.).  The C function is responsible for
 interpreting the pointer; the wrapper performs no reads or writes through it.
 
+### Opaque Pointers as Returns (`void *`)
+
+A wrapped C function may also **return** an opaque pointer, delivered to Python
+as `int` (the bare address).  The wrapper converts the returned pointer with
+`PyLong_FromLongLong((long long)(intptr_t)_ret)` -- the same conversion the
+`void *` parameter path uses in reverse, so the two round-trip exactly.  A
+`NULL` return gives Python `0`; the wrapper does **not** raise on `NULL`.
+
+Both spellings of the C signature are accepted (suffix and prefix):
+
+```python
+c_overloads:
+  - sig: "address_offset(void *ptr, int offset) -> void *"   # suffix form
+    map: {ptr: addr, offset: offset}
+  - sig: "address_same(const void *ptr) -> const void *"     # const return
+    map: {ptr: addr}
+  - sig: "void *raw_alloc(int n)"                            # prefix form
+    map: {n: n}
+```
+
+`const void *` is accepted as a return type in both forms and treated the same
+way.  No other pointer return type is accepted: `char *`, `double *`, `int *`,
+etc. raise a parser error, and the message states that only `void *` pointer
+returns are supported.
+
+The Python return type in `py_sig` for such a function is `int`.  Because the
+wrapper converts the return value from the C signature alone, a `py_sig` that
+says `-> void` or `-> float` for a `void *` return type is not caught at parse
+time -- the Python value is always an `int` (a bare address), regardless of what
+`py_sig` claims.  (This is the same non-enforcement the codebase applies to
+other py/C return mismatches, e.g. `py_sig -> float` with a C `-> int`.)
+
+**The int is a bare address.**  c2py23 does not track ownership, type, or
+lifetime of the returned pointer.  The wrapper never dereferences it.  Passing
+a stale or wrong value back into a C parameter is undefined behaviour.  Binding
+authors should hide the int inside a Python class that manages the underlying
+object's lifetime.
+
 ### C Function Signature
 
 ```
@@ -363,9 +401,14 @@ c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
           | "intptr_t" | "size_t" | "_Bool"
 c_ret ::= "void" | "int" | "float" | "double"
+        | ["const"] "void" "*"              # opaque pointer, returned as int
 ```
 
 If `-> c_ret` is omitted, the return type is `void`.
+
+A `void *` (or `const void *`) return is the only pointer return type allowed;
+it is delivered to Python as `int` (a bare address).  Any other pointer
+return type (`char *`, `double *`, `int *`, ...) is rejected by the parser.
 
 When a parameter uses array notation (`name[3]`, `name[]`, `name[][3]`),
 c2py23 automatically derives buffer validation checks (see

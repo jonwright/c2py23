@@ -465,6 +465,7 @@ c2py23 bridges Python and C types as follows:
 | `void` | `void` | `None` |
 | `int` | `int` | Python `int` |
 | `float` | `double` or `float` | Python `float` |
+| `int` | `void *` / `const void *` | Python `int` (bare address) |
 
 ### `void*` parameters are raw addresses
 
