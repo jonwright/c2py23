@@ -265,7 +265,24 @@ c2py23 installed -- see the README for the gcc command.
 - Uses `emcc -s SIDE_MODULE=1` for Pyodide 3.12+
 - Experimental, use at your own risk. No CI -- likely to regress if not maintained.
 
-The snakepit container images must be present at `../snakepit/` relative to this project root.
+The container images come from snakepit (https://github.com/jonwright/snakepit),
+a separate repository that exists for testing: it builds the multi-Python
+images this project is tested in.  It is usually checked out next to this
+one, at `../snakepit/` relative to this project root, and
+`tests/test_all.py` looks for the `.sif` images there.
+
+### Working in a scratch clone
+
+A fresh `git clone` of this repository (e.g. for a delegated agent) needs two
+things before the full test suite will run:
+
+```bash
+git submodule update --init          # examples/kissfft and examples/lz4
+ln -s /path/to/snakepit ../snakepit  # so tests/test_all.py finds the images
+```
+
+Without the submodules the example builds fail; without the link beside the
+clone `tests/test_all.py` cannot find the containers.
 
 ## Architecture
 

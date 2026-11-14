@@ -335,7 +335,8 @@ Returns:
 ### Opaque Pointers (`void*`)
 
 A C parameter with type `void*` maps from Python `int` (a pointer-width integer).
-The wrapper casts through `intptr_t` and never dereferences the pointer:
+The wrapper converts the int with `PyLong_AsVoidPtr` (the pointer-width
+conversion; see the accepted range below) and never dereferences the pointer:
 
 ```python
 c_overloads:
@@ -352,6 +353,54 @@ The `void*` parameter is a pure address passthrough for user-managed memory
 (GPU buffers, custom allocators, etc.).  The C function is responsible for
 interpreting the pointer; the wrapper performs no reads or writes through it.
 
+### Opaque Pointers as Returns (`void *`)
+
+A wrapped C function may also **return** an opaque pointer, delivered to Python
+as `int` (the bare address).  The wrapper converts the returned pointer with
+`PyLong_FromVoidPtr(_ret)` -- an unsigned, pointer-width conversion that is the
+reverse of the `PyLong_AsVoidPtr` used by the `void *` parameter path, so the
+two round-trip exactly.  A `NULL` return gives Python `0`; the wrapper does
+**not** raise on `NULL`.
+
+Both spellings of the C signature are accepted (suffix and prefix):
+
+```python
+c_overloads:
+  - sig: "address_offset(void *ptr, int offset) -> void *"   # suffix form
+    map: {ptr: addr, offset: offset}
+  - sig: "address_same(const void *ptr) -> const void *"     # const return
+    map: {ptr: addr}
+  - sig: "void *raw_alloc(int n)"                            # prefix form
+    map: {n: n}
+```
+
+`const void *` is accepted as a return type in both forms and treated the same
+way.  No other pointer return type is accepted: `char *`, `double *`, `int *`,
+etc. raise a parser error, and the message states that only `void *` pointer
+returns are supported.
+
+The Python return type in `py_sig` for such a function must be `int`; the
+parser rejects `-> void` or `-> float` with a `void *` C return.
+
+The int is the address as an **unsigned**, pointer-width value.  With
+`B = 8 * sizeof(void *)` (the pointer width in bits), the parameter path
+accepts any int in `[-(2**(B-1)), 2**B - 1]`: negative values wrap to
+their unsigned bit pattern, so `-1` becomes the all-ones address
+(`2**B - 1`).  CPython's `PyLong_AsVoidPtr` does this itself; PyPy's rejects
+negative ints, so the runtime wraps them there, and the range is the same on
+every interpreter.  A value outside that range raises `OverflowError`.
+A non-integer (a `float`, `str`, `None`) raises `TypeError` on every Python
+version; an object with `__index__` is accepted.  The return path always
+produces a non-negative int, the same value `ctypes.addressof()` gives, so a
+returned value fed back in comes back unchanged, and a 32-bit build accepts
+and returns the full `0` to `2**32 - 1` range.
+
+**The int is a bare address.**  c2py23 does not track ownership, type, or
+lifetime of the returned pointer.  The wrapper never dereferences it.  Passing
+a stale or wrong value back into a C parameter is undefined behaviour.  Binding
+authors should hide the int inside a Python class that manages the underlying
+object's lifetime.
+
 ### C Function Signature
 
 ```
@@ -363,9 +412,14 @@ c_ctype ::= "int" | "float" | "double" | "char" | "void"
           | "int32_t" | "uint32_t" | "int64_t" | "uint64_t"
           | "intptr_t" | "size_t" | "_Bool"
 c_ret ::= "void" | "int" | "float" | "double"
+        | ["const"] "void" "*"              # opaque pointer, returned as int
 ```
 
 If `-> c_ret` is omitted, the return type is `void`.
+
+A `void *` (or `const void *`) return is the only pointer return type allowed;
+it is delivered to Python as `int` (a bare address).  Any other pointer
+return type (`char *`, `double *`, `int *`, ...) is rejected by the parser.
 
 When a parameter uses array notation (`name[3]`, `name[]`, `name[][3]`),
 c2py23 automatically derives buffer validation checks (see
@@ -1382,8 +1436,11 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
 
-    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    /* Pointer-to-int and int-to-pointer conversion (perf struct addresses
+     * and opaque void* parameters) */
     PyObject* (*Long_FromVoidPtr)(void*);
+    void* (*Long_AsVoidPtr)(PyObject*);
+    PyObject* (*Number_Index)(PyObject*);
 
     /* Reference counting */
     void (*IncRef)(PyObject*);

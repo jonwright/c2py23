@@ -16,5 +16,78 @@
                 },
             ],
         },
+        {
+            "py_sig": "address_offset(ptr: int, offset: int) -> int",
+            "c_overloads": [
+                {
+                    "sig": "address_offset(void *ptr, int offset) -> void *",
+                    "map": {
+                        "ptr": "ptr",
+                        "offset": "offset",
+                    },
+                },
+            ],
+        },
+        {
+            "py_sig": "address_null() -> int",
+            "c_overloads": [
+                {
+                    "sig": "address_null() -> void *",
+                    "map": {},
+                },
+            ],
+        },
+        {
+            "py_sig": "address_same(ptr: int) -> int",
+            "c_overloads": [
+                {
+                    "sig": "const void *address_same(const void *ptr)",
+                    "map": {
+                        "ptr": "ptr",
+                    },
+                },
+            ],
+        },
+        {
+            "py_sig": "address_with_out(ptr: int, marker: int) -> int",
+            "c_overloads": [
+                {
+                    "sig": "address_with_out(void *ptr, int marker, int *out) -> void *",
+                    "map": {
+                        "ptr": "ptr",
+                        "marker": "marker",
+                    },
+                    "outputs": {
+                        "out": "int",
+                    },
+                },
+            ],
+        },
+        {
+            "py_sig": "address_var(ptr: int) -> int",
+            "c_overloads": [
+                {
+                    "map": {"ptr": "ptr"},
+                    "group": "g",
+                    "variants": [
+                        {"sig": "void *address_var_a(void *ptr)", "default": True},
+                        {"sig": "address_var_b(void *ptr) -> void *", "default": False},
+                    ],
+                },
+            ],
+        },
+        {
+            "py_sig": "address_gil(ptr: int, offset: int) -> int",
+            "gil_release": True,
+            "c_overloads": [
+                {
+                    "sig": "void *address_gil(void *ptr, int offset)",
+                    "map": {
+                        "ptr": "ptr",
+                        "offset": "offset",
+                    },
+                },
+            ],
+        },
     ],
 }

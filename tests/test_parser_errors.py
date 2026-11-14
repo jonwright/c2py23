@@ -118,6 +118,84 @@ def test_valid_c_sigs_parse(sig):
     from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_sig(sig)]})
 
 
+# ---- void * return: accepted spellings ----
+
+def _vptr_sig(sig, py_ret="int"):
+    """A one-int-param function whose C overload has return type `sig`."""
+    return {
+        "py_sig": "proc(ptr: int) -> %s" % py_ret,
+        "c_overloads": [
+            {"map": {"ptr": "ptr"}, "sig": sig},
+        ],
+    }
+
+
+@pytest.mark.parametrize("sig", [
+    "proc(void *ptr) -> void *",             # suffix form, `void *`
+    "proc(void *ptr) -> void*",              # suffix form, `void*`
+    "void *proc(void *ptr)",                 # prefix form, `void *`
+    "void* proc(void *ptr)",                 # prefix form, `void*`
+    "const void *proc(const void *ptr)",     # prefix form, const
+    "proc(const void *ptr) -> const void *",  # suffix form, const
+])
+def test_void_ptr_return_spellings_accepted(sig):
+    mod = from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig(sig)]})
+    ret = mod.functions[0].overloads[0].return_type
+    assert ret in ("void *", "const void *")
+
+
+@pytest.mark.parametrize("sig", [
+    "proc(void *ptr) -> double *",     # pointer return that is NOT void*
+    "proc(void *ptr) -> char *",
+    "proc(void *ptr) -> int *",
+    "proc(void *ptr) -> size_t *",
+])
+def test_non_void_ptr_suffix_returns_rejected(sig):
+    with pytest.raises(ValueError):
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig(sig)]})
+
+
+@pytest.mark.parametrize("sig", [
+    "double *proc(void *ptr)",     # prefix form, non-void pointer return
+    "char *proc(void *ptr)",
+    "int *proc(void *ptr)",
+    "size_t *proc(void *ptr)",
+])
+def test_non_void_ptr_prefix_returns_rejected(sig):
+    with pytest.raises(ValueError):
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig(sig)]})
+
+
+@pytest.mark.parametrize("py_ret", ["void", "float"])
+def test_void_ptr_return_needs_py_int(py_ret):
+    func = _vptr_sig("proc(void *ptr) -> void *", py_ret=py_ret)
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [func]})
+    assert "-> int" in str(ei.value), "error should ask for '-> int': %s" % ei.value
+
+
+def test_void_ptr_return_in_variant_needs_py_int():
+    func = {
+        "py_sig": "proc(ptr: int) -> void",
+        "c_overloads": [
+            {
+                "map": {"ptr": "ptr"},
+                "group": "g",
+                "variants": [{"sig": "void *proc_a(void *ptr)", "default": True}],
+            }
+        ],
+    }
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [func]})
+    assert "-> int" in str(ei.value), "error should ask for '-> int': %s" % ei.value
+
+
+def test_ptr_return_error_message_lists_only_void():
+    with pytest.raises(ValueError) as ei:
+        from_c2py_dict({"module": "m", "source": ["m.c"], "functions": [_vptr_sig("proc(char *ptr) -> double *")]})
+    assert "void *" in str(ei.value), "error should say only void * is supported: %s" % ei.value
+
+
 def test_expand_valid():
     spec = {
         "module": "m",

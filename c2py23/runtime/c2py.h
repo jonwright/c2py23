@@ -514,8 +514,12 @@ typedef struct {
     /* Capsule API (optional, used by DLPack) */
     void* (*Capsule_GetPointer)(PyObject*, const char*);
 
-    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    /* Pointer-to-int conversion (for exposing perf struct addresses),
+     * and int-to-pointer (for opaque void* parameters). */
     PyObject* (*Long_FromVoidPtr)(void*);
+    void* (*Long_AsVoidPtr)(PyObject*);
+    /* operator.index(): classifies a failed int-to-pointer conversion */
+    PyObject* (*Number_Index)(PyObject*);
 
     /* GIL management */
     void* (*SaveThread)(void);
@@ -584,6 +588,8 @@ extern C2PY_HIDDEN c2py_api_t C2PY;
     } \
 } while(0)
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
+#define PyLong_AsVoidPtr(o)            C2PY.Long_AsVoidPtr((PyObject*)(o))
+#define PyNumber_Index(o)              C2PY.Number_Index((PyObject*)(o))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
 #define PyTuple_Size(t)                C2PY.Tuple_Size((PyObject*)(t))
@@ -761,6 +767,61 @@ c2py_neg_ll(long long a, int *ovf)
 {
     if (a == LLONG_MIN) { *ovf = 1; return 0; }
     return -a;
+}
+
+/* Python int -> C pointer for an opaque void* parameter.  Returns 0 and
+ * stores the pointer, or returns -1 with an exception set.
+ *
+ * PyLong_AsVoidPtr is the pointer-width conversion: it takes the unsigned
+ * address (what ctypes.addressof() and id() give) and also a negative int,
+ * which wraps.  Its failure mode is not uniform, though: for an object
+ * that is not an int it raises SystemError on Python 2.7 and TypeError on
+ * 3.x, and it never tries __index__.  So on failure the argument is put
+ * through PyNumber_Index, which raises TypeError for a non-integer on
+ * every version, and the conversion is repeated on the result.
+ *
+ * PyPy's PyLong_AsVoidPtr is unsigned only: a negative int raises
+ * ValueError there.  So when the repeat fails too, the int is read as a
+ * signed long long and a negative value that fits a pointer is wrapped
+ * here, which gives the same accepted range on every interpreter.  An int
+ * outside that range raises OverflowError.  The first call succeeds for
+ * every in-range int on CPython, so none of this costs anything on the
+ * normal path. */
+static inline int
+c2py_as_voidptr(PyObject *o, void **out)
+{
+    PyObject *idx;
+    long long v;
+    void *p = PyLong_AsVoidPtr(o);
+    if (p == NULL && PyErr_Occurred()) {
+        PyErr_Clear();
+        idx = PyNumber_Index(o);
+        if (idx == NULL) return -1;
+        p = PyLong_AsVoidPtr(idx);
+        if (p == NULL && PyErr_Occurred()) {
+            PyErr_Clear();
+            /* OverflowError here when the int does not fit a long long */
+            v = PyLong_AsLongLong(idx);
+            if (v == -1 && PyErr_Occurred()) { Py_DECREF(idx); return -1; }
+            if (v < 0 && (long long)(intptr_t)v == v) {
+                p = (void *)(intptr_t)v;
+            } else {
+                /* Fits a long long but not a pointer (32-bit only).
+                 * Repeat a conversion that is certain to overflow, to
+                 * get the interpreter's own OverflowError. */
+                if (v < 0) (void)PyLong_AsLong(idx);
+                else (void)PyLong_AsVoidPtr(idx);
+                if (!PyErr_Occurred())
+                    PyErr_SetString(PyExc_ValueError,
+                                    "int does not fit a pointer");
+                Py_DECREF(idx);
+                return -1;
+            }
+        }
+        Py_DECREF(idx);
+    }
+    *out = p;
+    return 0;
 }
 
 /* Runtime enforcement of the no-alias contract generated wrappers rely
@@ -2666,6 +2727,8 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     C2PY.Call               = PyObject_Call;
     C2PY.Dict_New           = PyDict_New;
     C2PY.Long_FromVoidPtr   = PyLong_FromVoidPtr;
+    C2PY.Long_AsVoidPtr     = PyLong_AsVoidPtr;
+    C2PY.Number_Index       = PyNumber_Index;
     C2PY.IncRef             = Py_IncRef;
     C2PY.DecRef             = Py_DecRef;
     C2PY.SaveThread         = (void*(*)(void))PyEval_SaveThread;
@@ -3297,6 +3360,10 @@ static void _c2py_runtime_init_once(void)
 
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
     if (C2PY.Long_FromVoidPtr == NULL) return;
+    RESOLVE_REQ(C2PY.Long_AsVoidPtr, "PyLong_AsVoidPtr");
+    if (C2PY.Long_AsVoidPtr == NULL) return;
+    RESOLVE_REQ(C2PY.Number_Index, "PyNumber_Index");
+    if (C2PY.Number_Index == NULL) return;
 
     RESOLVE_REQ(C2PY.SaveThread, "PyEval_SaveThread");
     RESOLVE_REQ(C2PY.RestoreThread, "PyEval_RestoreThread");

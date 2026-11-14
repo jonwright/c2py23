@@ -93,7 +93,23 @@ _OUTPUT_FROM_C = {
     "size_t": "PyLong_FromUnsignedLongLong((unsigned long long){0})",
     "float": "PyFloat_FromDouble((double){0})",
     "double": "PyFloat_FromDouble((double){0})",
+    # An opaque-pointer return (`void *` / `const void *`) is delivered to
+    # Python as a bare-address int.  A NULL pointer gives Python 0.  The
+    # explicit (void *) cast keeps pythonh mode (which calls the real CPython
+    # PyLong_FromVoidPtr) const-correct; the dlsym macro casts anyway.
+    "void *": "PyLong_FromVoidPtr((void *)({0}))",
+    "const void *": "PyLong_FromVoidPtr((void *)({0}))",
 }
+
+
+def _is_ptr_ret(ret):
+    """True if a C return type is an opaque pointer returned to Python as int."""
+    return ret in ("void *", "const void *")
+
+
+def _is_value_ret(ret):
+    """True if a C return type yields a Python value (anything but void)."""
+    return ret in ("int", "float", "double") or _is_ptr_ret(ret)
 
 
 def _int_literal(value):
@@ -1293,7 +1309,7 @@ def _emit_c_call(
     if not has_outputs:
         if ol.return_type in ("void", None):
             emitl(call_str + ";")
-        elif ol.return_type in ("int", "float", "double"):
+        elif _is_value_ret(ol.return_type):
             # C89: open a block so the result variable heads it
             emitl("{")
             emitl("    {0} _ret;".format(ol.return_type))
@@ -1323,6 +1339,9 @@ def _emit_c_call(
         elif ol.return_type == "double":
             emitl("    return PyFloat_FromDouble(_ret);")
             emitl("}")
+        elif _is_ptr_ret(ol.return_type):
+            emitl("    return PyLong_FromVoidPtr((void *)_ret);")
+            emitl("}")
         else:
             emitl("Py_RETURN_NONE;")
         return
@@ -1335,14 +1354,14 @@ def _emit_c_call(
     emitl("{")
     if has_ret:
         ret_var = "_c2py_retval"
-        rtype = ol.return_type if ol.return_type in ("int", "float", "double") else "int"
+        rtype = ol.return_type if _is_value_ret(ol.return_type) else "int"
         emitl("    {0} {1};".format(rtype, ret_var))
     if n_out > 1:
         emitl("    PyObject *_c2py_tup;")
         for i in range(n_out):
             emitl("    PyObject *_c2py_obj{0};".format(i))
     if has_ret:
-        if ol.return_type in ("int", "float", "double"):
+        if _is_value_ret(ol.return_type):
             emitl("    {0} = {1};".format(ret_var, call_str))
         else:
             emitl("/* unknown return type: {0} */".format(ol.return_type))
@@ -2138,15 +2157,9 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
             else:
                 b.emit("    {")
             if p.name in void_ptr_names:
-                b.emit("        long long _c2py_tmp = PyLong_AsLongLong(args[{0}]);".format(idx))
-                b.emit("        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;")
-                b.emit("        c_{0} = (intptr_t)_c2py_tmp;".format(p.name))
-                # An address above 4 GiB cannot exist on a 32-bit build.
-                b.emit("        if ((long long)c_{0} != _c2py_tmp) {{".format(p.name))
-                b.emit("            PyErr_SetString(PyExc_ValueError,")
-                b.emit('                "{0} out of range for C void *");'.format(p.name))
-                b.emit("            return NULL;")
-                b.emit("        }")
+                b.emit("        void *_c2py_vp;")
+                b.emit("        if (c2py_as_voidptr(args[{0}], &_c2py_vp) != 0) return NULL;".format(idx))
+                b.emit("        c_{0} = (intptr_t)_c2py_vp;".format(p.name))
             else:
                 # Held as long long; each narrow C receiver is range-checked
                 # at its call site (see _NARROW_INT_RANGE).

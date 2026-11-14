@@ -521,6 +521,107 @@ def test_address():
     assert buf[0] == 0, "buf[0] was modified, expected 0"
     assert buf[9] == 0, "buf[9] was modified, expected 0"
 
+    # --- void * return (suffix '-> void *'): delivered to Python as int ---
+    step = 3 * ctypes.sizeof(ctypes.c_int)  # bytes to buf[3]
+    off = addressmod.address_offset(ptr, step)
+    assert off == ptr + step, "address_offset(ptr,%d)=%d, expected %d" % (step, off, ptr + step)
+    assert addressmod.address_offset(ptr, 0) == ptr, "address_offset(ptr,0) != ptr"
+
+    # The returned value is a bare int (long on Python 2), never a float
+    assert not isinstance(off, float), "address_offset returned a float"
+    if IS_PY2:
+        assert isinstance(off, (int, long)), "address_offset returned %s, not int/long" % type(off)
+    else:
+        assert isinstance(off, int), "address_offset returned %s, not int" % type(off)
+
+    # Round trip: feed the returned int back in as a void* param; C reaches
+    # the same memory (buf[3]).
+    ret = addressmod.address_store(off, 42, 0)
+    assert ret == 0, "address_store(returned_ptr, 42, 0) returned %d" % ret
+    assert buf[3] == 42, "buf[3] = %d, expected 42 via returned pointer" % buf[3]
+    buf[3] = 0
+
+    # NULL return gives Python 0; the wrapper does not raise
+    assert addressmod.address_null() == 0, "address_null() != 0"
+
+    # const void * return (prefix form) round-trips the same pointer
+    assert addressmod.address_same(ptr) == ptr, "address_same(ptr) != ptr"
+
+    # Tuple ordering: void* return first, then the scalar output
+    out_ret = addressmod.address_with_out(ptr, 5)
+    assert isinstance(out_ret, tuple), "address_with_out should return a tuple, got %s" % type(out_ret)
+    assert len(out_ret) == 2, "address_with_out returned %d items" % len(out_ret)
+    assert out_ret[0] == ptr, "tuple[0] (void* return) = %d, expected %d" % (out_ret[0], ptr)
+    assert out_ret[1] == 12, "tuple[1] (output) = %d, expected 12" % out_ret[1]
+
+    # The address contract is unsigned, pointer-width.  PyLong_AsVoidPtr
+    # accepts any int in [-(2**(B-1)), 2**B - 1] (B = pointer bits),
+    # wrapping negatives to their unsigned bit pattern; PyLong_FromVoidPtr
+    # returns a non-negative int, so a returned value always goes back in
+    # unchanged.  B is computed so these hold on 32- and 64-bit builds.
+    B = 8 * ctypes.sizeof(ctypes.c_void_p)
+    assert addressmod.address_same(-1) == 2**B - 1, (
+        "address_same(-1) = %d, expected %d" % (addressmod.address_same(-1), 2**B - 1)
+    )
+    assert addressmod.address_same(2**B - 1) == 2**B - 1, (
+        "address_same(2**B-1) round-trip = %d" % addressmod.address_same(2**B - 1)
+    )
+    assert addressmod.address_same(2**(B - 1)) == 2**(B - 1), (
+        "address_same(2**(B-1)) = %d, expected %d (high-bit address must stay positive)"
+        % (addressmod.address_same(2**(B - 1)), 2**(B - 1))
+    )
+    for bad in (2**B, -(2**(B - 1)) - 1):
+        try:
+            addressmod.address_same(bad)
+            assert False, "address_same(%d) should raise OverflowError" % bad
+        except OverflowError:
+            pass
+    # A non-integer is a TypeError on every Python version (2.7's own
+    # PyLong_AsVoidPtr would raise SystemError), and a float is never
+    # truncated to an address.
+    for bad in ("x", None, 1.0, 1.5):
+        try:
+            addressmod.address_same(bad)
+            assert False, "address_same(%r) should raise TypeError" % (bad,)
+        except TypeError:
+            pass
+
+    # An object with __index__ is accepted, in range or not
+    class _Index(object):
+        def __init__(self, value):
+            self.value = value
+
+        def __index__(self):
+            return self.value
+
+    assert addressmod.address_same(_Index(ptr)) == ptr, "address_same(__index__ object) != ptr"
+    try:
+        addressmod.address_same(_Index(2**B))
+        assert False, "address_same(__index__ -> 2**B) should raise OverflowError"
+    except OverflowError:
+        pass
+    # every value the void * tests produce is a non-negative address
+    for v in (
+        ptr,
+        off,
+        addressmod.address_null(),
+        addressmod.address_same(ptr),
+        out_ret[0],
+        addressmod.address_var(ptr),
+        addressmod.address_gil(ptr, step),
+    ):
+        assert v >= 0, "a void * address came back negative: %d" % v
+
+    # Variant group: both variants return void *, each reachable by rebind
+    assert addressmod.address_var(ptr) == ptr + 1, "address_var default variant"
+    addressmod._rebind_address_var("address_var_b")
+    assert addressmod.address_var(ptr) == ptr + 2, "address_var rebound to variant b"
+    addressmod._rebind_address_var(None)
+    assert addressmod.address_var(ptr) == ptr + 1, "address_var reset to default"
+
+    # gil_release true still returns a void * as int
+    assert addressmod.address_gil(ptr, step) == ptr + step, "address_gil(ptr,%d) != ptr+%d" % (step, step)
+
     print("PASS: address")
 
 

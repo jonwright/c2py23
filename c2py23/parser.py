@@ -509,6 +509,27 @@ _C_TYPES = set(_C_TYPES_INT)
 # Tokens in param lists: CONST, TYPE, STAR, NAME, COMMA, LPAREN, RPAREN
 _C_PARAM_RE = re.compile(r"\s*(?:const\s+)?(" + "|".join(_C_TYPES_INT) + r")\s*\*?\s*(\w+)\s*$")
 
+# A C function may return an opaque address as `void *` (or `const void *`).
+# These are the only pointer return types c2py23 supports; they map to a
+# Python int (a bare address) and the wrapper never dereferences the pointer.
+_VOID_PTR_RET_BEFORE_RE = re.compile(r"^(?P<ret>(?:const\s+)?void\s*\*)\s*(?P<name>\w+)$")
+
+
+def _is_void_ptr_ret(s):
+    """True if a C return-type token is `void *` or `const void *` (any spacing)."""
+    s = re.sub(r"\s+", "", s)
+    return s in ("void*", "constvoid*")
+
+
+def _void_ptr_ret_str(s):
+    """Normalize a void-pointer return token to the canonical declaration form."""
+    s = re.sub(r"\s+", "", s)
+    if s == "void*":
+        return "void *"
+    if s == "constvoid*":
+        return "const void *"
+    raise ValueError("not a void-pointer return type: {0!r}".format(s))
+
 
 def _parse_c_sig(sig_str, path):
     sig_str = sig_str.strip()
@@ -544,40 +565,64 @@ def _parse_c_sig(sig_str, path):
     remaining_after = sig_str[paren_end + 1 :].strip()
     if remaining_after.startswith("->"):
         ret_part = remaining_after[2:].strip()
-        if ret_part in _C_TYPES:
+        if _is_void_ptr_ret(ret_part):
+            return_type = _void_ptr_ret_str(ret_part)
+        elif ret_part in _C_TYPES:
             return_type = ret_part
+        elif "*" in ret_part:
+            raise ValueError(
+                "Unsupported pointer return type '{}' in C signature '{}' in {}. "
+                "Only 'void *' (and 'const void *') pointer returns are supported; "
+                "the pointer is returned to Python as an int. "
+                "Use outputs: for other types.".format(ret_part, sig_str, path)
+            )
         else:
             raise ValueError("Unknown return type '{}' in {}".format(ret_part, sig_str))
 
     # Parse [return_type] name from before parens
-    before_parts = before.split()
-    if len(before_parts) == 1:
-        name = before_parts[0]
-        if return_type is None:
-            return_type = "void"
-    elif len(before_parts) == 2 and before_parts[0] in _C_TYPES:
-        if return_type is None:
-            return_type = before_parts[0]
-        name = before_parts[1]
-    elif len(before_parts) == 2:
-        raise ValueError(
-            "Unsupported return type '{}' in '{}' in {}. "
-            "Supported: void, int, float, double.".format(before_parts[0], sig_str, path)
-        )
-    elif len(before_parts) > 2:
-        raise ValueError(
-            "Unsupported multi-word return type in '{}' in {}. "
-            "Use a typedef or single-word type.".format(sig_str, path)
-        )
+    if "*" in before:
+        m = _VOID_PTR_RET_BEFORE_RE.match(before)
+        if m:
+            if return_type is None:
+                return_type = _void_ptr_ret_str(m.group("ret"))
+            name = m.group("name")
+        else:
+            raise ValueError(
+                "Unsupported pointer return type in C signature '{}' in {}. "
+                "Only 'void *' (and 'const void *') pointer returns are supported; "
+                "the pointer is returned to Python as an int. "
+                "Use outputs: for other types.".format(sig_str, path)
+            )
     else:
-        raise ValueError("Cannot parse C signature '{}' in {}".format(sig_str, path))
+        before_parts = before.split()
+        if len(before_parts) == 1:
+            name = before_parts[0]
+            if return_type is None:
+                return_type = "void"
+        elif len(before_parts) == 2 and before_parts[0] in _C_TYPES:
+            if return_type is None:
+                return_type = before_parts[0]
+            name = before_parts[1]
+        elif len(before_parts) == 2:
+            raise ValueError(
+                "Unsupported return type '{}' in '{}' in {}. "
+                "Supported: void, int, float, double, void *.".format(before_parts[0], sig_str, path)
+            )
+        elif len(before_parts) > 2:
+            raise ValueError(
+                "Unsupported multi-word return type in '{}' in {}. "
+                "Use a typedef or single-word type.".format(sig_str, path)
+            )
+        else:
+            raise ValueError("Cannot parse C signature '{}' in {}".format(sig_str, path))
 
-    # Validate return type: generator only supports void, int, float, double
-    _SUPPORTED_RETURN_TYPES = {"void", "int", "float", "double"}
+    # Validate return type: generator supports void, int, float, double and
+    # the opaque-pointer return `void *` / `const void *` (returned as int).
+    _SUPPORTED_RETURN_TYPES = {"void", "int", "float", "double", "void *", "const void *"}
     if return_type is not None and return_type not in _SUPPORTED_RETURN_TYPES:
         raise ValueError(
             "Unsupported return type '{}' in C signature '{}' in {}. "
-            "Supported return types: void, int, float, double. "
+            "Supported return types: void, int, float, double, void *. "
             "Use outputs: for other types.".format(return_type, sig_str, path)
         )
 
@@ -1370,6 +1415,17 @@ def _parse_func(raw, path):
             params[pname] = _check_ascii(pdesc, "params.{}".format(pname), path)
 
     _reject_ptr_arith(name, checks, overloads, path)
+
+    # A void * return reaches Python as an int (a bare address); py_sig must
+    # say so, since the docstring and __text_signature__ come from py_sig.
+    if ret_type != "int":
+        for ol in overloads:
+            for cand in ol.variants if ol.variants is not None else [ol]:
+                if _is_void_ptr_ret(cand.return_type or ""):
+                    raise ValueError(
+                        "'{}' returns {} from C, which is returned to Python as an int: "
+                        "py_sig must end '-> int', not '-> {}' in {}".format(name, cand.return_type, ret_type, path)
+                    )
 
     return FuncDef(
         name,
