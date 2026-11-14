@@ -335,8 +335,8 @@ Returns:
 ### Opaque Pointers (`void*`)
 
 A C parameter with type `void*` maps from Python `int` (a pointer-width integer).
-The wrapper converts the int with `PyLong_AsVoidPtr` (an unsigned,
-pointer-width conversion) and never dereferences the pointer:
+The wrapper converts the int with `PyLong_AsVoidPtr` (the pointer-width
+conversion; see the accepted range below) and never dereferences the pointer:
 
 ```python
 c_overloads:
@@ -386,13 +386,12 @@ The int is the address as an **unsigned**, pointer-width value.  With
 `B = 8 * sizeof(void *)` (the pointer width in bits), the parameter path
 accepts any int in `[-(2**(B-1)), 2**B - 1]`: `PyLong_AsVoidPtr` wraps
 negative values to their unsigned bit pattern, so `-1` becomes the all-ones
-address (`2**B - 1`).  A value outside that range raises `OverflowError`; a
-non-integer raises `TypeError` (CPython 2.7's `PyLong_AsVoidPtr` raises
-`SystemError` for a non-int object instead).  The return path always produces
-a non-negative int, equal to `ctypes.addressof()` on 64-bit user-space
-addresses, so a returned value fed back in comes back unchanged.  Nothing
-about the conversion truncates to a signed `intptr_t`, so a 32-bit build
-accepts and returns the full `0` to `2**32 - 1` range.
+address (`2**B - 1`).  A value outside that range raises `OverflowError`.
+A non-integer (a `float`, `str`, `None`) raises `TypeError` on every Python
+version; an object with `__index__` is accepted.  The return path always
+produces a non-negative int, the same value `ctypes.addressof()` gives, so a
+returned value fed back in comes back unchanged, and a 32-bit build accepts
+and returns the full `0` to `2**32 - 1` range.
 
 **The int is a bare address.**  c2py23 does not track ownership, type, or
 lifetime of the returned pointer.  The wrapper never dereferences it.  Passing
@@ -1439,6 +1438,7 @@ typedef struct {
      * and opaque void* parameters) */
     PyObject* (*Long_FromVoidPtr)(void*);
     void* (*Long_AsVoidPtr)(PyObject*);
+    PyObject* (*Number_Index)(PyObject*);
 
     /* Reference counting */
     void (*IncRef)(PyObject*);

@@ -2157,8 +2157,8 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
             else:
                 b.emit("    {")
             if p.name in void_ptr_names:
-                b.emit("        void *_c2py_vp = PyLong_AsVoidPtr(args[{0}]);".format(idx))
-                b.emit("        if (_c2py_vp == NULL && PyErr_Occurred()) return NULL;")
+                b.emit("        void *_c2py_vp;")
+                b.emit("        if (c2py_as_voidptr(args[{0}], &_c2py_vp) != 0) return NULL;".format(idx))
                 b.emit("        c_{0} = (intptr_t)_c2py_vp;".format(p.name))
             else:
                 # Held as long long; each narrow C receiver is range-checked

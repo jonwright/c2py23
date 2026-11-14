@@ -576,18 +576,30 @@ def test_address():
             assert False, "address_same(%d) should raise OverflowError" % bad
         except OverflowError:
             pass
-    # Non-integers are rejected.  CPython 3.x raises TypeError; CPython
-    # 2.7's PyLong_AsVoidPtr raises SystemError ("bad argument to internal
-    # function") for a non-int object.  c2py23 surfaces whatever the
-    # interpreter raises (documented in PTR_REPORT.txt), so accept both.
-    for bad in ("x", None):
+    # A non-integer is a TypeError on every Python version (2.7's own
+    # PyLong_AsVoidPtr would raise SystemError), and a float is never
+    # truncated to an address.
+    for bad in ("x", None, 1.0, 1.5):
         try:
             addressmod.address_same(bad)
-            assert False, "address_same(%r) should reject a non-integer" % (bad,)
+            assert False, "address_same(%r) should raise TypeError" % (bad,)
         except TypeError:
             pass
-        except SystemError:
-            pass
+
+    # An object with __index__ is accepted, in range or not
+    class _Index(object):
+        def __init__(self, value):
+            self.value = value
+
+        def __index__(self):
+            return self.value
+
+    assert addressmod.address_same(_Index(ptr)) == ptr, "address_same(__index__ object) != ptr"
+    try:
+        addressmod.address_same(_Index(2**B))
+        assert False, "address_same(__index__ -> 2**B) should raise OverflowError"
+    except OverflowError:
+        pass
     # every value the void * tests produce is a non-negative address
     for v in (
         ptr,
