@@ -94,9 +94,11 @@ _OUTPUT_FROM_C = {
     "float": "PyFloat_FromDouble((double){0})",
     "double": "PyFloat_FromDouble((double){0})",
     # An opaque-pointer return (`void *` / `const void *`) is delivered to
-    # Python as a bare-address int.  A NULL pointer gives Python 0.
-    "void *": "PyLong_FromLongLong((long long)(intptr_t){0})",
-    "const void *": "PyLong_FromLongLong((long long)(intptr_t){0})",
+    # Python as a bare-address int.  A NULL pointer gives Python 0.  The
+    # explicit (void *) cast keeps pythonh mode (which calls the real CPython
+    # PyLong_FromVoidPtr) const-correct; the dlsym macro casts anyway.
+    "void *": "PyLong_FromVoidPtr((void *)({0}))",
+    "const void *": "PyLong_FromVoidPtr((void *)({0}))",
 }
 
 
@@ -1338,7 +1340,7 @@ def _emit_c_call(
             emitl("    return PyFloat_FromDouble(_ret);")
             emitl("}")
         elif _is_ptr_ret(ol.return_type):
-            emitl("    return PyLong_FromLongLong((long long)(intptr_t)_ret);")
+            emitl("    return PyLong_FromVoidPtr((void *)_ret);")
             emitl("}")
         else:
             emitl("Py_RETURN_NONE;")
@@ -2155,15 +2157,9 @@ def _emit_fastcall_wrapper(b, func, buf_params, scalar_params, timing):
             else:
                 b.emit("    {")
             if p.name in void_ptr_names:
-                b.emit("        long long _c2py_tmp = PyLong_AsLongLong(args[{0}]);".format(idx))
-                b.emit("        if (_c2py_tmp == -1 && PyErr_Occurred()) return NULL;")
-                b.emit("        c_{0} = (intptr_t)_c2py_tmp;".format(p.name))
-                # An address above 4 GiB cannot exist on a 32-bit build.
-                b.emit("        if ((long long)c_{0} != _c2py_tmp) {{".format(p.name))
-                b.emit("            PyErr_SetString(PyExc_ValueError,")
-                b.emit('                "{0} out of range for C void *");'.format(p.name))
-                b.emit("            return NULL;")
-                b.emit("        }")
+                b.emit("        void *_c2py_vp = PyLong_AsVoidPtr(args[{0}]);".format(idx))
+                b.emit("        if (_c2py_vp == NULL && PyErr_Occurred()) return NULL;")
+                b.emit("        c_{0} = (intptr_t)_c2py_vp;".format(p.name))
             else:
                 # Held as long long; each narrow C receiver is range-checked
                 # at its call site (see _NARROW_INT_RANGE).

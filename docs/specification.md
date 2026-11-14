@@ -335,7 +335,8 @@ Returns:
 ### Opaque Pointers (`void*`)
 
 A C parameter with type `void*` maps from Python `int` (a pointer-width integer).
-The wrapper casts through `intptr_t` and never dereferences the pointer:
+The wrapper converts the int with `PyLong_AsVoidPtr` (an unsigned,
+pointer-width conversion) and never dereferences the pointer:
 
 ```python
 c_overloads:
@@ -356,9 +357,10 @@ interpreting the pointer; the wrapper performs no reads or writes through it.
 
 A wrapped C function may also **return** an opaque pointer, delivered to Python
 as `int` (the bare address).  The wrapper converts the returned pointer with
-`PyLong_FromLongLong((long long)(intptr_t)_ret)` -- the same conversion the
-`void *` parameter path uses in reverse, so the two round-trip exactly.  A
-`NULL` return gives Python `0`; the wrapper does **not** raise on `NULL`.
+`PyLong_FromVoidPtr(_ret)` -- an unsigned, pointer-width conversion that is the
+reverse of the `PyLong_AsVoidPtr` used by the `void *` parameter path, so the
+two round-trip exactly.  A `NULL` return gives Python `0`; the wrapper does
+**not** raise on `NULL`.
 
 Both spellings of the C signature are accepted (suffix and prefix):
 
@@ -380,11 +382,17 @@ returns are supported.
 The Python return type in `py_sig` for such a function must be `int`; the
 parser rejects `-> void` or `-> float` with a `void *` C return.
 
-The int is the address as a signed, pointer-width value (`intptr_t`), which is
-what the `void *` parameter path accepts.  On 64-bit platforms user-space
-addresses are positive and equal `ctypes.addressof()`.  On a 32-bit platform
-an address at or above 2 GiB comes back negative; pass it back unchanged and
-compare addresses modulo `2**32` there.
+The int is the address as an **unsigned**, pointer-width value.  With
+`B = 8 * sizeof(void *)` (the pointer width in bits), the parameter path
+accepts any int in `[-(2**(B-1)), 2**B - 1]`: `PyLong_AsVoidPtr` wraps
+negative values to their unsigned bit pattern, so `-1` becomes the all-ones
+address (`2**B - 1`).  A value outside that range raises `OverflowError`; a
+non-integer raises `TypeError` (CPython 2.7's `PyLong_AsVoidPtr` raises
+`SystemError` for a non-int object instead).  The return path always produces
+a non-negative int, equal to `ctypes.addressof()` on 64-bit user-space
+addresses, so a returned value fed back in comes back unchanged.  Nothing
+about the conversion truncates to a signed `intptr_t`, so a 32-bit build
+accepts and returns the full `0` to `2**32 - 1` range.
 
 **The int is a bare address.**  c2py23 does not track ownership, type, or
 lifetime of the returned pointer.  The wrapper never dereferences it.  Passing
@@ -1427,8 +1435,10 @@ typedef struct {
     /* Object attribute access */
     int (*SetAttrString)(PyObject*, const char*, PyObject*);
 
-    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    /* Pointer-to-int and int-to-pointer conversion (perf struct addresses
+     * and opaque void* parameters) */
     PyObject* (*Long_FromVoidPtr)(void*);
+    void* (*Long_AsVoidPtr)(PyObject*);
 
     /* Reference counting */
     void (*IncRef)(PyObject*);

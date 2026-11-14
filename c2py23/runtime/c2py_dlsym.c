@@ -538,6 +538,8 @@ static void _c2py_runtime_init_once(void)
 
     RESOLVE_REQ(C2PY.Long_FromVoidPtr, "PyLong_FromVoidPtr");
     if (C2PY.Long_FromVoidPtr == NULL) return;
+    RESOLVE_REQ(C2PY.Long_AsVoidPtr, "PyLong_AsVoidPtr");
+    if (C2PY.Long_AsVoidPtr == NULL) return;
 
     RESOLVE_REQ(C2PY.SaveThread, "PyEval_SaveThread");
     RESOLVE_REQ(C2PY.RestoreThread, "PyEval_RestoreThread");

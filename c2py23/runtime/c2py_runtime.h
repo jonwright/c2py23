@@ -130,8 +130,10 @@ typedef struct {
     /* Capsule API (optional, used by DLPack) */
     void* (*Capsule_GetPointer)(PyObject*, const char*);
 
-    /* Pointer-to-int conversion (for exposing perf struct addresses) */
+    /* Pointer-to-int conversion (for exposing perf struct addresses),
+     * and int-to-pointer (for opaque void* parameters). */
     PyObject* (*Long_FromVoidPtr)(void*);
+    void* (*Long_AsVoidPtr)(PyObject*);
 
     /* GIL management */
     void* (*SaveThread)(void);
@@ -200,6 +202,7 @@ extern C2PY_HIDDEN c2py_api_t C2PY;
     } \
 } while(0)
 #define PyLong_FromVoidPtr(p)          C2PY.Long_FromVoidPtr((void*)(p))
+#define PyLong_AsVoidPtr(o)            C2PY.Long_AsVoidPtr((PyObject*)(o))
 #define PyTuple_New(s)                 C2PY.Tuple_New(s)
 #define PyTuple_SetItem(t, i, o)       C2PY.Tuple_SetItem((PyObject*)(t), (i), (PyObject*)(o))
 #define PyTuple_Size(t)                C2PY.Tuple_Size((PyObject*)(t))

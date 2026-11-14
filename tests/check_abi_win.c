@@ -59,6 +59,7 @@ int main(void) {
     check_sym(h, "Py_DecRef");
     check_sym(h, "Py_GetVersion");
     check_sym(h, "PyLong_FromVoidPtr");
+    check_sym(h, "PyLong_AsVoidPtr");
     check_sym(h, "PyObject_SetAttrString");
     check_sym(h, "PyLong_FromLongLong");
     check_sym(h, "PyLong_FromUnsignedLongLong");

@@ -63,6 +63,7 @@ C2PY_HIDDEN int c2py_runtime_init(void)
     C2PY.Call               = PyObject_Call;
     C2PY.Dict_New           = PyDict_New;
     C2PY.Long_FromVoidPtr   = PyLong_FromVoidPtr;
+    C2PY.Long_AsVoidPtr     = PyLong_AsVoidPtr;
     C2PY.IncRef             = Py_IncRef;
     C2PY.DecRef             = Py_DecRef;
     C2PY.SaveThread         = (void*(*)(void))PyEval_SaveThread;

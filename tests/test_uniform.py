@@ -554,9 +554,51 @@ def test_address():
     assert out_ret[0] == ptr, "tuple[0] (void* return) = %d, expected %d" % (out_ret[0], ptr)
     assert out_ret[1] == 12, "tuple[1] (output) = %d, expected 12" % out_ret[1]
 
-    # The int is the signed pointer-width value: an all-ones pointer such as
-    # MAP_FAILED is -1, and goes back in unchanged
-    assert addressmod.address_same(-1) == -1, "address_same(-1) = %d" % addressmod.address_same(-1)
+    # The address contract is unsigned, pointer-width.  PyLong_AsVoidPtr
+    # accepts any int in [-(2**(B-1)), 2**B - 1] (B = pointer bits),
+    # wrapping negatives to their unsigned bit pattern; PyLong_FromVoidPtr
+    # returns a non-negative int, so a returned value always goes back in
+    # unchanged.  B is computed so these hold on 32- and 64-bit builds.
+    B = 8 * ctypes.sizeof(ctypes.c_void_p)
+    assert addressmod.address_same(-1) == 2**B - 1, (
+        "address_same(-1) = %d, expected %d" % (addressmod.address_same(-1), 2**B - 1)
+    )
+    assert addressmod.address_same(2**B - 1) == 2**B - 1, (
+        "address_same(2**B-1) round-trip = %d" % addressmod.address_same(2**B - 1)
+    )
+    assert addressmod.address_same(2**(B - 1)) == 2**(B - 1), (
+        "address_same(2**(B-1)) = %d, expected %d (high-bit address must stay positive)"
+        % (addressmod.address_same(2**(B - 1)), 2**(B - 1))
+    )
+    for bad in (2**B, -(2**(B - 1)) - 1):
+        try:
+            addressmod.address_same(bad)
+            assert False, "address_same(%d) should raise OverflowError" % bad
+        except OverflowError:
+            pass
+    # Non-integers are rejected.  CPython 3.x raises TypeError; CPython
+    # 2.7's PyLong_AsVoidPtr raises SystemError ("bad argument to internal
+    # function") for a non-int object.  c2py23 surfaces whatever the
+    # interpreter raises (documented in PTR_REPORT.txt), so accept both.
+    for bad in ("x", None):
+        try:
+            addressmod.address_same(bad)
+            assert False, "address_same(%r) should reject a non-integer" % (bad,)
+        except TypeError:
+            pass
+        except SystemError:
+            pass
+    # every value the void * tests produce is a non-negative address
+    for v in (
+        ptr,
+        off,
+        addressmod.address_null(),
+        addressmod.address_same(ptr),
+        out_ret[0],
+        addressmod.address_var(ptr),
+        addressmod.address_gil(ptr, step),
+    ):
+        assert v >= 0, "a void * address came back negative: %d" % v
 
     # Variant group: both variants return void *, each reachable by rebind
     assert addressmod.address_var(ptr) == ptr + 1, "address_var default variant"
