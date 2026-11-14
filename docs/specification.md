@@ -384,9 +384,11 @@ parser rejects `-> void` or `-> float` with a `void *` C return.
 
 The int is the address as an **unsigned**, pointer-width value.  With
 `B = 8 * sizeof(void *)` (the pointer width in bits), the parameter path
-accepts any int in `[-(2**(B-1)), 2**B - 1]`: `PyLong_AsVoidPtr` wraps
-negative values to their unsigned bit pattern, so `-1` becomes the all-ones
-address (`2**B - 1`).  A value outside that range raises `OverflowError`.
+accepts any int in `[-(2**(B-1)), 2**B - 1]`: negative values wrap to
+their unsigned bit pattern, so `-1` becomes the all-ones address
+(`2**B - 1`).  CPython's `PyLong_AsVoidPtr` does this itself; PyPy's rejects
+negative ints, so the runtime wraps them there, and the range is the same on
+every interpreter.  A value outside that range raises `OverflowError`.
 A non-integer (a `float`, `str`, `None`) raises `TypeError` on every Python
 version; an object with `__index__` is accepted.  The return path always
 produces a non-negative int, the same value `ctypes.addressof()` gives, so a

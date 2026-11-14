@@ -394,22 +394,47 @@ c2py_neg_ll(long long a, int *ovf)
  * that is not an int it raises SystemError on Python 2.7 and TypeError on
  * 3.x, and it never tries __index__.  So on failure the argument is put
  * through PyNumber_Index, which raises TypeError for a non-integer on
- * every version, and the conversion is repeated on the result; an int
- * that does not fit a pointer then raises OverflowError again.  The first
- * call succeeds for every in-range int, so the retry costs nothing on the
+ * every version, and the conversion is repeated on the result.
+ *
+ * PyPy's PyLong_AsVoidPtr is unsigned only: a negative int raises
+ * ValueError there.  So when the repeat fails too, the int is read as a
+ * signed long long and a negative value that fits a pointer is wrapped
+ * here, which gives the same accepted range on every interpreter.  An int
+ * outside that range raises OverflowError.  The first call succeeds for
+ * every in-range int on CPython, so none of this costs anything on the
  * normal path. */
 static inline int
 c2py_as_voidptr(PyObject *o, void **out)
 {
     PyObject *idx;
+    long long v;
     void *p = PyLong_AsVoidPtr(o);
     if (p == NULL && PyErr_Occurred()) {
         PyErr_Clear();
         idx = PyNumber_Index(o);
         if (idx == NULL) return -1;
         p = PyLong_AsVoidPtr(idx);
+        if (p == NULL && PyErr_Occurred()) {
+            PyErr_Clear();
+            /* OverflowError here when the int does not fit a long long */
+            v = PyLong_AsLongLong(idx);
+            if (v == -1 && PyErr_Occurred()) { Py_DECREF(idx); return -1; }
+            if (v < 0 && (long long)(intptr_t)v == v) {
+                p = (void *)(intptr_t)v;
+            } else {
+                /* Fits a long long but not a pointer (32-bit only).
+                 * Repeat a conversion that is certain to overflow, to
+                 * get the interpreter's own OverflowError. */
+                if (v < 0) (void)PyLong_AsLong(idx);
+                else (void)PyLong_AsVoidPtr(idx);
+                if (!PyErr_Occurred())
+                    PyErr_SetString(PyExc_ValueError,
+                                    "int does not fit a pointer");
+                Py_DECREF(idx);
+                return -1;
+            }
+        }
         Py_DECREF(idx);
-        if (p == NULL && PyErr_Occurred()) return -1;
     }
     *out = p;
     return 0;
