@@ -267,6 +267,19 @@ c2py23 installed -- see the README for the gcc command.
 
 The snakepit container images must be present at `../snakepit/` relative to this project root.
 
+### Working in a scratch clone
+
+A fresh `git clone` of this repository (e.g. for a delegated agent) needs two
+things before the full test suite will run:
+
+```bash
+git submodule update --init          # examples/kissfft and examples/lz4
+ln -s /path/to/snakepit ../snakepit  # so tests/test_all.py finds the images
+```
+
+Without the submodules the example builds fail; without the link beside the
+clone `tests/test_all.py` cannot find the containers.
+
 ## Architecture
 
 ### Core Files
