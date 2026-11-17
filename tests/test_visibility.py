@@ -142,10 +142,71 @@ def test_single_header_hides_runtime():
     assert "array_sum" in _exported(so)
 
 
+# Module init symbol must be visible in the dynamic symbol table when the
+# module is built with -fvisibility=hidden, or CPython cannot find
+# PyInit_<name> and the import fails.  This is the regression the issue
+# file reports (meson/CMake extension builds default to hidden visibility).
+def test_module_init_exported_under_fvisibility_hidden():
+    if _on_windows():
+        return
+    sys.path.insert(0, HERE)
+    try:
+        import test_single_header as sh
+    finally:
+        sys.path.pop(0)
+    if not os.path.isdir(BUILD_DIR):
+        os.makedirs(BUILD_DIR)
+    case = os.path.join(CASES, "arraysum")
+    wrapper_c = os.path.join(BUILD_DIR, "vis_hidden_wrapper.c")
+    sh._c2py_generate(os.path.join(case, "arraysum.c2py"), wrapper_c, use_single_header=True)
+    so = sh._build_module(
+        BUILD_DIR,
+        wrapper_c,
+        os.path.join(case, "arraysum.c"),
+        "vis_hidden.so",
+        extra_cflags=["-fvisibility=hidden"],
+    )
+    syms = _exported(so)
+    # Exactly the module init function is exported; the wrapped C code and
+    # the runtime are hidden (matches CPython PyMODINIT_FUNC semantics).
+    init = "PyInit_arraysum" if sys.version_info[0] >= 3 else "initarraysum"
+    assert init in syms, "module init %s must be exported under -fvisibility=hidden; got %s" % (init, sorted(syms))
+    leaked = _leaks(so)
+    assert not leaked, "hidden build leaks runtime symbols: %s" % leaked
+    assert "array_sum" not in syms, "array_sum should be hidden under -fvisibility=hidden; got %s" % sorted(syms)
+
+    # End-to-end: the module must actually import, which fails when the init
+    # symbol is hidden (this is the ImportError reported in the issue).
+    # Both loaders register the module in sys.modules; restore whatever was
+    # there so later tests importing "arraysum" get the normal build.
+    saved = sys.modules.pop("arraysum", None)
+    try:
+        if sys.version_info[0] >= 3:
+            import importlib.machinery as im
+            import importlib.util as iu
+
+            loader = im.ExtensionFileLoader("arraysum", so)
+            spec = iu.spec_from_file_location("arraysum", so, loader=loader)
+            assert spec is not None, "spec for hidden arraysum failed"
+            mod = iu.module_from_spec(spec)
+            sys.modules["arraysum"] = mod
+            spec.loader.exec_module(mod)
+        else:
+            import imp
+
+            mod = imp.load_dynamic("arraysum", so)
+        assert hasattr(mod, "array_sum"), "imported module should expose array_sum"
+    finally:
+        sys.modules.pop("arraysum", None)
+        if saved is not None:
+            sys.modules["arraysum"] = saved
+
+
 if __name__ == "__main__":
     test_timing_module_hides_runtime()
     test_cpu_flag_module_hides_runtime()
     test_plain_module_hides_runtime()
     test_two_modules_rtld_global()
     test_single_header_hides_runtime()
+    test_module_init_exported_under_fvisibility_hidden()
     print("PASS: visibility")

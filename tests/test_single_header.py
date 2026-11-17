@@ -36,11 +36,16 @@ def _is_msvc():
 
 
 def _compile_cflags():
-    """Return a list of compiler flags appropriate for the detected compiler."""
+    """Return a list of compiler flags appropriate for the detected compiler.
+
+    Under PyPy the wrapper must be built with C2PY_TARGET_PYPY (cpyext
+    object layout); without it the module segfaults on import.
+    """
+    pypy = hasattr(sys, "pypy_version_info")
     if _is_msvc():
-        return ["/O2", "/LD"]
+        return ["/O2", "/LD"] + (["/DC2PY_TARGET_PYPY"] if pypy else [])
     else:
-        return ["-O2", "-Wall", "-fPIC", "-shared"]
+        return ["-O2", "-Wall", "-fPIC", "-shared"] + (["-DC2PY_TARGET_PYPY"] if pypy else [])
 
 
 def _compile_ext():
@@ -84,14 +89,19 @@ def _c2py_generate(c2py_path, output_c, use_single_header=False):
         raise RuntimeError("c2py23 failed:\n" + stderr.decode("utf-8", "replace"))
 
 
-def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None):
+def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None, extra_cflags=None):
     """Compile wrapper and C source into a shared library.
 
     Uses the compiler detected from the CC environment variable.
     On MSVC (CC=cl), uses cl with /LD.  On GCC (default), uses -shared.
+    extra_cflags: optional list of additional compiler flags (e.g. to
+    force -fvisibility=hidden so a test can inspect the exported symbol
+    table under the same settings meson/CMake extension builds use).
     """
     cc = os.environ.get("CC", "gcc")
     cmd = [cc] + _compile_cflags()
+    if extra_cflags:
+        cmd.extend(extra_cflags)
     cmd.append("-I" + PROJECT_DIR)  # to find c2py23/runtime/c2py.h via wrapper include
     cmd.append(wrapper_c)
     cmd.append(c_source)
@@ -113,9 +123,6 @@ def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None):
 
 def test_single_header_transform():
     """Generate and build a transform module using only c2py.h."""
-    if hasattr(sys, "pypy_version_info"):
-        print("SKIP: PyPy needs -DC2PY_TARGET_PYPY; tested separately via Makefile")
-        return
     if not os.path.exists(C2PY_H):
         print("SKIP: c2py.h not found -- run 'python3 -m c2py23 --regenerate-header'")
         return
