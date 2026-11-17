@@ -36,11 +36,16 @@ def _is_msvc():
 
 
 def _compile_cflags():
-    """Return a list of compiler flags appropriate for the detected compiler."""
+    """Return a list of compiler flags appropriate for the detected compiler.
+
+    Under PyPy the wrapper must be built with C2PY_TARGET_PYPY (cpyext
+    object layout); without it the module segfaults on import.
+    """
+    pypy = hasattr(sys, "pypy_version_info")
     if _is_msvc():
-        return ["/O2", "/LD"]
+        return ["/O2", "/LD"] + (["/DC2PY_TARGET_PYPY"] if pypy else [])
     else:
-        return ["-O2", "-Wall", "-fPIC", "-shared"]
+        return ["-O2", "-Wall", "-fPIC", "-shared"] + (["-DC2PY_TARGET_PYPY"] if pypy else [])
 
 
 def _compile_ext():
@@ -118,9 +123,6 @@ def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None, extra_cfl
 
 def test_single_header_transform():
     """Generate and build a transform module using only c2py.h."""
-    if hasattr(sys, "pypy_version_info"):
-        print("SKIP: PyPy needs -DC2PY_TARGET_PYPY; tested separately via Makefile")
-        return
     if not os.path.exists(C2PY_H):
         print("SKIP: c2py.h not found -- run 'python3 -m c2py23 --regenerate-header'")
         return
