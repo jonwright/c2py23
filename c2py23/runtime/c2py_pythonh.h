@@ -60,8 +60,10 @@ typedef struct {
 
 /* ---- Common definitions ---- */
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #define C2PY_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+#define C2PY_EXPORT __attribute__((visibility("default")))
 #else
 #define C2PY_EXPORT
 #endif

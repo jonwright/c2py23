@@ -84,14 +84,19 @@ def _c2py_generate(c2py_path, output_c, use_single_header=False):
         raise RuntimeError("c2py23 failed:\n" + stderr.decode("utf-8", "replace"))
 
 
-def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None):
+def _build_module(workdir, wrapper_c, c_source, so_name, extra_c=None, extra_cflags=None):
     """Compile wrapper and C source into a shared library.
 
     Uses the compiler detected from the CC environment variable.
     On MSVC (CC=cl), uses cl with /LD.  On GCC (default), uses -shared.
+    extra_cflags: optional list of additional compiler flags (e.g. to
+    force -fvisibility=hidden so a test can inspect the exported symbol
+    table under the same settings meson/CMake extension builds use).
     """
     cc = os.environ.get("CC", "gcc")
     cmd = [cc] + _compile_cflags()
+    if extra_cflags:
+        cmd.extend(extra_cflags)
     cmd.append("-I" + PROJECT_DIR)  # to find c2py23/runtime/c2py.h via wrapper include
     cmd.append(wrapper_c)
     cmd.append(c_source)
