@@ -177,21 +177,29 @@ def test_module_init_exported_under_fvisibility_hidden():
 
     # End-to-end: the module must actually import, which fails when the init
     # symbol is hidden (this is the ImportError reported in the issue).
-    if sys.version_info[0] >= 3:
-        import importlib.machinery as im
-        import importlib.util as iu
+    # Both loaders register the module in sys.modules; restore whatever was
+    # there so later tests importing "arraysum" get the normal build.
+    saved = sys.modules.pop("arraysum", None)
+    try:
+        if sys.version_info[0] >= 3:
+            import importlib.machinery as im
+            import importlib.util as iu
 
-        loader = im.ExtensionFileLoader("arraysum", so)
-        spec = iu.spec_from_file_location("arraysum", so, loader=loader)
-        assert spec is not None, "spec for hidden arraysum failed"
-        mod = iu.module_from_spec(spec)
-        sys.modules["arraysum"] = mod
-        spec.loader.exec_module(mod)
-    else:
-        import imp
+            loader = im.ExtensionFileLoader("arraysum", so)
+            spec = iu.spec_from_file_location("arraysum", so, loader=loader)
+            assert spec is not None, "spec for hidden arraysum failed"
+            mod = iu.module_from_spec(spec)
+            sys.modules["arraysum"] = mod
+            spec.loader.exec_module(mod)
+        else:
+            import imp
 
-        mod = imp.load_dynamic("arraysum", so)
-    assert hasattr(mod, "array_sum"), "imported module should expose array_sum"
+            mod = imp.load_dynamic("arraysum", so)
+        assert hasattr(mod, "array_sum"), "imported module should expose array_sum"
+    finally:
+        sys.modules.pop("arraysum", None)
+        if saved is not None:
+            sys.modules["arraysum"] = saved
 
 
 if __name__ == "__main__":
@@ -200,4 +208,5 @@ if __name__ == "__main__":
     test_plain_module_hides_runtime()
     test_two_modules_rtld_global()
     test_single_header_hides_runtime()
+    test_module_init_exported_under_fvisibility_hidden()
     print("PASS: visibility")
